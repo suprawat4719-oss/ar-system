@@ -1,10 +1,10 @@
-<!-- AR SYSTEM v2.0 — 2026-04-28 03:41 | แก้เลขเอกสารไม่รัน (peekDocNo), แยกช่องผู้จัดทำ+เบอร์โทร, แก้วิธีชำระเงิน -->
+<!-- AR SYSTEM v2.0 — 2026-04-28 23:55 | แก้เลขบัญชีไม่ชิดขวา, แก้เส้นลายเซ็น -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.0 — 2026-04-28 03:41</title>
+<title>AR System | v2.0 — 2026-04-28 23:55</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1642,13 +1642,13 @@ function renderNewQT() {
   _rowCount = 0;
   document.getElementById('page-content').innerHTML = buildDocForm('qt');
   initDocForm('qt');
-  addRow('qt'); addRow('qt'); addRow('qt');
+  addRow('qt'); addRow('qt'); addRow('qt'); addRow('qt'); addRow('qt');
 }
 function renderNewINV() {
   _rowCount = 0;
   document.getElementById('page-content').innerHTML = buildDocForm('inv');
   initDocForm('inv');
-  addRow('inv'); addRow('inv'); addRow('inv');
+  addRow('inv'); addRow('inv'); addRow('inv'); addRow('inv'); addRow('inv');
 }
 function renderNewBL() {
   _rowCount = 0;
@@ -2223,7 +2223,7 @@ function printCurrentDoc() {
 
     /* ── PARTIES ── */
     .parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-    .party-box{background:#f8f8fb;border-radius:8px;padding:12px 14px;border-left:3px solid ${accentColor}}
+    .party-box{background:#f8f8fb;border-radius:8px;padding:12px 14px;border:1px solid #e5e7eb;border-left:3px solid ${accentColor}}
     .party-label{font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:${accentColor};margin-bottom:6px}
     .party-name{font-size:14px;font-weight:700;color:#111;margin-bottom:3px}
     .party-info{font-size:11.5px;color:#555;line-height:1.7}
@@ -2257,8 +2257,8 @@ function printCurrentDoc() {
 
     /* ── SIGNATURES ── */
     .sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb}
-    .sig-box{text-align:center}
-    .sig-line{border-top:1px solid #aaa;margin-bottom:6px;margin-top:36px}
+    .sig-box{text-align:center;padding-top:40px}
+    .sig-line{border-top:1.5px solid #aaa;margin-bottom:6px}
     .sig-label{font-size:11px;color:#666;line-height:1.6}
     .sig-name{font-size:12px;font-weight:600;color:#333;margin-top:2px}
 
@@ -2360,12 +2360,10 @@ function printCurrentDoc() {
     ${src.payMethod?.bankInfo?`
     <div class="bank-box">
       <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${src.payMethod.bankInfo.bankName} — ${src.payMethod.bankInfo.accType}${src.payMethod.bankInfo.branch?' สาขา '+src.payMethod.bankInfo.branch:''}</div>
-          <div style="font-size:12px;color:#555">ชื่อบัญชี: <b>${src.payMethod.bankInfo.accName}</b></div>
-        </div>
-        <div class="bank-no">${src.payMethod.bankInfo.accNo}</div>
+      <div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px">${src.payMethod.bankInfo.bankName} — ${src.payMethod.bankInfo.accType}${src.payMethod.bankInfo.branch?' สาขา '+src.payMethod.bankInfo.branch:''}</div>
+        <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${src.payMethod.bankInfo.accName}</b></div>
+        <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${src.payMethod.bankInfo.accNo}</span></div>
       </div>
     </div>`:src.payMethod?.method==='เงินสด'?`<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>`:''}
 
