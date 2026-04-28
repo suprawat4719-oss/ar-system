@@ -1727,11 +1727,26 @@ function buildDocForm(type) {
         <div class="field span2"><label>ชื่อบริษัท/ลูกค้า</label><input type="text" id="f-cust-name" placeholder="บริษัท ตัวอย่าง จำกัด"></div>
         <div class="field span2"><label>ที่อยู่</label><textarea id="f-cust-addr" placeholder="ที่อยู่ออกเอกสาร"></textarea></div>
         <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="f-cust-tax" placeholder="0000000000000"></div>
-        <div class="field"><label>ผู้ติดต่อ / โทร</label><input type="text" id="f-cust-contact"></div>
+        <div class="field"><label>ผู้ติดต่อลูกค้า / โทร</label><input type="text" id="f-cust-contact"></div>
+        <div class="field span2" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+          <label style="color:var(--accent)">✍️ ผู้จัดทำเอกสาร (ฝ่ายเรา)</label>
+          <input type="text" id="f-prepared-by" placeholder="ชื่อ-นามสกุล ผู้ออกเอกสาร">
+        </div>
       </div>
     </div>
   </div>
   ${itemsSection}
+  <div class="card">
+    <div class="card-header"><div class="card-title">💳 วิธีชำระเงิน</div></div>
+    <div class="card-body">
+      <div style="display:flex;flex-direction:column;gap:8px" id="payment-method-wrap">
+        <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .15s" id="pm-cash-label">
+          <input type="radio" name="pay-method" value="cash" id="pm-cash" onchange="updatePayMethodUI()"> <span style="font-size:13px">💵 เงินสด</span>
+        </label>
+        <div id="pm-bank-opts"></div>
+      </div>
+    </div>
+  </div>
   <div class="card">
     <div class="card-header"><div class="card-title">หมายเหตุ</div></div>
     <div class="card-body"><div class="field"><textarea id="f-note" placeholder="เงื่อนไข, หมายเหตุ..." style="min-height:60px"></textarea></div></div>
@@ -1770,9 +1785,54 @@ function selectCo(id, type) {
     if(vatEl) vatEl.checked = _selectedCo.hasVat;
     calcDoc(type);
     if(type==='bl') renderBLInvList();
+    renderBankOptions(_selectedCo);
+    // auto-fill ผู้จัดทำจากข้อมูลบริษัท
+    const pbEl = document.getElementById('f-prepared-by');
+    if(pbEl && !pbEl.value && _selectedCo.contactPerson) pbEl.value = _selectedCo.contactPerson;
   }
 }
 window.selectCo=selectCo;
+
+function renderBankOptions(co) {
+  const wrap = document.getElementById('pm-bank-opts'); if(!wrap) return;
+  const banks = co?.banks||[];
+  wrap.innerHTML = banks.map((b,i)=>`
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .15s" id="pm-bank${i}-label">
+      <input type="radio" name="pay-method" value="bank${i}" id="pm-bank${i}" onchange="updatePayMethodUI()" style="margin-top:3px">
+      <div>
+        <div style="font-size:13px;font-weight:600">🏦 ${b.bankName} — ${b.accType}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">ชื่อบัญชี: <b>${b.accName}</b></div>
+        <div style="font-size:12px;color:var(--ink3)">เลขบัญชี: <span style="font-family:monospace;font-weight:700;letter-spacing:.05em">${b.accNo}</span>${b.branch?' | สาขา: '+b.branch:''}</div>
+      </div>
+    </label>`).join('');
+  updatePayMethodUI();
+}
+window.renderBankOptions=renderBankOptions;
+
+function updatePayMethodUI() {
+  const val = document.querySelector('input[name="pay-method"]:checked')?.value||'';
+  ['pm-cash-label'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.borderColor = val==='cash' ? 'var(--accent)' : 'var(--border)';
+    if(el) el.style.background = val==='cash' ? 'var(--accent-light)' : '';
+  });
+  const banks = _selectedCo?.banks||[];
+  banks.forEach((_,i)=>{
+    const el=document.getElementById(`pm-bank${i}-label`);
+    if(el) el.style.borderColor = val===`bank${i}` ? 'var(--accent)' : 'var(--border)';
+    if(el) el.style.background = val===`bank${i}` ? 'var(--accent-light)' : '';
+  });
+}
+window.updatePayMethodUI=updatePayMethodUI;
+
+function getSelectedPayMethod() {
+  const val = document.querySelector('input[name="pay-method"]:checked')?.value||'';
+  if(!val||val==='cash') return {method:'เงินสด', bankInfo:null};
+  const idx = parseInt(val.replace('bank',''));
+  const b = _selectedCo?.banks?.[idx];
+  if(!b) return {method:'โอนธนาคาร', bankInfo:null};
+  return {method:`โอน ${b.bankName}`, bankInfo:b};
+}
 
 function renderBLInvList() {
   const el = document.getElementById('bl-inv-list'); if(!el) return;
@@ -1876,6 +1936,7 @@ async function saveDoc(type) {
       custTax:document.getElementById('f-cust-tax')?.value,
       invoiceIds:_blSelected, total, status:'sent',
       note:document.getElementById('f-note')?.value,
+      payMethod:getSelectedPayMethod(),
     };
     const id=await storeAdd('billings',bl); bl.id=id||uid();
     data.billings.push(bl);
@@ -1896,8 +1957,10 @@ async function saveDoc(type) {
     custName, custAddress:document.getElementById('f-cust-addr')?.value,
     custTax:document.getElementById('f-cust-tax')?.value,
     custContact:document.getElementById('f-cust-contact')?.value,
+    preparedBy:document.getElementById('f-prepared-by')?.value,
     items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht,
     status:'sent', note:document.getElementById('f-note')?.value,
+    payMethod:getSelectedPayMethod(),
     ...(type==='inv'?{docDue:document.getElementById('f-due')?.value,paidAmount:0,payments:[],linkedQt:null,linkedBilling:null}:{}),
     ...(type==='qt'?{docValid:document.getElementById('f-valid')?.value,linkedInvoice:null}:{}),
   };
@@ -2098,6 +2161,21 @@ function viewDoc(type, id) {
     </div>`;
   }
   if(src.note) body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)"><b>หมายเหตุ:</b> ${src.note}</div>`;
+
+  // แสดงข้อมูลการชำระเงิน
+  const pm=src.payMethod;
+  if(pm?.bankInfo) {
+    const b=pm.bankInfo;
+    body+=`<div class="divider"></div>
+    <div style="background:var(--accent-light);border:1px solid var(--accent-mid);border-radius:var(--r);padding:12px;font-size:12px">
+      <div style="font-weight:700;color:var(--accent);margin-bottom:6px">💳 ชำระเงินโดยการโอน</div>
+      <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType}${b.branch?' | สาขา: '+b.branch:''}</div>
+      <div>ชื่อบัญชี: <b>${b.accName}</b></div>
+      <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--accent)">${b.accNo}</span></div>
+    </div>`;
+  } else if(pm?.method==='เงินสด') {
+    body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)">💵 ชำระเป็น <b>เงินสด</b></div>`;
+  }
   document.getElementById('modal-doc-body').innerHTML=body;
   document.getElementById('modal-doc').classList.add('show');
 }
@@ -2108,55 +2186,207 @@ function printCurrentDoc() {
   const {type, src} = _printDocData;
   const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
   const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
-  const html=`<style>
-    body{font-family:'Sarabun',sans-serif;font-size:13px;color:#111;padding:20px}
-    .ph{display:flex;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:14px;margin-bottom:14px}
-    .ph-r{text-align:right}.pt{font-size:22px;font-weight:700;color:#1d4ed8}
-    .pp{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:12px 0}
-    table{width:100%;border-collapse:collapse;margin:12px 0}
-    th{background:#f5f5f5;padding:7px 10px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;border-bottom:2px solid #ddd}
-    td{padding:6px 10px;border-bottom:1px solid #eee}td.r{text-align:right;font-family:monospace}
-    .sum{margin-left:auto;width:240px}.sr{display:flex;justify-content:space-between;padding:3px 0;font-size:13px}
-    .sr.t{border-top:2px solid #333;font-weight:700;font-size:15px;margin-top:6px;padding-top:8px}
-    .sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:40px}
-    .sl{border-top:1px solid #999;padding-top:5px;font-size:11px;color:#666;text-align:center}
+  const typeColors={qt:'#1d4ed8',inv:'#0f766e',bl:'#7c3aed'};
+  const accentColor = typeColors[type]||'#1d4ed8';
+  const logoBlock = co.logoData
+    ? `<img src="${co.logoData}" style="width:90px;height:90px;object-fit:contain;border-radius:10px;display:block">`
+    : `<div style="width:90px;height:90px;border-radius:12px;background:${coLogoColor(co.prefix||co.name)};display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#fff;font-family:monospace;letter-spacing:1px">${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}</div>`;
+
+  const html=`
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Sarabun',sans-serif;font-size:13px;color:#1a1a2e;background:#fff;padding:0}
+    .page{width:210mm;min-height:297mm;padding:14mm 16mm 12mm;position:relative}
+
+    /* ── HEADER ── */
+    .hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:16px;border-bottom:3px solid ${accentColor}}
+    .hd-left{display:flex;align-items:flex-start;gap:16px}
+    .hd-co-name{font-size:17px;font-weight:700;color:#111;margin-bottom:2px}
+    .hd-co-en{font-size:11px;color:#666;margin-bottom:6px}
+    .hd-co-info{font-size:11.5px;color:#444;line-height:1.7}
+    .hd-right{text-align:right;min-width:180px}
+    .doc-type{font-size:26px;font-weight:700;color:${accentColor};line-height:1;margin-bottom:6px}
+    .doc-no{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:#333;background:#f4f4f6;padding:4px 10px;border-radius:4px;display:inline-block;margin-bottom:6px}
+    .doc-meta{font-size:11.5px;color:#555;line-height:1.8}
+    .doc-meta span{font-weight:600;color:#333}
+
+    /* ── PARTIES ── */
+    .parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+    .party-box{background:#f8f8fb;border-radius:8px;padding:12px 14px;border-left:3px solid ${accentColor}}
+    .party-label{font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:${accentColor};margin-bottom:6px}
+    .party-name{font-size:14px;font-weight:700;color:#111;margin-bottom:3px}
+    .party-info{font-size:11.5px;color:#555;line-height:1.7}
+
+    /* ── TABLE ── */
+    .items-table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12.5px}
+    .items-table thead tr{background:${accentColor};color:#fff}
+    .items-table th{padding:8px 10px;text-align:left;font-weight:600;font-size:11px;letter-spacing:.04em}
+    .items-table th.r,.items-table td.r{text-align:right}
+    .items-table td{padding:7px 10px;border-bottom:1px solid #eef0f4;vertical-align:top}
+    .items-table tbody tr:nth-child(even) td{background:#fafbff}
+    .items-table td.num{color:#999;font-family:'IBM Plex Mono',monospace;font-size:11px}
+    .items-table td.mono{font-family:'IBM Plex Mono',monospace}
+
+    /* ── SUMMARY ── */
+    .summary-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
+    .summary-box{width:260px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden}
+    .sr{display:flex;justify-content:space-between;padding:6px 14px;font-size:12.5px;border-bottom:1px solid #f0f0f4}
+    .sr:last-child{border-bottom:none}
+    .sr.total{background:${accentColor};color:#fff;font-size:15px;font-weight:700;padding:10px 14px}
+    .sr.total span:last-child{font-family:'IBM Plex Mono',monospace}
+    .sr span:last-child{font-family:'IBM Plex Mono',monospace;font-weight:600}
+
+    /* ── BANK INFO ── */
+    .bank-box{border:1.5px solid ${accentColor};border-radius:8px;padding:12px 16px;margin-bottom:14px;background:${accentColor}11}
+    .bank-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${accentColor};margin-bottom:8px}
+    .bank-no{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;color:${accentColor};letter-spacing:.08em}
+
+    /* ── NOTE ── */
+    .note-box{background:#fffbeb;border-left:3px solid #f59e0b;padding:8px 12px;border-radius:4px;font-size:12px;color:#555;margin-bottom:14px}
+
+    /* ── SIGNATURES ── */
+    .sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb}
+    .sig-box{text-align:center}
+    .sig-line{border-top:1px solid #aaa;margin-bottom:6px;margin-top:36px}
+    .sig-label{font-size:11px;color:#666;line-height:1.6}
+    .sig-name{font-size:12px;font-weight:600;color:#333;margin-top:2px}
+
+    /* ── FOOTER ── */
+    .footer{margin-top:auto;padding-top:12px;border-top:1px solid #eee;display:flex;justify-content:space-between;font-size:10px;color:#aaa;font-family:'IBM Plex Mono',monospace}
+
+    @media print{
+      body{padding:0}
+      .page{padding:10mm 14mm}
+    }
   </style>
-  <div class="ph">
-    <div style="display:flex;align-items:flex-start;gap:12px">
-      ${co.logoData ? `<img src="${co.logoData}" style="width:60px;height:60px;object-fit:contain;border-radius:6px;flex-shrink:0">` : `<div style="width:60px;height:60px;border-radius:8px;background:${coLogoColor(co.prefix||co.name)};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;font-family:monospace;flex-shrink:0">${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}</div>`}
-      <div>
-        <div style="font-size:16px;font-weight:700">${co.name}</div>
-        <div style="font-size:11px;color:#666">${co.nameEn||''}</div>
-        <div style="font-size:12px;color:#444;margin-top:4px">${co.address||''}</div>
-        <div style="font-size:12px;color:#444">โทร: ${co.phone||''} | เลขภาษี: ${co.taxId||''}</div>
+
+  <div class="page">
+    <!-- HEADER -->
+    <div class="hd">
+      <div class="hd-left">
+        ${logoBlock}
+        <div>
+          <div class="hd-co-name">${co.name}</div>
+          <div class="hd-co-en">${co.nameEn||''}</div>
+          <div class="hd-co-info">
+            ${co.address?co.address.replace(/\n/g,'<br>'):''}
+            ${co.phone?`<br>โทร: <b>${co.phone}</b>`:''}
+            ${co.email?` | อีเมล: ${co.email}`:''}
+            ${co.website?`<br>${co.website}`:''}
+            <br>เลขประจำตัวผู้เสียภาษี: <b>${co.taxId||'—'}</b>
+          </div>
+        </div>
+      </div>
+      <div class="hd-right">
+        <div class="doc-type">${typeLabels[type]}</div>
+        <div class="doc-no">${src.docNumber}</div>
+        <div class="doc-meta">
+          วันที่: <span>${src.docDate}</span><br>
+          ${src.docDue?`ครบกำหนด: <span>${src.docDue}</span><br>`:''}
+          ${src.docValid?`ใช้ได้ถึง: <span>${src.docValid}</span><br>`:''}
+        </div>
       </div>
     </div>
-    <div class="ph-r"><div class="pt">${typeLabels[type]}</div>
-      <div style="font-family:monospace;font-size:12px;margin-top:4px">${src.docNumber}</div>
-      <div style="font-size:12px;color:#666">วันที่: ${src.docDate}</div>
-      ${src.docDue?`<div style="font-size:12px;color:#666">ครบกำหนด: ${src.docDue}</div>`:''}
-      ${src.docValid?`<div style="font-size:12px;color:#666">ใช้ได้ถึง: ${src.docValid}</div>`:''}
+
+    <!-- PARTIES -->
+    <div class="parties">
+      <div class="party-box">
+        <div class="party-label">เรียน / ลูกค้า</div>
+        <div class="party-name">${src.custName}</div>
+        <div class="party-info">
+          ${src.custAddress?src.custAddress.replace(/\n/g,'<br>'):''}
+          ${src.custTax?`<br>เลขภาษี: ${src.custTax}`:''}
+          ${src.custContact?`<br>ผู้ติดต่อ: <b>${src.custContact}</b>`:''}
+        </div>
+      </div>
+      <div class="party-box">
+        <div class="party-label">ข้อมูลเอกสาร</div>
+        <div class="party-info" style="line-height:2">
+          ${src.paymentTerms||src.terms?`เงื่อนไข: <b>${src.paymentTerms||src.terms}</b><br>`:''}
+          ${src.preparedBy?`ผู้จัดทำ: <b>${src.preparedBy}</b><br>`:''}
+          ${co.contactPerson&&!src.preparedBy?`ผู้ติดต่อ: <b>${co.contactPerson}</b><br>`:''}
+          ${co.phone?`โทร: <b>${co.phone}</b><br>`:''}
+          ${src.payMethod?.method?`วิธีชำระ: <b>${src.payMethod.method}</b>`:''}
+        </div>
+      </div>
     </div>
-  </div>
-  <div class="pp">
-    <div><div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:4px">ลูกค้า</div>
-      <div style="font-weight:600">${src.custName}</div>
-      <div style="font-size:12px;color:#444">${(src.custAddress||'').replace(/\n/g,'<br>')}</div>
-      ${src.custTax?`<div style="font-size:11px;color:#888">เลขภาษี: ${src.custTax}</div>`:''}
+
+    <!-- ITEMS TABLE -->
+    ${src.items?.length?`
+    <table class="items-table">
+      <thead><tr>
+        <th style="width:32px">#</th>
+        <th>รายการ / Description</th>
+        <th class="r" style="width:70px">จำนวน</th>
+        <th style="width:60px">หน่วย</th>
+        <th class="r" style="width:100px">ราคา/หน่วย</th>
+        <th class="r" style="width:110px">จำนวนเงิน</th>
+      </tr></thead>
+      <tbody>
+        ${src.items.map((r,i)=>`<tr>
+          <td class="num">${i+1}</td>
+          <td>${r.desc}</td>
+          <td class="r mono">${r.qty.toLocaleString()}</td>
+          <td>${r.unit||''}</td>
+          <td class="r mono">${fmt(r.price)}</td>
+          <td class="r mono" style="font-weight:600">${fmt(r.total)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <!-- SUMMARY -->
+    <div class="summary-wrap">
+      <div class="summary-box">
+        <div class="sr"><span>ราคาก่อนภาษี</span><span>${fmt(src.subtotal)}</span></div>
+        ${src.vat?`<div class="sr"><span>ภาษีมูลค่าเพิ่ม 7%</span><span>${fmt(src.vat)}</span></div>`:''}
+        ${src.wht?`<div class="sr"><span style="color:#b91c1c">หัก ณ ที่จ่าย 3%</span><span style="color:#b91c1c">-${fmt(src.wht)}</span></div>`:''}
+        <div class="sr total"><span>ยอดสุทธิ</span><span>${fmt(src.total)}</span></div>
+      </div>
+    </div>`:''}
+
+    <!-- BANK INFO -->
+    ${src.payMethod?.bankInfo?`
+    <div class="bank-box">
+      <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${src.payMethod.bankInfo.bankName} — ${src.payMethod.bankInfo.accType}${src.payMethod.bankInfo.branch?' สาขา '+src.payMethod.bankInfo.branch:''}</div>
+          <div style="font-size:12px;color:#555">ชื่อบัญชี: <b>${src.payMethod.bankInfo.accName}</b></div>
+        </div>
+        <div class="bank-no">${src.payMethod.bankInfo.accNo}</div>
+      </div>
+    </div>`:src.payMethod?.method==='เงินสด'?`<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>`:''}
+
+    <!-- NOTE -->
+    ${src.note?`<div class="note-box"><b>หมายเหตุ:</b> ${src.note}</div>`:''}
+
+    <!-- SIGNATURES -->
+    <div class="sig">
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-label">ผู้เสนอ / ผู้มีอำนาจลงนาม</div>
+        ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${src.preparedBy||co.contactPerson})</div>`:'<div class="sig-name">(................................)</div>'}
+      </div>
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-label">ผู้อนุมัติ</div>
+        <div class="sig-name">(................................)</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-label">ลูกค้าผู้รับเอกสาร</div>
+        <div class="sig-name">(................................)</div>
+        <div style="font-size:10px;color:#aaa;margin-top:2px">วันที่รับ: ...................</div>
+      </div>
     </div>
-    <div><div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:4px">เงื่อนไข</div>
-      <div>${src.paymentTerms||src.terms||'—'}</div></div>
-  </div>
-  ${src.items?.length?`<table><thead><tr><th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th></tr></thead>
-  <tbody>${src.items.map((r,i)=>`<tr><td style="color:#aaa">${i+1}</td><td>${r.desc}</td><td class="r">${r.qty}</td><td>${r.unit||''}</td><td class="r">${fmt(r.price)}</td><td class="r" style="font-weight:700">${fmt(r.total)}</td></tr>`).join('')}</tbody></table>
-  <div class="sum">
-    <div class="sr"><span>ก่อน VAT</span><span>${fmt(src.subtotal)}</span></div>
-    ${src.vat?`<div class="sr"><span>VAT 7%</span><span>${fmt(src.vat)}</span></div>`:''}
-    ${src.wht?`<div class="sr"><span>หัก ณ ที่จ่าย 3%</span><span style="color:#b91c1c">-${fmt(src.wht)}</span></div>`:''}
-    <div class="sr t"><span>ยอดสุทธิ</span><span style="color:#1d4ed8">${fmt(src.total)}</span></div>
-  </div>`:''}
-  ${src.note?`<div style="margin-top:14px;font-size:12px;color:#666"><b>หมายเหตุ:</b> ${src.note}</div>`:''}
-  <div class="sig"><div class="sl">ผู้เสนอ / ผู้มีอำนาจ</div><div class="sl">ผู้อนุมัติ / ลูกค้า</div></div>`;
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <span>${co.name} | เลขภาษี: ${co.taxId||'—'}</span>
+      <span>${src.docNumber} | พิมพ์: ${new Date().toLocaleDateString('th-TH')}</span>
+    </div>
+  </div>`;
   document.getElementById('print-frame').innerHTML=html;
   window.print();
 }
@@ -2362,6 +2592,9 @@ function renderCompanies() {
         <div class="field span2"><label>ที่อยู่</label><textarea id="co-addr"></textarea></div>
         <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="co-tax" maxlength="13"></div>
         <div class="field"><label>โทรศัพท์</label><input type="text" id="co-phone"></div>
+        <div class="field"><label>อีเมล</label><input type="text" id="co-email" placeholder="example@company.com"></div>
+        <div class="field"><label>เว็บไซต์</label><input type="text" id="co-website" placeholder="www.company.com"></div>
+        <div class="field span2"><label>ผู้ติดต่อ / ผู้จัดทำเอกสาร (default)</label><input type="text" id="co-contact-person" placeholder="ชื่อ-นามสกุล ผู้ออกเอกสาร"></div>
         <div class="field"><label>prefix เอกสาร</label><input type="text" id="co-prefix" maxlength="6" placeholder="A, B, CO1..." oninput="updateLogoPreview()"></div>
         <div class="field" style="justify-content:flex-end;padding-top:16px">
           <div class="tog-wrap"><label class="tog"><input type="checkbox" id="co-vat"><span class="tog-sl"></span></label><span class="tog-label">มี VAT</span></div>
@@ -2378,6 +2611,69 @@ function renderCompanies() {
             <div>
               <div style="font-size:12px;font-weight:600;margin-bottom:4px" id="logo-preview-label">Auto Logo (จาก Prefix)</div>
               <div class="logo-clear-btn" id="logo-clear-btn" onclick="clearLogo()" style="display:none">✕ ลบโลโก้ที่อัปโหลด (ใช้ Auto แทน)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── บัญชีธนาคาร ── -->
+        <div class="field span2" style="margin-top:6px">
+          <label style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink2);text-transform:uppercase">🏦 บัญชีธนาคาร (สำหรับแสดงในเอกสาร)</label>
+        </div>
+
+        <div style="grid-column:span 2;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">บัญชีที่ 1</div>
+          <div class="form-grid-4" style="gap:8px">
+            <div class="field"><label>ธนาคาร</label>
+              <select id="co-bank1-name">
+                <option value="">— เลือกธนาคาร —</option>
+                <option>กสิกรไทย (KBANK)</option><option>กรุงไทย (KTB)</option>
+                <option>กรุงเทพ (BBL)</option><option>ไทยพาณิชย์ (SCB)</option>
+                <option>ออมสิน</option><option>กรุงศรีอยุธยา (BAY)</option>
+                <option>ทหารไทยธนชาต (TTB)</option><option>ยูโอบี (UOB)</option>
+                <option>ซีไอเอ็มบีไทย (CIMBT)</option><option>แลนด์ แอนด์ เฮ้าส์ (LH)</option>
+                <option>พร้อมเพย์</option><option>อื่นๆ</option>
+              </select>
+            </div>
+            <div class="field span2"><label>ชื่อบัญชี</label><input type="text" id="co-bank1-accname" placeholder="ชื่อบัญชีภาษาไทย"></div>
+            <div class="field"><label>เลขบัญชี</label><input type="text" id="co-bank1-accno" placeholder="xxx-x-xxxxx-x" maxlength="20"></div>
+          </div>
+          <div class="form-grid-4" style="gap:8px;margin-top:4px">
+            <div class="field span2"><label>สาขา</label><input type="text" id="co-bank1-branch" placeholder="สาขา..."></div>
+            <div class="field span2"><label>ประเภทบัญชี</label>
+              <select id="co-bank1-type">
+                <option value="ออมทรัพย์">ออมทรัพย์</option>
+                <option value="กระแสรายวัน">กระแสรายวัน</option>
+                <option value="ประจำ">ประจำ</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div style="grid-column:span 2;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px">
+          <div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">บัญชีที่ 2 (ไม่บังคับ)</div>
+          <div class="form-grid-4" style="gap:8px">
+            <div class="field"><label>ธนาคาร</label>
+              <select id="co-bank2-name">
+                <option value="">— เลือกธนาคาร —</option>
+                <option>กสิกรไทย (KBANK)</option><option>กรุงไทย (KTB)</option>
+                <option>กรุงเทพ (BBL)</option><option>ไทยพาณิชย์ (SCB)</option>
+                <option>ออมสิน</option><option>กรุงศรีอยุธยา (BAY)</option>
+                <option>ทหารไทยธนชาต (TTB)</option><option>ยูโอบี (UOB)</option>
+                <option>ซีไอเอ็มบีไทย (CIMBT)</option><option>แลนด์ แอนด์ เฮ้าส์ (LH)</option>
+                <option>พร้อมเพย์</option><option>อื่นๆ</option>
+              </select>
+            </div>
+            <div class="field span2"><label>ชื่อบัญชี</label><input type="text" id="co-bank2-accname" placeholder="ชื่อบัญชีภาษาไทย"></div>
+            <div class="field"><label>เลขบัญชี</label><input type="text" id="co-bank2-accno" placeholder="xxx-x-xxxxx-x" maxlength="20"></div>
+          </div>
+          <div class="form-grid-4" style="gap:8px;margin-top:4px">
+            <div class="field span2"><label>สาขา</label><input type="text" id="co-bank2-branch" placeholder="สาขา..."></div>
+            <div class="field span2"><label>ประเภทบัญชี</label>
+              <select id="co-bank2-type">
+                <option value="ออมทรัพย์">ออมทรัพย์</option>
+                <option value="กระแสรายวัน">กระแสรายวัน</option>
+                <option value="ประจำ">ประจำ</option>
+              </select>
             </div>
           </div>
         </div>
@@ -2447,7 +2743,11 @@ function refreshCoList() {
 function openAddCoModal() {
   _editCoId=null; _pendingLogoData=null;
   document.getElementById('modal-co-title').textContent='เพิ่มบริษัทใหม่';
-  ['co-name','co-name-en','co-addr','co-tax','co-phone','co-prefix'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['co-name','co-name-en','co-addr','co-tax','co-phone','co-prefix','co-email','co-website','co-contact-person',
+   'co-bank1-accname','co-bank1-accno','co-bank1-branch',
+   'co-bank2-accname','co-bank2-accno','co-bank2-branch'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['co-bank1-name','co-bank2-name'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['co-bank1-type','co-bank2-type'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='ออมทรัพย์';});
   document.getElementById('co-vat').checked=false;
   document.getElementById('co-logo-file').value='';
   updateLogoPreview();
@@ -2466,6 +2766,23 @@ function editCo(id) {
   document.getElementById('co-phone').value=c.phone||'';
   document.getElementById('co-prefix').value=c.prefix||'';
   document.getElementById('co-vat').checked=c.hasVat||false;
+  document.getElementById('co-email').value=c.email||'';
+  document.getElementById('co-website').value=c.website||'';
+  document.getElementById('co-contact-person').value=c.contactPerson||'';
+  // bank 1
+  const b1=c.banks?.[0]||{};
+  document.getElementById('co-bank1-name').value=b1.bankName||'';
+  document.getElementById('co-bank1-accname').value=b1.accName||'';
+  document.getElementById('co-bank1-accno').value=b1.accNo||'';
+  document.getElementById('co-bank1-branch').value=b1.branch||'';
+  document.getElementById('co-bank1-type').value=b1.accType||'ออมทรัพย์';
+  // bank 2
+  const b2=c.banks?.[1]||{};
+  document.getElementById('co-bank2-name').value=b2.bankName||'';
+  document.getElementById('co-bank2-accname').value=b2.accName||'';
+  document.getElementById('co-bank2-accno').value=b2.accNo||'';
+  document.getElementById('co-bank2-branch').value=b2.branch||'';
+  document.getElementById('co-bank2-type').value=b2.accType||'ออมทรัพย์';
   document.getElementById('co-logo-file').value='';
   updateLogoPreview();
   document.getElementById('modal-co').classList.add('show');
@@ -2473,11 +2790,19 @@ function editCo(id) {
 window.editCo=editCo;
 
 async function saveCoModal() {
-  const d={name:document.getElementById('co-name').value.trim(),nameEn:document.getElementById('co-name-en').value.trim(),
-    address:document.getElementById('co-addr').value.trim(),taxId:document.getElementById('co-tax').value.trim(),
-    phone:document.getElementById('co-phone').value.trim(),prefix:(document.getElementById('co-prefix').value.trim()||'X').toUpperCase(),
+  const gv=id=>document.getElementById(id)?.value.trim()||'';
+  const banks=[];
+  if(gv('co-bank1-name')||gv('co-bank1-accno')) {
+    banks.push({bankName:gv('co-bank1-name'),accName:gv('co-bank1-accname'),accNo:gv('co-bank1-accno'),branch:gv('co-bank1-branch'),accType:gv('co-bank1-type')});
+  }
+  if(gv('co-bank2-name')||gv('co-bank2-accno')) {
+    banks.push({bankName:gv('co-bank2-name'),accName:gv('co-bank2-accname'),accNo:gv('co-bank2-accno'),branch:gv('co-bank2-branch'),accType:gv('co-bank2-type')});
+  }
+  const d={name:gv('co-name'),nameEn:gv('co-name-en'),address:gv('co-addr'),taxId:gv('co-tax'),
+    phone:gv('co-phone'),prefix:(gv('co-prefix')||'X').toUpperCase(),
     hasVat:document.getElementById('co-vat').checked,
-    logoData:_pendingLogoData||null};
+    email:gv('co-email'),website:gv('co-website'),contactPerson:gv('co-contact-person'),
+    logoData:_pendingLogoData||null, banks};
   if(!d.name){toast('กรุณากรอกชื่อบริษัท','err');return;}
   if(_editCoId){
     await storeUpdate('companies',_editCoId,d);
