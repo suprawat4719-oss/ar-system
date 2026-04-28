@@ -1,10 +1,10 @@
-<!-- AR SYSTEM v1.9 — 2026-04-28 03:23 | แก้ modal บริษัท (sticky header/footer + ปุ่มย้อนกลับ), เพิ่มเบอร์โทรผู้ออกเอกสาร -->
+<!-- AR SYSTEM v2.0 — 2026-04-28 03:41 | แก้เลขเอกสารไม่รัน (peekDocNo), แยกช่องผู้จัดทำ+เบอร์โทร, แก้วิธีชำระเงิน -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v1.9 — 2026-04-28 03:23</title>
+<title>AR System | v2.0 — 2026-04-28 03:41</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -429,7 +429,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v1.9 — 2026-04-28 03:23</div>
+    <div class="logo-sub">v2.0 — 2026-04-28 03:41</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1114,17 +1114,18 @@ function daysDiff(a,b) { return Math.ceil((new Date(b)-new Date(a))/(1000*60*60*
 function uid() { return 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,7); }
 // ── Running-number sequence (never resets on delete) ──
 // Key format: ar_seq_{TYPE}_{PREFIX}_{YYYYMM}  → integer
-function genDocNo(prefix, type, _unused) {
-  const y = new Date().getFullYear()+543;
-  const m = String(new Date().getMonth()+1).padStart(2,'0');
-  const ym = `${y}${m}`;
-  const key = `ar_seq_${type}_${prefix}_${ym}`;
-  let seq = 1;
-  try {
-    const stored = localStorage.getItem(key);
-    if(stored) seq = parseInt(stored,10)+1;
-  } catch(e){}
-  try { localStorage.setItem(key, seq); } catch(e){}
+function genDocNo(prefix, type) {
+  const y=new Date().getFullYear()+543, m=String(new Date().getMonth()+1).padStart(2,'0'), ym=`${y}${m}`;
+  const key=`ar_seq_${type}_${prefix}_${ym}`;
+  let seq=1; try{const s=localStorage.getItem(key);if(s)seq=parseInt(s,10)+1;}catch(e){}
+  try{localStorage.setItem(key,seq);}catch(e){}
+  return `${type}-${prefix}-${ym}-${String(seq).padStart(3,'0')}`;
+}
+// peekDocNo — แสดง preview เลขถัดไป โดยไม่ increment จริง
+function peekDocNo(prefix, type) {
+  const y=new Date().getFullYear()+543, m=String(new Date().getMonth()+1).padStart(2,'0'), ym=`${y}${m}`;
+  const key=`ar_seq_${type}_${prefix}_${ym}`;
+  let seq=1; try{const s=localStorage.getItem(key);if(s)seq=parseInt(s,10)+1;}catch(e){}
   return `${type}-${prefix}-${ym}-${String(seq).padStart(3,'0')}`;
 }
 function invStatus(inv) {
@@ -1729,11 +1730,11 @@ function buildDocForm(type) {
         <div class="field span2"><label>ที่อยู่</label><textarea id="f-cust-addr" placeholder="ที่อยู่ออกเอกสาร"></textarea></div>
         <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="f-cust-tax" placeholder="0000000000000"></div>
         <div class="field"><label>ผู้ติดต่อลูกค้า / โทร</label><input type="text" id="f-cust-contact"></div>
-        <div class="field span2" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
-          <label style="color:var(--accent)">✍️ ผู้จัดทำเอกสาร (ฝ่ายเรา)</label>
-          <input type="text" id="f-prepared-by" placeholder="ชื่อ-นามสกุล ผู้ออกเอกสาร">
+        <div class="field span2" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+          <label style="color:var(--accent);font-weight:700;font-size:11px;letter-spacing:.06em">✍️ ผู้จัดทำเอกสาร / ผู้ติดต่อ (ฝ่ายเรา)</label>
         </div>
-        <div class="field"><label>เบอร์โทรผู้ออกเอกสาร</label><input type="text" id="f-prepared-phone" placeholder="08x-xxx-xxxx"></div>
+        <div class="field"><label>ชื่อผู้จัดทำเอกสาร</label><input type="text" id="f-prepared-by" placeholder="ชื่อ-นามสกุล"></div>
+        <div class="field"><label>เบอร์โทรผู้จัดทำ</label><input type="text" id="f-prepared-phone" placeholder="08x-xxx-xxxx"></div>
       </div>
     </div>
   </div>
@@ -1741,7 +1742,8 @@ function buildDocForm(type) {
   <div class="card">
     <div class="card-header"><div class="card-title">💳 วิธีชำระเงิน</div></div>
     <div class="card-body">
-      <div style="display:flex;flex-direction:column;gap:8px" id="payment-method-wrap">
+      <div id="pm-no-co" style="font-size:12px;color:var(--ink4);padding:6px 0">⬆️ กรุณาเลือกบริษัทก่อน เพื่อแสดงบัญชีธนาคาร</div>
+      <div style="display:flex;flex-direction:column;gap:8px;display:none" id="payment-method-wrap">
         <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .15s" id="pm-cash-label">
           <input type="radio" name="pay-method" value="cash" id="pm-cash" onchange="updatePayMethodUI()"> <span style="font-size:13px">💵 เงินสด</span>
         </label>
@@ -1781,8 +1783,7 @@ function selectCo(id, type) {
   if(_selectedCo) {
     const prefix = _selectedCo.prefix||'XX';
     const typeMap = {qt:'QT',inv:'INV',bl:'BL'};
-    const listMap = {qt:data.quotations,inv:data.invoices,bl:data.billings};
-    document.getElementById('f-docno').value = genDocNo(prefix,typeMap[type],listMap[type]);
+    document.getElementById('f-docno').value = peekDocNo(prefix,typeMap[type]);
     const vatEl = document.getElementById('f-vat');
     if(vatEl) vatEl.checked = _selectedCo.hasVat;
     calcDoc(type);
@@ -1799,6 +1800,10 @@ window.selectCo=selectCo;
 
 function renderBankOptions(co) {
   const wrap = document.getElementById('pm-bank-opts'); if(!wrap) return;
+  const pmWrap = document.getElementById('payment-method-wrap');
+  const noCo = document.getElementById('pm-no-co');
+  if(pmWrap) pmWrap.style.display = 'flex';
+  if(noCo) noCo.style.display = 'none';
   const banks = co?.banks||[];
   wrap.innerHTML = banks.map((b,i)=>`
     <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .15s" id="pm-bank${i}-label">
@@ -1933,7 +1938,7 @@ async function saveDoc(type) {
     const invs=data.invoices.filter(i=>_blSelected.includes(i.id));
     const total=invs.reduce((s,i)=>s+remainAmount(i),0);
     const bl={
-      docNumber:document.getElementById('f-docno')?.value,
+      docNumber:genDocNo(_selectedCo.prefix||'X','BL'),
       docDate:document.getElementById('f-date')?.value,
       companyId:_selectedCo.id, companyName:_selectedCo.name,
       custName, custAddress:document.getElementById('f-cust-addr')?.value,
@@ -1955,7 +1960,7 @@ async function saveDoc(type) {
   const sub=items.reduce((s,r)=>s+r.total,0);
   const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
   const docData={
-    docNumber:document.getElementById('f-docno')?.value,
+    docNumber:genDocNo(_selectedCo.prefix||'X', type==='qt'?'QT':'INV'),
     docDate:document.getElementById('f-date')?.value,
     companyId:_selectedCo.id, companyName:_selectedCo.name,
     custName, custAddress:document.getElementById('f-cust-addr')?.value,
@@ -2008,7 +2013,7 @@ async function confirmConvert() {
     const qt=data.quotations.find(q=>q.id===srcId); if(!qt) return;
     const co=companies.find(c=>c.id===qt.companyId)||{};
     const inv={
-      docNumber:genDocNo(co.prefix||'X','INV',data.invoices),
+      docNumber:genDocNo(co.prefix||'X','INV'),
       docDate:cvDate, docDue:document.getElementById('cv-due')?.value||addDays(cvDate,30),
       companyId:qt.companyId, companyName:qt.companyName,
       custName:qt.custName, custAddress:qt.custAddress, custTax:qt.custTax,
@@ -2027,7 +2032,7 @@ async function confirmConvert() {
     const inv=data.invoices.find(i=>i.id===srcId); if(!inv) return;
     const co=companies.find(c=>c.id===inv.companyId)||{};
     const bl={
-      docNumber:genDocNo(co.prefix||'X','BL',data.billings),
+      docNumber:genDocNo(co.prefix||'X','BL'),
       docDate:cvDate, companyId:inv.companyId, companyName:inv.companyName,
       custName:inv.custName, invoiceIds:[inv.id], total:remainAmount(inv), status:'sent',
     };
