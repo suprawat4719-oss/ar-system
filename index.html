@@ -1,0 +1,3105 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR System — Invoice & Payment</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #18181b; --ink2: #3f3f46; --ink3: #71717a; --ink4: #a1a1aa;
+  --bg: #fafaf9; --bg2: #f5f4f1; --bg3: #eeece8;
+  --white: #ffffff;
+  --border: #e4e2dd; --border2: #d4d2cc;
+  --accent: #1d4ed8; --accent-light: #eff6ff; --accent-mid: #bfdbfe;
+  --orange: #c2410c; --orange-light: #fff7ed; --orange-mid: #fed7aa;
+  --green: #15803d; --green-light: #f0fdf4; --green-mid: #bbf7d0;
+  --red: #b91c1c; --red-light: #fef2f2; --red-mid: #fecaca;
+  --yellow: #92400e; --yellow-light: #fffbeb; --yellow-mid: #fde68a;
+  --purple: #6d28d9; --purple-light: #f5f3ff;
+  --r: 8px; --r2: 12px;
+  --sh: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+  --sh2: 0 4px 16px rgba(0,0,0,.09), 0 2px 4px rgba(0,0,0,.06);
+  --sh3: 0 12px 40px rgba(0,0,0,.13);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6;min-height:100vh}
+
+/* ── SIDEBAR LAYOUT ── */
+.layout{display:flex;min-height:100vh}
+.sidebar{width:220px;background:var(--ink);color:#fff;flex-shrink:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sidebar-logo{padding:20px 18px 14px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sidebar-logo .logo-mark{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent-mid);letter-spacing:.1em;font-weight:500}
+.sidebar-logo .logo-name{font-size:14px;font-weight:700;color:#fff;margin-top:3px}
+.sidebar-logo .logo-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:1px}
+.nav-section{padding:12px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.3)}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 14px;border-radius:6px;margin:1px 6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.65);transition:all .15s;border:none;background:none;width:calc(100% - 12px);text-align:left;font-family:'Sarabun',sans-serif}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.active{background:var(--accent);color:#fff}
+.nav-item .nav-icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
+.sidebar-spacer{flex:1}
+.sidebar-footer{padding:14px 14px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.3)}
+
+.main{flex:1;overflow:auto}
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 28px;height:52px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:50;box-shadow:var(--sh)}
+.topbar-title{font-size:15px;font-weight:700;color:var(--ink)}
+.topbar-sub{font-size:12px;color:var(--ink4);margin-left:2px}
+.topbar-space{flex:1}
+.content{padding:24px 28px;max-width:1280px}
+
+/* ── CARDS ── */
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--r2);box-shadow:var(--sh);margin-bottom:18px;overflow:hidden}
+.card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.card-title{font-size:13px;font-weight:700;color:var(--ink);letter-spacing:.01em}
+.card-sub{font-size:11px;color:var(--ink4);margin-left:4px}
+.card-body{padding:20px}
+.card-footer{padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);display:flex;gap:8px;justify-content:flex-end}
+
+/* ── STAT CARDS ── */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.stat-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r2);padding:18px 20px;box-shadow:var(--sh)}
+.stat-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);margin-bottom:8px}
+.stat-value{font-size:24px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--ink);line-height:1}
+.stat-note{font-size:11px;color:var(--ink4);margin-top:6px}
+.stat-card.accent .stat-value{color:var(--accent)}
+.stat-card.orange .stat-value{color:var(--orange)}
+.stat-card.red .stat-value{color:var(--red)}
+.stat-card.green .stat-value{color:var(--green)}
+
+/* ── FORM ELEMENTS ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.form-grid-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+.span2{grid-column:span 2}.span3{grid-column:span 3}.span4{grid-column:span 4}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:600;color:var(--ink3);letter-spacing:.03em;text-transform:uppercase}
+.field input,.field select,.field textarea{
+  border:1.5px solid var(--border);border-radius:var(--r);
+  padding:8px 11px;font-family:'Sarabun',sans-serif;font-size:13.5px;
+  color:var(--ink);background:var(--bg);transition:all .15s;width:100%}
+.field input:focus,.field select:focus,.field textarea:focus{
+  outline:none;border-color:var(--accent);background:var(--white);
+  box-shadow:0 0 0 3px rgba(29,78,216,.1)}
+.field input[readonly]{background:#f0f0f0;color:var(--ink3);cursor:default}
+.field textarea{resize:vertical;min-height:64px}
+
+/* ── TABLE ── */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{padding:9px 12px;text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);border-bottom:2px solid var(--border);background:var(--bg2);white-space:nowrap}
+.tbl th.r,.tbl td.r{text-align:right}
+.tbl th.c,.tbl td.c{text-align:center}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--accent-light)}
+.tbl .mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
+.tbl .bold{font-weight:700}
+.tbl .muted{color:var(--ink4);font-size:12px}
+
+/* ── ITEMS MINI TABLE ── */
+.items-tbl{width:100%;border-collapse:collapse;margin-bottom:8px}
+.items-tbl th{padding:7px 8px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);border-bottom:2px solid var(--border);background:var(--bg2)}
+.items-tbl th.r,.items-tbl td.r{text-align:right}
+.items-tbl td{padding:4px 4px;border-bottom:1px solid var(--border)}
+.item-inp{border:1px solid transparent;border-radius:5px;padding:5px 7px;font-family:'Sarabun',sans-serif;font-size:13px;color:var(--ink);background:transparent;width:100%;transition:all .14s}
+.item-inp:focus{outline:none;border-color:var(--accent);background:var(--accent-light);box-shadow:0 0 0 2px rgba(29,78,216,.08)}
+.item-inp.r{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.03em;white-space:nowrap}
+.badge-draft{background:#f4f4f5;color:var(--ink3)}
+.badge-sent{background:var(--accent-light);color:var(--accent)}
+.badge-partial{background:var(--yellow-light);color:var(--yellow)}
+.badge-paid{background:var(--green-light);color:var(--green)}
+.badge-overdue{background:var(--red-light);color:var(--red)}
+.badge-cancelled{background:#f4f4f5;color:var(--ink4)}
+.badge-billed{background:var(--purple-light);color:var(--purple)}
+.badge-inv{background:var(--orange-light);color:var(--orange)}
+.badge-qt{background:var(--accent-light);color:var(--accent)}
+
+/* ── BUTTONS ── */
+.btn{padding:8px 18px;border-radius:var(--r);border:none;cursor:pointer;font-family:'Sarabun',sans-serif;font-size:13px;font-weight:600;transition:all .17s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#1e40af;box-shadow:0 4px 12px rgba(29,78,216,.25)}
+.btn-success{background:var(--green);color:#fff}
+.btn-success:hover{background:#166534}
+.btn-orange{background:var(--orange);color:#fff}
+.btn-orange:hover{background:#9a3412}
+.btn-outline{background:var(--white);color:var(--ink);border:1.5px solid var(--border)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-ghost{background:transparent;color:var(--ink3);border:1.5px solid var(--border)}
+.btn-ghost:hover{background:var(--bg2)}
+.btn-danger{background:var(--red-light);color:var(--red);border:1.5px solid var(--red-mid)}
+.btn-danger:hover{background:var(--red);color:#fff}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-xs{padding:3px 9px;font-size:11px;border-radius:5px}
+.btn-icon{padding:6px 10px}
+
+/* ── PIPELINE STEPS ── */
+.pipeline{display:flex;align-items:center;gap:0;margin-bottom:20px}
+.pipeline-step{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--white);border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--ink4);cursor:default;flex:1;justify-content:center}
+.pipeline-step:first-child{border-radius:var(--r) 0 0 var(--r)}
+.pipeline-step:last-child{border-radius:0 var(--r) var(--r) 0}
+.pipeline-step.done{background:var(--green-light);color:var(--green);border-color:var(--green-mid)}
+.pipeline-step.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pipeline-step.clickable{cursor:pointer}
+.pipeline-step.clickable:hover{filter:brightness(.95)}
+.pipeline-arrow{font-size:12px;color:var(--ink4);flex-shrink:0;margin:0 -1px;z-index:1}
+
+/* ── PROGRESS BAR ── */
+.progress-wrap{background:var(--border);border-radius:20px;height:6px;overflow:hidden}
+.progress-bar{height:100%;border-radius:20px;transition:width .4s}
+.progress-bar.green{background:var(--green)}
+.progress-bar.orange{background:#f97316}
+.progress-bar.red{background:var(--red)}
+
+/* ── SUMMARY BOX ── */
+.summary-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;width:280px;margin-left:auto;margin-top:12px}
+.s-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;color:var(--ink2)}
+.s-row .val{font-family:'IBM Plex Mono',monospace;font-size:12.5px}
+.s-row.total{border-top:2px solid var(--border2);margin-top:6px;padding-top:10px;font-weight:700;font-size:15px;color:var(--ink)}
+.s-row.total .val{font-size:15px;color:var(--accent)}
+.s-row.remain .val{color:var(--red);font-weight:700}
+.s-row.paid .val{color:var(--green)}
+
+/* ── TOGGLE ── */
+.tog-wrap{display:flex;align-items:center;gap:8px}
+.tog{position:relative;width:36px;height:20px;display:inline-block}
+.tog input{opacity:0;width:0;height:0}
+.tog-sl{position:absolute;inset:0;background:var(--border2);border-radius:20px;cursor:pointer;transition:.2s}
+.tog-sl::before{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;left:3px;top:3px;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.tog input:checked+.tog-sl{background:var(--accent)}
+.tog input:checked+.tog-sl::before{transform:translateX(16px)}
+.tog-label{font-size:12.5px;color:var(--ink3);font-weight:500}
+
+/* ── COMPANY SELECTOR ── */
+.co-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:4px}
+.co-card{border:2px solid var(--border);border-radius:var(--r);padding:12px 14px;cursor:pointer;transition:all .15s;background:var(--bg)}
+.co-card:hover{border-color:var(--accent);background:var(--accent-light)}
+.co-card.sel{border-color:var(--accent);background:var(--accent-light);box-shadow:0 0 0 3px rgba(29,78,216,.1)}
+.co-card .co-name{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:2px}
+.co-card .co-tax{font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--ink4)}
+
+/* ── MODAL ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.overlay.show{display:flex}
+.modal{background:var(--white);border-radius:var(--r2);padding:26px;width:500px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:var(--sh3);animation:modalIn .2s ease}
+.modal-lg{width:680px}
+.modal-title{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:18px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+@keyframes modalIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── PAYMENT HISTORY ── */
+.pmt-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--r);border:1px solid var(--border);margin-bottom:6px;background:var(--bg)}
+.pmt-item .pmt-icon{font-size:18px;width:32px;text-align:center}
+.pmt-item .pmt-info{flex:1}
+.pmt-item .pmt-date{font-size:12px;color:var(--ink4)}
+.pmt-item .pmt-note{font-size:12px;color:var(--ink3)}
+.pmt-item .pmt-amt{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--green);font-size:14px}
+.pmt-item .pmt-del{background:none;border:none;cursor:pointer;color:var(--ink4);padding:4px;border-radius:4px;font-size:13px}
+.pmt-item .pmt-del:hover{background:var(--red-light);color:var(--red)}
+
+/* ── AGING BARS ── */
+.aging-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.aging-label{font-size:12px;font-weight:600;color:var(--ink3);width:100px;flex-shrink:0}
+.aging-bar-wrap{flex:1;background:var(--border);border-radius:4px;height:20px;overflow:hidden;position:relative}
+.aging-bar{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;font-size:11px;font-weight:700;color:#fff;transition:width .5s}
+.aging-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;width:90px;text-align:right;flex-shrink:0}
+
+/* ── FILTERS ── */
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.filters select,.filters input{border:1.5px solid var(--border);border-radius:var(--r);padding:7px 11px;font-family:'Sarabun',sans-serif;font-size:12.5px;background:var(--white);color:var(--ink)}
+.filters select:focus,.filters input:focus{outline:none;border-color:var(--accent)}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:2px;background:var(--bg2);padding:3px;border-radius:var(--r);width:fit-content;margin-bottom:16px}
+.tab{padding:7px 16px;border-radius:6px;border:none;cursor:pointer;font-family:'Sarabun',sans-serif;font-size:13px;font-weight:500;background:transparent;color:var(--ink4);transition:all .15s}
+.tab.active{background:var(--white);color:var(--ink);box-shadow:var(--sh);font-weight:700}
+.tab:hover:not(.active){color:var(--ink2)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:22px;right:22px;padding:11px 18px;border-radius:var(--r);font-size:13.5px;font-weight:600;box-shadow:var(--sh3);transform:translateY(50px);opacity:0;transition:all .28s cubic-bezier(.34,1.56,.64,1);z-index:500;max-width:320px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{background:var(--green);color:#fff}
+.toast.err{background:var(--red);color:#fff}
+.toast.info{background:var(--ink);color:#fff}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:50px 20px;color:var(--ink4)}
+.empty-icon{font-size:40px;margin-bottom:10px}
+.empty p{font-size:14px}
+
+/* ── REPORT ── */
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.report-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r2);padding:18px 20px;box-shadow:var(--sh)}
+.report-card-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+
+/* ── DIVIDER ── */
+.divider{height:1px;background:var(--border);margin:16px 0}
+
+/* ── HAMBURGER BUTTON ── */
+.hamburger{display:none;flex-direction:column;justify-content:center;gap:5px;
+  background:none;border:none;cursor:pointer;padding:6px 8px;border-radius:var(--r);
+  margin-right:4px;flex-shrink:0}
+.hamburger span{display:block;width:20px;height:2px;background:var(--ink);border-radius:2px;transition:all .25s}
+.hamburger:hover span{background:var(--accent)}
+
+/* ── SIDEBAR OVERLAY (mobile) ── */
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:149;backdrop-filter:blur(2px)}
+.sidebar-backdrop.show{display:block}
+
+/* ── TABLET (768–1024px) ── */
+@media(max-width:1024px){
+  .sidebar{width:200px}
+  .content{padding:18px 18px}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  .report-grid{grid-template-columns:1fr}
+  .summary-box{width:240px}
+}
+
+/* ── MOBILE (≤768px) ── */
+@media(max-width:768px){
+  /* Sidebar becomes slide-over drawer */
+  .sidebar{
+    position:fixed;inset:0 auto 0 0;z-index:150;
+    width:240px;transform:translateX(-100%);
+    transition:transform .28s cubic-bezier(.4,0,.2,1);
+    box-shadow:none;height:100%;
+  }
+  .sidebar.open{transform:translateX(0);box-shadow:var(--sh3)}
+
+  .hamburger{display:flex}
+
+  /* Main fills full width */
+  .layout{display:block}
+  .main{min-height:100vh}
+
+  /* Topbar adjustments */
+  .topbar{padding:0 14px;gap:8px}
+  .topbar-title{font-size:14px}
+  .topbar-sub{display:none}
+  #topbar-actions .btn{padding:6px 12px;font-size:12px}
+  #topbar-actions .btn span:not(.nav-icon){/* keep text */}
+
+  /* Content padding */
+  .content{padding:14px 14px;max-width:100%}
+
+  /* Stat cards: 2 columns on mobile */
+  .stat-grid{grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+  .stat-value{font-size:19px}
+  .stat-label{font-size:10px}
+  .stat-card{padding:14px 14px}
+
+  /* Forms: single column */
+  .form-grid,.form-grid-3,.form-grid-4{grid-template-columns:1fr;gap:10px}
+  .span2,.span3,.span4{grid-column:span 1}
+
+  /* Reports: single column */
+  .report-grid{grid-template-columns:1fr}
+
+  /* Summary box full-width */
+  .summary-box{width:100%;margin-top:12px}
+
+  /* Tables: horizontal scroll */
+  .card{overflow-x:auto}
+  .tbl{min-width:520px}
+  .items-tbl{min-width:400px}
+
+  /* Filters: wrap and shrink */
+  .filters{gap:6px}
+  .filters select,.filters input{font-size:12px;padding:6px 8px}
+
+  /* Pipeline: scroll horizontally */
+  .pipeline{overflow-x:auto;gap:0;-webkit-overflow-scrolling:touch}
+  .pipeline-step{flex:0 0 auto;min-width:90px;font-size:11px;padding:8px 10px}
+
+  /* Modal: full-width on small screens */
+  .modal{width:calc(100vw - 24px);max-width:calc(100vw - 24px);padding:18px 16px}
+  .modal-lg{width:calc(100vw - 24px);max-width:calc(100vw - 24px)}
+  .modal-title{font-size:14px;margin-bottom:14px}
+
+  /* Card body padding */
+  .card-body{padding:14px}
+  .card-header{padding:12px 14px}
+  .card-footer{padding:10px 14px;flex-wrap:wrap}
+
+  /* Aging labels */
+  .aging-label{width:72px;font-size:11px}
+  .aging-val{width:72px;font-size:11px}
+
+  /* Tabs: scrollable */
+  .tabs{overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}
+  .tab{padding:6px 12px;font-size:12px;white-space:nowrap}
+
+  /* Toast: bottom-center on mobile */
+  .toast{right:12px;left:12px;bottom:16px;max-width:none;text-align:center}
+
+  /* Co-grid min width */
+  .co-grid{grid-template-columns:1fr}
+
+  /* Topbar actions wrap */
+  #topbar-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+  /* Hide less important table columns via class */
+  .hide-mobile{display:none!important}
+}
+
+/* ── SYNC STATUS ── */
+.sync-bar{padding:10px 12px;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:6px}
+.sync-status{display:flex;align-items:center;gap:6px;font-size:10px;color:rgba(255,255,255,.35);font-family:'IBM Plex Mono',monospace}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#52525b;flex-shrink:0;transition:all .3s}
+.sync-dot.online{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.5)}
+.sync-dot.syncing{background:#f97316;animation:syncPulse .7s infinite alternate}
+.sync-dot.error{background:#ef4444}
+@keyframes syncPulse{from{opacity:.4}to{opacity:1}}
+.sync-btns{display:flex;gap:5px}
+.sync-btn{flex:1;padding:5px 4px;border-radius:5px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.55);font-size:10px;font-family:'IBM Plex Mono',monospace;cursor:pointer;transition:all .15s;font-weight:600;text-align:center}
+.sync-btn:hover{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.25)}
+.sync-btn:disabled{opacity:.35;cursor:not-allowed}
+.sync-btn.pull:hover{border-color:rgba(99,102,241,.5);color:#818cf8;background:rgba(99,102,241,.1)}
+.sync-btn.push:hover{border-color:rgba(34,197,94,.5);color:#22c55e;background:rgba(34,197,94,.08)}
+.sync-last{font-size:9px;color:rgba(255,255,255,.2);font-family:'IBM Plex Mono',monospace;text-align:center}
+
+/* ── SMALL MOBILE (≤400px) ── */
+@media(max-width:400px){
+  .stat-grid{grid-template-columns:1fr 1fr}
+  .stat-value{font-size:17px}
+  .btn{padding:7px 12px;font-size:12px}
+}
+
+/* ── PRINT ── */
+#print-frame{display:none}
+@media print{
+  .sidebar,.topbar,#print-hide{display:none!important}
+  .main{overflow:visible}
+  #print-frame{display:block!important}
+  body>*:not(#print-frame){display:none!important}
+  #print-frame{display:block!important;padding:0}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">▸ AR SYSTEM</div>
+    <div class="logo-name">บัญชีลูกหนี้</div>
+    <div class="logo-sub">Accounts Receivable</div>
+  </div>
+  <div class="nav-section">เอกสาร</div>
+  <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
+  <button class="nav-item" onclick="goPage('quotations')" id="nav-quotations"><span class="nav-icon">📋</span>ใบเสนอราคา</button>
+  <button class="nav-item" onclick="goPage('invoices')" id="nav-invoices"><span class="nav-icon">🧾</span>ใบแจ้งหนี้</button>
+  <button class="nav-item" onclick="goPage('billing')" id="nav-billing"><span class="nav-icon">📬</span>ใบวางบิล</button>
+  <button class="nav-item" onclick="goPage('payments')" id="nav-payments"><span class="nav-icon">💰</span>รับชำระ</button>
+  <div class="nav-section">รายงาน</div>
+  <button class="nav-item" onclick="goPage('report-ar')" id="nav-report-ar"><span class="nav-icon">👥</span>ค้างชำระรายลูกค้า</button>
+  <button class="nav-item" onclick="goPage('report-co')" id="nav-report-co"><span class="nav-icon">🏢</span>ค้างชำระรายบริษัท</button>
+  <button class="nav-item" onclick="goPage('report-aging')" id="nav-report-aging"><span class="nav-icon">⏳</span>Aging Report</button>
+  <button class="nav-item" onclick="goPage('report-receipt')" id="nav-report-receipt"><span class="nav-icon">📅</span>เงินรับรายเดือน</button>
+  <div class="nav-section">ตั้งค่า</div>
+  <button class="nav-item" onclick="goPage('companies')" id="nav-companies"><span class="nav-icon">🏛</span>จัดการบริษัท</button>
+  <div class="sidebar-spacer"></div>
+  <div class="sync-bar">
+    <div class="sync-status">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-status-text">กำลังตรวจสอบ...</span>
+    </div>
+    <div class="sync-btns">
+      <button class="sync-btn pull" id="btn-pull" onclick="syncPull()" disabled title="ดึงข้อมูลจาก Firebase → เครื่อง">⬇ Pull</button>
+      <button class="sync-btn push" id="btn-push" onclick="syncPush()" disabled title="อัปโหลดข้อมูลเครื่อง → Firebase">⬆ Push</button>
+    </div>
+    <div class="sync-last" id="sync-last-time">—</div>
+  </div>
+</aside>
+
+<!-- ── MAIN ── -->
+<div class="main">
+  <div class="topbar">
+    <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="เมนู">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="topbar-title" id="page-title">Dashboard</div>
+    <div class="topbar-sub" id="page-sub"></div>
+    <div class="topbar-space"></div>
+    <div id="topbar-actions"></div>
+  </div>
+  <div class="content" id="page-content">
+    <!-- injected by JS -->
+  </div>
+</div>
+</div>
+
+<!-- ── MODALS ── -->
+<div class="overlay" id="modal-payment">
+  <div class="modal">
+    <div class="modal-title">💰 บันทึกรับชำระ</div>
+    <div class="form-grid" style="gap:12px">
+      <div class="field span2" id="pmt-inv-info" style="background:var(--bg2);padding:10px 14px;border-radius:var(--r);font-size:13px"></div>
+      <div class="field">
+        <label>วันที่รับ</label>
+        <input type="date" id="pmt-date">
+      </div>
+      <div class="field">
+        <label>จำนวนเงินที่รับ</label>
+        <input type="number" id="pmt-amount" step="0.01" min="0" placeholder="0.00">
+      </div>
+      <div class="field span2">
+        <label>ช่องทาง / ธนาคาร</label>
+        <select id="pmt-method">
+          <option>โอนธนาคาร</option>
+          <option>เงินสด</option>
+          <option>เช็ค</option>
+          <option>บัตรเครดิต</option>
+          <option>พร้อมเพย์</option>
+        </select>
+      </div>
+      <div class="field span2">
+        <label>หมายเหตุ</label>
+        <input type="text" id="pmt-note" placeholder="เลขอ้างอิง, ชื่อผู้โอน...">
+      </div>
+    </div>
+    <div id="pmt-remain-info" style="margin-top:12px;padding:10px 14px;border-radius:var(--r);font-size:13px;font-weight:600"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-payment')">ยกเลิก</button>
+      <button class="btn btn-success" onclick="confirmPayment()">✅ บันทึกรับชำระ</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="modal-convert">
+  <div class="modal">
+    <div class="modal-title" id="convert-title">แปลงเอกสาร</div>
+    <div id="convert-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-convert')">ยกเลิก</button>
+      <button class="btn btn-primary" id="convert-confirm-btn">ยืนยัน</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="modal-doc">
+  <div class="modal modal-lg">
+    <div class="modal-title" id="modal-doc-title">เอกสาร</div>
+    <div id="modal-doc-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-doc')">ปิด</button>
+      <button class="btn btn-outline" onclick="printCurrentDoc()">🖨 พิมพ์</button>
+    </div>
+  </div>
+</div>
+
+<!-- PRINT FRAME -->
+<div id="print-frame"></div>
+<div class="toast" id="toast"></div>
+<!-- Mobile sidebar backdrop -->
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
+<!-- ══════════════════════════════════════════════════════
+     ADMIN PANEL — เปิดด้วยกด A ค้าง 3 วินาที
+     ══════════════════════════════════════════════════════ -->
+<style>
+/* ── ADMIN OVERLAY SHELL ── */
+#adm-shell{display:none;position:fixed;inset:0;z-index:9000;background:#0d0d0f;font-family:'Sarabun',sans-serif}
+#adm-shell.open{display:flex}
+
+/* ── ADMIN LOCK ── */
+#adm-lock{position:absolute;inset:0;background:#0d0d0f;display:flex;align-items:center;justify-content:center;z-index:10}
+#adm-lock.hidden{display:none}
+.adm-lock-box{background:#141418;border:1px solid #2a2a38;border-radius:10px;padding:36px;width:360px;text-align:center}
+.adm-lock-icon{font-size:44px;margin-bottom:14px}
+.adm-lock-title{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;color:#e8e8f0;margin-bottom:3px}
+.adm-lock-sub{font-size:11px;color:#606078;font-family:'IBM Plex Mono',monospace;margin-bottom:22px}
+.adm-lock-input{width:100%;padding:11px 14px;background:#1c1c22;border:1px solid #2a2a38;border-radius:6px;color:#e8e8f0;font-family:'IBM Plex Mono',monospace;font-size:16px;text-align:center;letter-spacing:.2em;margin-bottom:10px;outline:none}
+.adm-lock-input:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+.adm-lock-err{color:#ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;margin-top:6px;min-height:16px}
+.adm-lock-hint{font-size:10px;color:#606078;font-family:'IBM Plex Mono',monospace;margin-top:8px}
+.adm-lock-close{position:absolute;top:16px;right:16px;background:none;border:none;color:#606078;font-size:20px;cursor:pointer;padding:4px 8px;border-radius:4px}
+.adm-lock-close:hover{background:#1c1c22;color:#e8e8f0}
+
+/* ── ADMIN APP LAYOUT ── */
+#adm-app{display:none;width:100%;height:100%;flex-direction:column}
+#adm-app.visible{display:flex}
+.adm-layout{display:grid;grid-template-columns:210px 1fr;height:100vh;overflow:hidden}
+
+/* ── ADMIN SIDEBAR ── */
+.adm-sidebar{background:#141418;border-right:1px solid #2a2a38;display:flex;flex-direction:column;overflow-y:auto}
+.adm-sb-header{padding:18px 14px 12px;border-bottom:1px solid #2a2a38}
+.adm-sb-tag{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;color:#ef4444;font-weight:700;text-transform:uppercase;margin-bottom:3px}
+.adm-sb-name{font-size:14px;font-weight:700;color:#e8e8f0;display:flex;align-items:center;gap:7px}
+.adm-sb-badge{background:rgba(239,68,68,.12);border:1px solid #ef4444;color:#ef4444;font-size:9px;font-family:'IBM Plex Mono',monospace;padding:1px 6px;border-radius:3px;letter-spacing:.1em;font-weight:700}
+.adm-sb-sub{font-size:10px;color:#606078;margin-top:2px;font-family:'IBM Plex Mono',monospace}
+.adm-nav-grp{padding:12px 8px 3px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.15em;color:#606078;font-weight:600;text-transform:uppercase}
+.adm-nav-item{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:6px;margin:1px 5px;cursor:pointer;font-size:12px;color:#a0a0b8;transition:all .14s;border:none;background:none;width:calc(100% - 10px);text-align:left;font-family:'Sarabun',sans-serif}
+.adm-nav-item:hover{background:#1c1c22;color:#e8e8f0}
+.adm-nav-item.adm-active{background:rgba(99,102,241,.12);color:#818cf8;border:1px solid rgba(99,102,241,.2)}
+.adm-nav-ico{font-size:13px;width:16px;text-align:center;flex-shrink:0}
+.adm-sb-spacer{flex:1}
+.adm-sb-footer{padding:10px 12px;border-top:1px solid #2a2a38;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#606078;display:flex;justify-content:space-between;align-items:center}
+
+/* ── ADMIN MAIN ── */
+.adm-main{display:flex;flex-direction:column;overflow:hidden}
+.adm-topbar{background:#141418;border-bottom:1px solid #2a2a38;padding:0 22px;height:48px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.adm-topbar-title{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;color:#e8e8f0}
+.adm-topbar-sep{color:#606078;font-family:'IBM Plex Mono',monospace}
+.adm-topbar-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#606078}
+.adm-topbar-space{flex:1}
+.adm-warn-tag{background:rgba(239,68,68,.12);border:1px solid #ef4444;color:#ef4444;font-size:10px;font-family:'IBM Plex Mono',monospace;padding:3px 10px;border-radius:5px;font-weight:700}
+.adm-content{padding:18px 22px;overflow-y:auto;flex:1}
+
+/* ── ADMIN CARDS ── */
+.adm-card{background:#141418;border:1px solid #2a2a38;border-radius:10px;margin-bottom:14px;overflow:hidden}
+.adm-card-header{padding:12px 16px;border-bottom:1px solid #2a2a38;display:flex;align-items:center;gap:8px}
+.adm-card-title{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;color:#e8e8f0;letter-spacing:.03em}
+.adm-card-sub{font-size:10px;color:#606078;font-family:'IBM Plex Mono',monospace;margin-left:auto}
+.adm-card-body{padding:16px}
+
+/* ── ADMIN STATS ── */
+.adm-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.adm-stat{background:#141418;border:1px solid #2a2a38;border-radius:10px;padding:14px 16px}
+.adm-stat-label{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#606078;margin-bottom:6px}
+.adm-stat-val{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;color:#e8e8f0}
+.adm-stat-note{font-size:11px;color:#606078;margin-top:3px}
+.adm-stat.adm-red .adm-stat-val{color:#ef4444}
+.adm-stat.adm-green .adm-stat-val{color:#22c55e}
+.adm-stat.adm-accent .adm-stat-val{color:#818cf8}
+.adm-stat.adm-orange .adm-stat-val{color:#f97316}
+
+/* ── ADMIN TABLE ── */
+.adm-tbl{width:100%;border-collapse:collapse}
+.adm-tbl th{padding:7px 10px;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#606078;border-bottom:1px solid #2a2a38;white-space:nowrap;background:#1c1c22}
+.adm-tbl th.r,.adm-tbl td.r{text-align:right}
+.adm-tbl th.c,.adm-tbl td.c{text-align:center}
+.adm-tbl td{padding:8px 10px;border-bottom:1px solid #2a2a38;font-size:12px;vertical-align:middle;color:#e8e8f0}
+.adm-tbl tr:last-child td{border-bottom:none}
+.adm-tbl tr:hover td{background:rgba(255,255,255,.02)}
+.adm-mono{font-family:'IBM Plex Mono',monospace;font-size:11px}
+.adm-muted{color:#606078}
+.adm-bold{font-weight:700}
+
+/* ── ADMIN BADGES ── */
+.adm-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.04em;white-space:nowrap}
+.ab-draft{background:#242430;color:#606078;border:1px solid #2a2a38}
+.ab-sent{background:rgba(99,102,241,.12);color:#818cf8;border:1px solid rgba(99,102,241,.25)}
+.ab-paid{background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25)}
+.ab-partial{background:rgba(249,115,22,.12);color:#f97316;border:1px solid rgba(249,115,22,.25)}
+.ab-overdue{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25)}
+.ab-cancelled{background:#242430;color:#606078;border:1px solid #2a2a38}
+
+/* ── ADMIN BUTTONS ── */
+.adm-btn{padding:6px 13px;border-radius:6px;border:none;cursor:pointer;font-family:'Sarabun',sans-serif;font-size:12px;font-weight:600;transition:all .14s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.adm-btn-primary{background:#6366f1;color:#fff}.adm-btn-primary:hover{background:#4f46e5}
+.adm-btn-ghost{background:#1c1c22;color:#a0a0b8;border:1px solid #2a2a38}.adm-btn-ghost:hover{background:#242430;color:#e8e8f0}
+.adm-btn-danger{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.3)}.adm-btn-danger:hover{background:#ef4444;color:#fff}
+.adm-btn-warn{background:rgba(249,115,22,.12);color:#f97316;border:1px solid rgba(249,115,22,.3)}.adm-btn-warn:hover{background:#f97316;color:#fff}
+.adm-btn-success{background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.3)}.adm-btn-success:hover{background:#22c55e;color:#fff}
+.adm-btn-xs{padding:3px 8px;font-size:10.5px;border-radius:4px;font-family:'IBM Plex Mono',monospace}
+
+/* ── ADMIN FORM ── */
+.adm-field{display:flex;flex-direction:column;gap:3px;margin-bottom:10px}
+.adm-field label{font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#606078}
+.adm-field input,.adm-field select,.adm-field textarea{padding:7px 10px;background:#1c1c22;border:1px solid #2a2a38;border-radius:6px;color:#e8e8f0;font-family:'Sarabun',sans-serif;font-size:13px;transition:all .14s;width:100%}
+.adm-field input:focus,.adm-field select:focus,.adm-field textarea:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+.adm-field input[type=number]{font-family:'IBM Plex Mono',monospace}
+.adm-field textarea{resize:vertical;min-height:58px}
+.adm-field select option{background:#1c1c22}
+.adm-row{display:grid;gap:10px}
+.adm-row.c2{grid-template-columns:1fr 1fr}
+.adm-row.c3{grid-template-columns:1fr 1fr 1fr}
+.adm-row.c4{grid-template-columns:1fr 1fr 1fr 1fr}
+
+/* ── ADMIN MODAL ── */
+.adm-overlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:center;justify-content:center;backdrop-filter:blur(5px)}
+.adm-overlay.adm-show{display:flex}
+.adm-modal{background:#141418;border:1px solid #363648;border-radius:10px;padding:22px;width:540px;max-width:96%;max-height:88vh;overflow-y:auto;animation:admIn .2s ease}
+.adm-modal-lg{width:700px}
+.adm-modal-xl{width:880px}
+.adm-modal-title{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:#e8e8f0;margin-bottom:16px}
+.adm-modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid #2a2a38}
+@keyframes admIn{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── ADMIN TOAST ── */
+.adm-toast{position:absolute;bottom:18px;right:18px;padding:9px 15px;border-radius:6px;font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace;box-shadow:0 6px 24px rgba(0,0,0,.4);transform:translateY(30px);opacity:0;transition:all .22s cubic-bezier(.34,1.56,.64,1);z-index:500;border:1px solid}
+.adm-toast.adm-show{transform:translateY(0);opacity:1}
+.adm-toast.adm-ok{background:rgba(34,197,94,.12);color:#22c55e;border-color:rgba(34,197,94,.3)}
+.adm-toast.adm-err{background:rgba(239,68,68,.12);color:#ef4444;border-color:rgba(239,68,68,.3)}
+.adm-toast.adm-info{background:#1c1c22;color:#a0a0b8;border-color:#2a2a38}
+
+/* ── ADMIN DANGER ZONE ── */
+.adm-danger-zone{border:1px solid #ef4444;border-radius:10px;padding:16px;background:rgba(239,68,68,.06);margin-bottom:12px}
+.adm-danger-title{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;color:#ef4444;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px}
+.adm-danger-desc{font-size:12px;color:#a0a0b8;margin-bottom:12px;line-height:1.6}
+
+/* ── ADMIN CONFIRM ── */
+.adm-confirm-box{background:#141418;border:1px solid #ef4444;border-radius:10px;padding:22px;width:400px;max-width:96%;animation:admIn .2s ease}
+.adm-confirm-title{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:#ef4444;margin-bottom:7px}
+.adm-confirm-body{font-size:12px;color:#a0a0b8;margin-bottom:16px;line-height:1.6}
+.adm-confirm-input{width:100%;padding:8px 11px;background:#1c1c22;border:1px solid #363648;border-radius:6px;color:#e8e8f0;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-bottom:6px;outline:none}
+.adm-confirm-input:focus{border-color:#ef4444}
+.adm-confirm-hint{font-size:10px;color:#606078;font-family:'IBM Plex Mono',monospace;margin-bottom:12px}
+.adm-confirm-footer{display:flex;gap:8px;justify-content:flex-end}
+
+/* ── ADMIN FILTERS ── */
+.adm-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.adm-filters select,.adm-filters input{padding:6px 10px;background:#1c1c22;border:1px solid #2a2a38;border-radius:6px;color:#e8e8f0;font-family:'Sarabun',sans-serif;font-size:12px;outline:none}
+.adm-filters select:focus,.adm-filters input:focus{border-color:#6366f1}
+
+/* ── PMT ROW ── */
+.adm-pmt-row{display:flex;align-items:center;gap:9px;padding:8px 12px;border:1px solid #2a2a38;border-radius:6px;margin-bottom:5px;background:#1c1c22}
+.adm-pmt-date{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#606078;width:85px;flex-shrink:0}
+.adm-pmt-method{font-size:12px;color:#a0a0b8;flex:1}
+.adm-pmt-note{font-size:11px;color:#606078;flex:1}
+.adm-pmt-amt{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;color:#22c55e;width:105px;text-align:right;flex-shrink:0}
+
+/* ── RAW EDITOR ── */
+.adm-raw-editor{background:#0d0d0f;border:1px solid #2a2a38;border-radius:6px;padding:12px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#818cf8;min-height:180px;width:100%;resize:vertical;line-height:1.7;outline:none}
+.adm-raw-editor:focus{border-color:#6366f1}
+
+/* ── SHORTCUT HINT ── */
+#adm-hint{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);color:#818cf8;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:5px 14px;border-radius:20px;z-index:8999;pointer-events:none;opacity:0;transition:opacity .3s;white-space:nowrap}
+#adm-hint.show{opacity:1}
+
+/* ── ADMIN EMPTY ── */
+.adm-empty{text-align:center;padding:36px 16px;color:#606078}
+.adm-empty p{font-size:12px;font-family:'IBM Plex Mono',monospace}
+</style>
+
+<!-- SHORTCUT HINT -->
+<div id="adm-hint">กำลังเปิด Admin Panel…</div>
+
+<!-- ADMIN SHELL -->
+<div id="adm-shell">
+
+  <!-- LOCK SCREEN -->
+  <div id="adm-lock">
+    <button class="adm-lock-close" onclick="admClose()">✕</button>
+    <div class="adm-lock-box">
+      <div class="adm-lock-icon">🔐</div>
+      <div class="adm-lock-title">AR ADMIN</div>
+      <div class="adm-lock-sub">Back Office — Restricted Access</div>
+      <input type="password" class="adm-lock-input" id="adm-pass-input" placeholder="••••••••" autocomplete="off"
+             onkeydown="if(event.key==='Enter')admUnlock()">
+      <button class="adm-btn adm-btn-primary" style="width:100%;justify-content:center;padding:10px;margin-top:4px" onclick="admUnlock()">เข้าสู่ระบบ</button>
+      <div class="adm-lock-err" id="adm-lock-err"></div>
+      <div class="adm-lock-hint">กด ESC หรือ ✕ เพื่อปิด</div>
+    </div>
+  </div>
+
+  <!-- ADMIN APP -->
+  <div id="adm-app">
+    <div class="adm-layout">
+      <!-- SIDEBAR -->
+      <div class="adm-sidebar">
+        <div class="adm-sb-header">
+          <div class="adm-sb-tag">⚡ Back Office</div>
+          <div class="adm-sb-name">AR Admin <span class="adm-sb-badge">ADMIN</span></div>
+          <div class="adm-sb-sub">localStorage mode</div>
+        </div>
+        <div class="adm-nav-grp">จัดการข้อมูล</div>
+        <button class="adm-nav-item adm-active" id="adm-nav-overview" onclick="admGoPage('overview')"><span class="adm-nav-ico">📊</span>Overview</button>
+        <button class="adm-nav-item" id="adm-nav-invoices" onclick="admGoPage('invoices')"><span class="adm-nav-ico">🧾</span>ใบแจ้งหนี้</button>
+        <button class="adm-nav-item" id="adm-nav-quotations" onclick="admGoPage('quotations')"><span class="adm-nav-ico">📋</span>ใบเสนอราคา</button>
+        <button class="adm-nav-item" id="adm-nav-billings" onclick="admGoPage('billings')"><span class="adm-nav-ico">📬</span>ใบวางบิล</button>
+        <button class="adm-nav-item" id="adm-nav-payments" onclick="admGoPage('payments')"><span class="adm-nav-ico">💰</span>Payments</button>
+        <div class="adm-nav-grp">เครื่องมือ</div>
+        <button class="adm-nav-item" id="adm-nav-raw" onclick="admGoPage('raw')"><span class="adm-nav-ico">⚙️</span>Raw Editor</button>
+        <button class="adm-nav-item" id="adm-nav-danger" onclick="admGoPage('danger')"><span class="adm-nav-ico">🗑️</span>Danger Zone</button>
+        <div class="adm-sb-spacer"></div>
+        <div class="adm-sb-footer">
+          <span id="adm-storage-size" style="color:#22c55e;font-weight:600">—</span>
+          <button class="adm-btn adm-btn-ghost" style="padding:3px 9px;font-size:11px" onclick="admClose()">✕ ปิด</button>
+        </div>
+      </div>
+      <!-- MAIN -->
+      <div class="adm-main">
+        <div class="adm-topbar">
+          <div class="adm-topbar-title" id="adm-page-title">Overview</div>
+          <span class="adm-topbar-sep">/</span>
+          <div class="adm-topbar-sub">AR Admin Back Office</div>
+          <div class="adm-topbar-space"></div>
+          <div class="adm-warn-tag">⚠️ ADMIN MODE</div>
+          <button class="adm-btn adm-btn-ghost" style="padding:4px 10px;font-size:11px;margin-left:8px" onclick="admLock()">🔒 ล็อค</button>
+        </div>
+        <div class="adm-content" id="adm-page-content"></div>
+      </div>
+    </div>
+
+    <!-- ADMIN MODALS (inside #adm-app) -->
+    <div class="adm-overlay" id="adm-modal-edit-inv">
+      <div class="adm-modal adm-modal-lg">
+        <div class="adm-modal-title" id="adm-medit-title">✏️ แก้ไขใบแจ้งหนี้</div>
+        <div id="adm-medit-body"></div>
+        <div class="adm-modal-footer">
+          <button class="adm-btn adm-btn-ghost" onclick="admCloseModal('adm-modal-edit-inv')">ยกเลิก</button>
+          <button class="adm-btn adm-btn-primary" onclick="admSaveEditInv()">💾 บันทึก</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="adm-overlay" id="adm-modal-pmts">
+      <div class="adm-modal adm-modal-lg">
+        <div class="adm-modal-title" id="adm-mpmts-title">💰 จัดการ Payments</div>
+        <div id="adm-mpmts-body"></div>
+        <div class="adm-modal-footer">
+          <button class="adm-btn adm-btn-ghost" onclick="admCloseModal('adm-modal-pmts')">ปิด</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="adm-overlay" id="adm-modal-confirm">
+      <div class="adm-confirm-box">
+        <div class="adm-confirm-title" id="adm-confirm-title">ยืนยัน</div>
+        <div class="adm-confirm-body" id="adm-confirm-body"></div>
+        <input type="text" class="adm-confirm-input" id="adm-confirm-input" placeholder="">
+        <div class="adm-confirm-hint" id="adm-confirm-hint"></div>
+        <div class="adm-confirm-footer">
+          <button class="adm-btn adm-btn-ghost" onclick="admCloseModal('adm-modal-confirm')">ยกเลิก</button>
+          <button class="adm-btn adm-btn-danger" id="adm-confirm-ok-btn">ยืนยัน</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="adm-overlay" id="adm-modal-raw">
+      <div class="adm-modal adm-modal-xl">
+        <div class="adm-modal-title" id="adm-mraw-title">⚙️ Raw JSON Editor</div>
+        <div style="margin-bottom:7px;font-size:10px;color:#606078;font-family:'IBM Plex Mono',monospace">แก้ไข JSON โดยตรง — ต้องเป็น JSON ที่ถูกต้องเท่านั้น</div>
+        <textarea class="adm-raw-editor" id="adm-raw-ta" rows="18"></textarea>
+        <div class="adm-modal-footer">
+          <button class="adm-btn adm-btn-ghost" onclick="admCloseModal('adm-modal-raw')">ยกเลิก</button>
+          <button class="adm-btn adm-btn-warn" onclick="admSaveRaw()">⚠️ บันทึก JSON</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="adm-toast" id="adm-toast"></div>
+  </div><!-- /#adm-app -->
+</div><!-- /#adm-shell -->
+
+<!-- Firebase compat CDN (ไม่ต้องใช้ module import) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+// ══════════════════════════════════════════════════════
+// GLOBAL STATE
+// ══════════════════════════════════════════════════════
+let companies = [];
+let _currentPage = 'dashboard';
+let _payingInvoice = null;
+let _convertDoc = null;
+let _printDocData = null;
+let _rowCount = 0;
+
+// DEMO DATA (ใช้เมื่อไม่มี Firebase)
+const DEMO = {
+  companies: [
+    {id:'c1',name:'บริษัท เอ จำกัด',nameEn:'A Co., Ltd.',taxId:'1234567890123',address:'123 ถ.สุขุมวิท กรุงเทพฯ 10110',phone:'02-111-1111',prefix:'A',hasVat:true},
+    {id:'c2',name:'บริษัท บี จำกัด',nameEn:'B Co., Ltd.',taxId:'9876543210987',address:'456 ถ.เชียงใหม่ เชียงใหม่ 50000',phone:'053-222-2222',prefix:'B',hasVat:false},
+  ],
+  quotations: [
+    {id:'q1',docNumber:'QT-A-256801-001',docDate:'2025-01-10',docValid:'2025-02-10',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',custTax:'1111111111111',items:[{desc:'บริการที่ปรึกษา',qty:1,unit:'งาน',price:50000,total:50000}],hasVat:true,subtotal:50000,vat:3500,wht:0,total:53500,status:'approved',linkedInvoice:'inv1'},
+    {id:'q2',docNumber:'QT-B-256802-001',docDate:'2025-02-05',docValid:'2025-03-05',companyId:'c2',companyName:'บริษัท บี จำกัด',custName:'บริษัท อีเอฟ จำกัด',custTax:'2222222222222',items:[{desc:'ออกแบบระบบ',qty:1,unit:'โครงการ',price:120000,total:120000}],hasVat:false,subtotal:120000,vat:0,wht:0,total:120000,status:'sent',linkedInvoice:null},
+  ],
+  invoices: [
+    {id:'inv1',docNumber:'INV-A-256801-001',docDate:'2025-01-15',docDue:'2025-02-15',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',custTax:'1111111111111',items:[{desc:'บริการที่ปรึกษา',qty:1,unit:'งาน',price:50000,total:50000}],hasVat:true,subtotal:50000,vat:3500,wht:0,total:53500,paidAmount:30000,status:'partial',linkedQt:'q1',linkedBilling:null,payments:[{id:'p1',date:'2025-01-20',amount:30000,method:'โอนธนาคาร',note:'งวดแรก'}]},
+    {id:'inv2',docNumber:'INV-A-256802-001',docDate:'2025-02-01',docDue:'2025-03-01',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ลูกค้า จีเอช',custTax:'3333333333333',items:[{desc:'ค่าบริการรายเดือน',qty:2,unit:'เดือน',price:15000,total:30000}],hasVat:true,subtotal:30000,vat:2100,wht:0,total:32100,paidAmount:0,status:'sent',linkedQt:null,linkedBilling:null,payments:[]},
+    {id:'inv3',docNumber:'INV-B-256801-001',docDate:'2025-01-20',docDue:'2025-02-20',companyId:'c2',companyName:'บริษัท บี จำกัด',custName:'บริษัท อีเอฟ จำกัด',custTax:'2222222222222',items:[{desc:'ออกแบบโลโก้',qty:1,unit:'งาน',price:8000,total:8000}],hasVat:false,subtotal:8000,vat:0,wht:0,total:8000,paidAmount:8000,status:'paid',linkedQt:null,linkedBilling:null,payments:[{id:'p2',date:'2025-02-01',amount:8000,method:'เงินสด',note:''}]},
+  ],
+  billings: [
+    {id:'bl1',docNumber:'BL-A-256801-001',docDate:'2025-01-16',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',invoiceIds:['inv1'],total:53500,status:'sent',linkedInvoice:'inv1'},
+  ],
+};
+
+let data = {
+  companies: [...DEMO.companies],
+  quotations: [...DEMO.quotations],
+  invoices: [...DEMO.invoices],
+  billings: [...DEMO.billings],
+};
+
+// ══════════════════════════════════════════════════════
+// FIREBASE INIT (compat SDK)
+// ══════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyDgjfoPXa9hWIypcUKsGq7-2EP5FvGB3iM",
+  authDomain: "advance-tracker-cadf5.firebaseapp.com",
+  projectId: "advance-tracker-cadf5",
+  storageBucket: "advance-tracker-cadf5.firebasestorage.app",
+  messagingSenderId: "186461314782",
+  appId: "1:186461314782:web:525509bb1a76d13d3cac4f",
+  measurementId: "G-W4VVPHMMY2"
+};
+
+let _fbdb = null;
+try {
+  if(typeof firebase !== 'undefined' && firebaseConfig.apiKey !== 'YOUR_API_KEY') {
+    if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    _fbdb = firebase.firestore();
+  }
+} catch(e) { console.warn('Firebase not available, using demo data'); }
+
+// ══════════════════════════════════════════════════════
+// STORAGE LAYER  (Firebase → localStorage → DEMO)
+// ══════════════════════════════════════════════════════
+const LS_PREFIX = 'ar_sys_';
+
+// ── localStorage helpers ──
+function lsLoad(col) {
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + col);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+function lsSave(col, arr) {
+  try { localStorage.setItem(LS_PREFIX + col, JSON.stringify(arr)); } catch(e){}
+}
+function lsNewId() { return 'ls-' + Date.now() + '-' + Math.random().toString(36).slice(2,6); }
+
+// ── Firebase helpers (only when _fbdb available) ──
+async function fbLoad(col) {
+  if(!_fbdb) return null;
+  try {
+    const snap = await _fbdb.collection(col).get();
+    return snap.docs.map(d=>({id:d.id,...d.data()}));
+  } catch(e) { return null; }
+}
+async function fbAdd(col, d) {
+  if(!_fbdb) return null;
+  try {
+    const ref = await _fbdb.collection(col).add({...d, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    return ref.id;
+  } catch(e) { return null; }
+}
+async function fbUpdate(col, id, d) {
+  if(!_fbdb || !id) return false;
+  try { await _fbdb.collection(col).doc(id).update(d); return true; } catch(e){ return false; }
+}
+async function fbDelete(col, id) {
+  if(!_fbdb || !id) return false;
+  try { await _fbdb.collection(col).doc(id).delete(); return true; } catch(e){ return false; }
+}
+
+// ── Unified CRUD (Firebase first, localStorage fallback) ──
+async function storeLoad(col, demoFallback) {
+  // 1) Firebase
+  const fbRes = await fbLoad(col);
+  if(fbRes !== null) { lsSave(col, fbRes); return fbRes; }
+  // 2) localStorage
+  const lsRes = lsLoad(col);
+  if(lsRes !== null) return lsRes;
+  // 3) DEMO data (first run only — save to localStorage so edits persist)
+  lsSave(col, demoFallback);
+  return [...demoFallback];
+}
+
+async function storeAdd(col, d) {
+  // Firebase
+  const fbId = await fbAdd(col, d);
+  if(fbId) return fbId;
+  // localStorage
+  const id = lsNewId();
+  const arr = lsLoad(col) || [];
+  arr.push({id, ...d});
+  lsSave(col, arr);
+  return id;
+}
+
+async function storeUpdate(col, id, d) {
+  // Firebase
+  const ok = await fbUpdate(col, id, d);
+  // Always update localStorage copy
+  const arr = lsLoad(col) || [];
+  const i = arr.findIndex(x => x.id === id);
+  if(i >= 0) { arr[i] = {...arr[i], ...d}; lsSave(col, arr); }
+}
+
+async function storeDelete(col, id) {
+  await fbDelete(col, id);
+  const arr = (lsLoad(col) || []).filter(x => x.id !== id);
+  lsSave(col, arr);
+}
+
+// ── Sync entire in-memory collection back to localStorage ──
+function syncLS(col, arr) { lsSave(col, arr); }
+
+// ══════════════════════════════════════════════════════
+// SYNC ENGINE — Firebase ↔ localStorage
+// ══════════════════════════════════════════════════════
+const SYNC_COLS = ['companies','quotations','invoices','billings'];
+
+function syncUpdateUI(state, msg, lastTime) {
+  const dot = document.getElementById('sync-dot');
+  const txt = document.getElementById('sync-status-text');
+  const last = document.getElementById('sync-last-time');
+  const btnPull = document.getElementById('btn-pull');
+  const btnPush = document.getElementById('btn-push');
+  if(!dot) return;
+  dot.className = 'sync-dot ' + state; // online | syncing | error | ''
+  txt.textContent = msg;
+  if(lastTime) last.textContent = 'ล่าสุด: ' + lastTime;
+  const busy = state === 'syncing';
+  if(btnPull) btnPull.disabled = busy || state === '';
+  if(btnPush) btnPush.disabled = busy || state === '';
+}
+
+function syncCheckConnection() {
+  if(!_fbdb) {
+    syncUpdateUI('', 'localStorage เท่านั้น');
+    return;
+  }
+  syncUpdateUI('online', 'Firebase พร้อม');
+  document.getElementById('btn-pull').disabled = false;
+  document.getElementById('btn-push').disabled = false;
+}
+
+// ── PULL: Firebase → localStorage + in-memory ──
+async function syncPull() {
+  if(!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
+  syncUpdateUI('syncing', 'กำลัง Pull...');
+  try {
+    let totalDocs = 0;
+    for(const col of SYNC_COLS) {
+      const snap = await _fbdb.collection(col).get();
+      const arr = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      // remove Firestore timestamps (not serializable cleanly)
+      arr.forEach(doc => { if(doc.createdAt?.toDate) doc.createdAt = doc.createdAt.toDate().toISOString(); });
+      lsSave(col, arr);
+      data[col] = arr;
+      totalDocs += arr.length;
+    }
+    companies = data.companies;
+    const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+    syncUpdateUI('online', 'Pull สำเร็จ ✅', now);
+    toast(`Pull สำเร็จ — ${totalDocs} รายการ`, 'ok');
+    goPage(_currentPage); // refresh current page
+  } catch(e) {
+    syncUpdateUI('error', 'Pull ล้มเหลว ❌');
+    toast('Pull ล้มเหลว: ' + e.message, 'err');
+    console.error('Pull error:', e);
+  }
+}
+window.syncPull = syncPull;
+
+// ── PUSH: localStorage → Firebase (set ทุก doc) ──
+async function syncPush() {
+  if(!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
+  if(!confirm('อัปโหลดข้อมูลในเครื่องทั้งหมดขึ้น Firebase?\nข้อมูลที่อยู่บน Firebase จะถูกแทนที่')) return;
+  syncUpdateUI('syncing', 'กำลัง Push...');
+  try {
+    let totalDocs = 0;
+    for(const col of SYNC_COLS) {
+      const arr = lsLoad(col) || data[col] || [];
+      // ลบ collection เก่าทั้งหมดก่อน (batch delete)
+      const snapOld = await _fbdb.collection(col).get();
+      const batchDel = _fbdb.batch();
+      snapOld.docs.forEach(d => batchDel.delete(d.ref));
+      if(snapOld.docs.length > 0) await batchDel.commit();
+      // เขียนใหม่ทีละ 500 (Firestore batch limit)
+      const chunks = [];
+      for(let i = 0; i < arr.length; i += 400) chunks.push(arr.slice(i, i+400));
+      for(const chunk of chunks) {
+        const batch = _fbdb.batch();
+        chunk.forEach(doc => {
+          const {id, ...rest} = doc;
+          const ref = _fbdb.collection(col).doc(id);
+          batch.set(ref, {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()});
+        });
+        await batch.commit();
+      }
+      totalDocs += arr.length;
+    }
+    const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+    syncUpdateUI('online', 'Push สำเร็จ ✅', now);
+    toast(`Push สำเร็จ — ${totalDocs} รายการ`, 'ok');
+  } catch(e) {
+    syncUpdateUI('error', 'Push ล้มเหลว ❌');
+    toast('Push ล้มเหลว: ' + e.message, 'err');
+    console.error('Push error:', e);
+  }
+}
+window.syncPush = syncPush;
+
+async function loadCompanies() {
+  const res = await storeLoad('companies', DEMO.companies);
+  data.companies = res; companies = res;
+}
+
+// ══════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════
+function goPage(p) {
+  _currentPage = p;
+  closeSidebar(); // close drawer on mobile nav
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  const navEl = document.getElementById('nav-'+p);
+  if(navEl) navEl.classList.add('active');
+  const titles = {
+    dashboard:'Dashboard',quotations:'ใบเสนอราคา',invoices:'ใบแจ้งหนี้',
+    billing:'ใบวางบิล',payments:'บันทึกรับชำระ',
+    'report-ar':'ค้างชำระรายลูกค้า','report-co':'ค้างชำระรายบริษัท',
+    'report-aging':'Aging Report','report-receipt':'เงินรับรายเดือน',
+    companies:'จัดการบริษัท','new-qt':'สร้างใบเสนอราคา',
+    'new-inv':'สร้างใบแจ้งหนี้','new-bl':'สร้างใบวางบิล'
+  };
+  document.getElementById('page-title').textContent = titles[p]||p;
+  document.getElementById('page-sub').textContent = '';
+  document.getElementById('topbar-actions').innerHTML = '';
+  const pc = document.getElementById('page-content');
+  const pages = {
+    dashboard: renderDashboard, quotations: renderQuotations,
+    invoices: renderInvoices, billing: renderBilling,
+    payments: renderPayments, companies: renderCompanies,
+    'report-ar': renderReportAR, 'report-co': renderReportCO,
+    'report-aging': renderReportAging, 'report-receipt': renderReportReceipt,
+    'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
+  };
+  pc.innerHTML = '';
+  if(pages[p]) pages[p]();
+}
+window.goPage = goPage;
+
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+function fmt(n) { return (n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtInt(n) { return (n||0).toLocaleString('th-TH'); }
+function today() { return new Date().toISOString().split('T')[0]; }
+function addDays(d,n) { const dt=new Date(d); dt.setDate(dt.getDate()+n); return dt.toISOString().split('T')[0]; }
+function daysDiff(a,b) { return Math.ceil((new Date(b)-new Date(a))/(1000*60*60*24)); }
+function uid() { return 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,7); }
+// ── Running-number sequence (never resets on delete) ──
+// Key format: ar_seq_{TYPE}_{PREFIX}_{YYYYMM}  → integer
+function genDocNo(prefix, type, _unused) {
+  const y = new Date().getFullYear()+543;
+  const m = String(new Date().getMonth()+1).padStart(2,'0');
+  const ym = `${y}${m}`;
+  const key = `ar_seq_${type}_${prefix}_${ym}`;
+  let seq = 1;
+  try {
+    const stored = localStorage.getItem(key);
+    if(stored) seq = parseInt(stored,10)+1;
+  } catch(e){}
+  try { localStorage.setItem(key, seq); } catch(e){}
+  return `${type}-${prefix}-${ym}-${String(seq).padStart(3,'0')}`;
+}
+function invStatus(inv) {
+  if(inv.status==='cancelled') return 'cancelled';
+  if((inv.paidAmount||0)>=inv.total) return 'paid';
+  if((inv.paidAmount||0)>0) return 'partial';
+  const due = new Date(inv.docDue); if(due<new Date()) return 'overdue';
+  return inv.status||'sent';
+}
+function badgeHTML(status) {
+  const m={draft:'badge-draft ร่าง',sent:'badge-sent ส่งแล้ว',partial:'badge-partial ชำระบางส่วน',
+    paid:'badge-paid ชำระแล้ว',overdue:'badge-overdue เกินกำหนด',cancelled:'badge-cancelled ยกเลิก',
+    approved:'badge-paid อนุมัติ',billed:'badge-billed วางบิลแล้ว',inv:'badge-inv ออก INV แล้ว',
+    'waiting-cheque':'badge-partial รอรับเช็ค','received':'badge-billed รับเอกสารแล้ว',
+    'partial-paid':'badge-partial ชำระบางส่วน'};
+  const [cls,...words]=m[status]?.split(' ')||['badge-draft','?'];
+  return `<span class="badge ${cls}">${words.join(' ')}</span>`;
+}
+function remainAmount(inv) { return Math.max(0,inv.total-(inv.paidAmount||0)); }
+
+// ══════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════
+function renderDashboard() {
+  const invs = data.invoices;
+  const totalAR = invs.filter(i=>i.status!=='paid'&&i.status!=='cancelled').reduce((s,i)=>s+remainAmount(i),0);
+  const overdueAR = invs.filter(i=>invStatus(i)==='overdue').reduce((s,i)=>s+remainAmount(i),0);
+  const paidThisMonth = invs.flatMap(i=>i.payments||[]).filter(p=>{
+    const m=new Date().toISOString().slice(0,7); return p.date?.startsWith(m);
+  }).reduce((s,p)=>s+p.amount,0);
+  const pendingCount = invs.filter(i=>['sent','partial','overdue'].includes(invStatus(i))).length;
+
+  document.getElementById('page-content').innerHTML = `
+  <div class="stat-grid">
+    <div class="stat-card orange">
+      <div class="stat-label">ยอดค้างชำระรวม</div>
+      <div class="stat-value">${fmtInt(Math.round(totalAR))}</div>
+      <div class="stat-note">บาท — ${pendingCount} ใบแจ้งหนี้</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">เกินกำหนดชำระ</div>
+      <div class="stat-value">${fmtInt(Math.round(overdueAR))}</div>
+      <div class="stat-note">บาท — ต้องติดตามด่วน</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">รับชำระเดือนนี้</div>
+      <div class="stat-value">${fmtInt(Math.round(paidThisMonth))}</div>
+      <div class="stat-note">บาท</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">ใบเสนอราคา</div>
+      <div class="stat-value">${data.quotations.filter(q=>q.status!=='cancelled').length}</div>
+      <div class="stat-note">รายการที่ active</div>
+    </div>
+  </div>
+
+  <div class="report-grid">
+    <div class="report-card">
+      <div class="report-card-title">📊 สถานะใบแจ้งหนี้</div>
+      ${['sent','partial','overdue','paid'].map(st=>{
+        const cnt=invs.filter(i=>invStatus(i)===st).length;
+        const total=invs.length||1;
+        const colors={sent:'var(--accent)',partial:'#f97316',overdue:'var(--red)',paid:'var(--green)'};
+        return `<div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+            ${badgeHTML(st)}<span class="mono" style="font-weight:700">${cnt} ใบ</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar" style="width:${cnt/total*100}%;background:${colors[st]}"></div></div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="report-card">
+      <div class="report-card-title">⏳ Aging Summary</div>
+      ${agingSummaryRows()}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title">🔔 ใบแจ้งหนี้ที่ต้องติดตาม</div></div>
+    <table class="tbl">
+      <thead><tr><th>เลขที่</th><th>ลูกค้า</th><th>บริษัท</th><th>ครบกำหนด</th><th class="r">ยอดค้าง</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody>
+      ${invs.filter(i=>['sent','partial','overdue'].includes(invStatus(i))).slice(0,8).map(i=>`
+        <tr>
+          <td class="mono">${i.docNumber}</td>
+          <td>${i.custName}</td>
+          <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
+          <td style="font-size:12px${invStatus(i)==='overdue'?';color:var(--red);font-weight:700':''}">${i.docDue||'—'}</td>
+          <td class="r mono bold">${fmt(remainAmount(i))}</td>
+          <td>${badgeHTML(invStatus(i))}</td>
+          <td><button class="btn btn-xs btn-success" onclick="openPayment('${i.id}')">+ รับชำระ</button></td>
+        </tr>`).join('')||'<tr><td colspan="7"><div class="empty"><p>ไม่มีรายการค้างชำระ 🎉</p></div></td></tr>'}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function agingSummaryRows() {
+  const now = new Date();
+  const invs = data.invoices.filter(i=>['sent','partial','overdue'].includes(invStatus(i)));
+  const buckets = [{label:'0–30 วัน',color:'var(--green)',v:0},{label:'31–60 วัน',color:'#f97316',v:0},{label:'61–90 วัน',color:'var(--red)',v:0},{label:'90+ วัน',color:'#7f1d1d',v:0}];
+  invs.forEach(i=>{
+    const d = daysDiff(i.docDue, now.toISOString().split('T')[0]);
+    const r = remainAmount(i);
+    if(d<=30) buckets[0].v+=r;
+    else if(d<=60) buckets[1].v+=r;
+    else if(d<=90) buckets[2].v+=r;
+    else buckets[3].v+=r;
+  });
+  const max = Math.max(...buckets.map(b=>b.v),1);
+  return buckets.map(b=>`
+    <div class="aging-row">
+      <div class="aging-label">${b.label}</div>
+      <div class="aging-bar-wrap"><div class="aging-bar" style="width:${b.v/max*100}%;background:${b.color}">${b.v>0?'':''}</div></div>
+      <div class="aging-val" style="color:${b.color}">${fmt(b.v)}</div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// QUOTATIONS LIST
+// ══════════════════════════════════════════════════════
+function renderQuotations() {
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="goPage('new-qt')">+ สร้างใบเสนอราคา</button>`;
+  const html = `
+  <div class="filters">
+    <select id="f-co-qt" onchange="renderQuotations()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+    <select id="f-st-qt" onchange="renderQuotations()"><option value="">— ทุกสถานะ —</option><option value="draft">ร่าง</option><option value="sent">ส่งแล้ว</option><option value="approved">อนุมัติ</option><option value="cancelled">ยกเลิก</option></select>
+    <input type="month" id="f-mo-qt" onchange="renderQuotations()">
+  </div>
+  <div class="card">
+    <table class="tbl">
+      <thead><tr><th>เลขที่</th><th>วันที่</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">มูลค่า</th><th>VAT</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody id="qt-tbody"></tbody>
+    </table>
+  </div>`;
+  document.getElementById('page-content').innerHTML = html;
+  refreshQTTable();
+}
+function refreshQTTable() {
+  const coF = document.getElementById('f-co-qt')?.value||'';
+  const stF = document.getElementById('f-st-qt')?.value||'';
+  const moF = document.getElementById('f-mo-qt')?.value||'';
+  let rows = [...data.quotations];
+  if(coF) rows=rows.filter(r=>r.companyId===coF);
+  if(stF) rows=rows.filter(r=>r.status===stF);
+  if(moF) rows=rows.filter(r=>r.docDate?.startsWith(moF));
+  document.getElementById('qt-tbody').innerHTML = rows.length ? rows.map(q=>`
+    <tr>
+      <td class="mono">${q.docNumber}</td>
+      <td>${q.docDate}</td>
+      <td style="font-size:12px;color:var(--ink4)">${q.companyName}</td>
+      <td>${q.custName}</td>
+      <td class="r mono bold">${fmt(q.total)}</td>
+      <td class="c"><span class="badge ${q.hasVat?'badge-sent':'badge-draft'}">${q.hasVat?'มี VAT':'ไม่มี'}</span></td>
+      <td>${badgeHTML(q.status)}${q.linkedInvoice?'<span class="badge badge-inv" style="margin-left:4px">INV</span>':''}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-xs btn-outline" onclick="viewDoc('qt','${q.id}')">ดู</button>
+        ${!q.linkedInvoice&&q.status!=='cancelled'?`<button class="btn btn-xs btn-outline" onclick="editQT('${q.id}')">✏️</button>`:''}
+        ${!q.linkedInvoice&&q.status!=='cancelled'?`<button class="btn btn-xs btn-orange" onclick="convertDoc('qt2inv','${q.id}')">→ INV</button>`:''}
+        ${!q.linkedInvoice&&q.status!=='cancelled'?`<button class="btn btn-xs btn-ghost" onclick="updateQTStatus('${q.id}','cancelled')">ยกเลิก</button>`:''}
+        <button class="btn btn-xs btn-danger" onclick="deleteQT('${q.id}')">🗑</button>
+      </td>
+    </tr>`).join('') : '<tr><td colspan="8"><div class="empty"><div class="empty-icon">📋</div><p>ยังไม่มีใบเสนอราคา</p></div></td></tr>';
+}
+window.refreshQTTable=refreshQTTable;
+async function updateQTStatus(id,status) {
+  const qt=data.quotations.find(q=>q.id===id); if(!qt) return;
+  qt.status=status; await storeUpdate('quotations',id,{status});
+  syncLS('quotations', data.quotations);
+  refreshQTTable(); toast('อัพเดทสถานะเรียบร้อย','ok');
+}
+window.updateQTStatus=updateQTStatus;
+
+async function deleteQT(id) {
+  const qt = data.quotations.find(q=>q.id===id);
+  if(!qt) return;
+  // ตรวจสอบว่ามีการออก Invoice แล้วหรือไม่
+  if(qt.linkedInvoice) {
+    const inv = data.invoices.find(i=>i.id===qt.linkedInvoice);
+    const hasBilling = inv?.linkedBilling;
+    if(hasBilling) {
+      toast('❌ ไม่สามารถลบได้ — ใบเสนอราคานี้ออกใบแจ้งหนี้และใบวางบิลแล้ว','err'); return;
+    }
+    toast('❌ ไม่สามารถลบได้ — ใบเสนอราคานี้ออกใบแจ้งหนี้ไปแล้ว','err'); return;
+  }
+  if(!confirm(`ลบใบเสนอราคา ${qt.docNumber} ?\nการลบไม่สามารถย้อนกลับได้`)) return;
+  data.quotations = data.quotations.filter(q=>q.id!==id);
+  await storeDelete('quotations', id);
+  syncLS('quotations', data.quotations);
+  refreshQTTable();
+  toast('ลบใบเสนอราคาเรียบร้อย','ok');
+}
+window.deleteQT=deleteQT;
+
+// ── Edit Quotation ──
+function editQT(id) {
+  const q=data.quotations.find(x=>x.id===id); if(!q) return;
+  document.getElementById('page-content').innerHTML += `
+  <div class="overlay show" id="modal-edit-qt">
+    <div class="modal modal-lg">
+      <div class="modal-title">✏️ แก้ไขใบเสนอราคา — ${q.docNumber}</div>
+      <div class="form-grid-4" style="gap:10px;margin-bottom:12px">
+        <div class="field"><label>วันที่</label><input type="date" id="eqt-date" value="${q.docDate}"></div>
+        <div class="field"><label>ใช้ได้ถึง</label><input type="date" id="eqt-valid" value="${q.docValid||''}"></div>
+        <div class="field span2"><label>สถานะ</label>
+          <select id="eqt-status">
+            <option value="draft"${q.status==='draft'?' selected':''}>ร่าง</option>
+            <option value="sent"${q.status==='sent'?' selected':''}>ส่งแล้ว</option>
+            <option value="approved"${q.status==='approved'?' selected':''}>อนุมัติ</option>
+            <option value="cancelled"${q.status==='cancelled'?' selected':''}>ยกเลิก</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid" style="gap:10px;margin-bottom:12px">
+        <div class="field span2"><label>ชื่อลูกค้า</label><input type="text" id="eqt-cust" value="${q.custName||''}"></div>
+        <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="eqt-tax" value="${q.custTax||''}"></div>
+        <div class="field"><label>ผู้ติดต่อ</label><input type="text" id="eqt-contact" value="${q.custContact||''}"></div>
+        <div class="field span2"><label>ที่อยู่</label><textarea id="eqt-addr" style="min-height:56px">${q.custAddress||''}</textarea></div>
+      </div>
+      <div class="form-grid" style="gap:10px">
+        <div class="field span2"><label>หมายเหตุ</label><textarea id="eqt-note" style="min-height:56px">${q.note||''}</textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-qt').remove()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveEditQT('${id}')">💾 บันทึก</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.editQT=editQT;
+
+async function saveEditQT(id) {
+  const q=data.quotations.find(x=>x.id===id); if(!q) return;
+  const d={docDate:document.getElementById('eqt-date').value,docValid:document.getElementById('eqt-valid').value,
+    status:document.getElementById('eqt-status').value,custName:document.getElementById('eqt-cust').value,
+    custTax:document.getElementById('eqt-tax').value,custContact:document.getElementById('eqt-contact').value,
+    custAddress:document.getElementById('eqt-addr').value,note:document.getElementById('eqt-note').value};
+  Object.assign(q,d);
+  await storeUpdate('quotations',id,d); syncLS('quotations',data.quotations);
+  document.getElementById('modal-edit-qt')?.remove();
+  refreshQTTable(); toast('แก้ไขใบเสนอราคาเรียบร้อย','ok');
+}
+window.saveEditQT=saveEditQT;
+
+// ══════════════════════════════════════════════════════
+// INVOICES LIST
+// ══════════════════════════════════════════════════════
+function renderInvoices() {
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="goPage('new-inv')">+ สร้างใบแจ้งหนี้</button>`;
+  document.getElementById('page-content').innerHTML = `
+  <div class="filters">
+    <select id="f-co-inv" onchange="refreshINVTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+    <select id="f-st-inv" onchange="refreshINVTable()"><option value="">— ทุกสถานะ —</option><option value="sent">ส่งแล้ว</option><option value="partial">ชำระบางส่วน</option><option value="paid">ชำระแล้ว</option><option value="overdue">เกินกำหนด</option></select>
+    <input type="month" id="f-mo-inv" onchange="refreshINVTable()">
+  </div>
+  <div class="card">
+    <table class="tbl">
+      <thead><tr><th>เลขที่</th><th>วันที่</th><th>ครบกำหนด</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">ยอดรวม</th><th class="r">รับแล้ว</th><th class="r">คงเหลือ</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody id="inv-tbody"></tbody>
+    </table>
+  </div>`;
+  refreshINVTable();
+}
+function refreshINVTable() {
+  const coF=document.getElementById('f-co-inv')?.value||'';
+  const stF=document.getElementById('f-st-inv')?.value||'';
+  const moF=document.getElementById('f-mo-inv')?.value||'';
+  let rows=[...data.invoices];
+  if(coF) rows=rows.filter(r=>r.companyId===coF);
+  if(stF) rows=rows.filter(r=>invStatus(r)===stF);
+  if(moF) rows=rows.filter(r=>r.docDate?.startsWith(moF));
+  const tbody=document.getElementById('inv-tbody');
+  if(!tbody) return;
+  tbody.innerHTML=rows.length?rows.map(i=>{
+    const st=invStatus(i); const rem=remainAmount(i);
+    const pct=Math.min(100,(i.paidAmount||0)/i.total*100);
+    return `<tr>
+      <td class="mono">${i.docNumber}</td>
+      <td>${i.docDate}</td>
+      <td style="font-size:12px${st==='overdue'?';color:var(--red);font-weight:700':''}">${i.docDue||'—'}</td>
+      <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
+      <td>${i.custName}</td>
+      <td class="r mono">${fmt(i.total)}</td>
+      <td class="r mono" style="color:var(--green)">${fmt(i.paidAmount||0)}</td>
+      <td class="r mono bold" style="color:${rem>0?'var(--red)':'var(--green)'}">${fmt(rem)}</td>
+      <td>
+        ${badgeHTML(st)}
+        <div class="progress-wrap" style="margin-top:3px;width:80px"><div class="progress-bar ${pct>=100?'green':pct>0?'orange':'red'}" style="width:${pct}%"></div></div>
+      </td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-xs btn-outline" onclick="viewDoc('inv','${i.id}')">ดู</button>
+        ${st!=='paid'&&st!=='cancelled'?`<button class="btn btn-xs btn-outline" onclick="editINV('${i.id}')">✏️</button>`:''}
+        ${st!=='paid'&&st!=='cancelled'?`<button class="btn btn-xs btn-success" onclick="openPayment('${i.id}')">+ รับชำระ</button>`:''}
+        ${!i.linkedBilling&&st!=='cancelled'&&st!=='paid'?`<button class="btn btn-xs btn-outline" style="color:var(--purple)" onclick="convertDoc('inv2bl','${i.id}')">→ บิล</button>`:''}
+        ${st!=='paid'?`<button class="btn btn-xs btn-danger" onclick="deleteINV('${i.id}')">🗑</button>`:''}
+      </td>
+    </tr>`;}).join(''):'<tr><td colspan="10"><div class="empty"><div class="empty-icon">🧾</div><p>ยังไม่มีใบแจ้งหนี้</p></div></td></tr>';
+}
+window.refreshINVTable=refreshINVTable;
+
+// ── Edit Invoice ──
+function editINV(id) {
+  const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
+  document.getElementById('page-content').innerHTML += `
+  <div class="overlay show" id="modal-edit-inv">
+    <div class="modal modal-lg">
+      <div class="modal-title">✏️ แก้ไขใบแจ้งหนี้ — ${inv.docNumber}</div>
+      <div class="form-grid-4" style="gap:10px;margin-bottom:12px">
+        <div class="field"><label>วันที่</label><input type="date" id="einv-date" value="${inv.docDate}"></div>
+        <div class="field"><label>ครบกำหนด</label><input type="date" id="einv-due" value="${inv.docDue||''}"></div>
+        <div class="field span2"></div>
+      </div>
+      <div class="form-grid" style="gap:10px;margin-bottom:12px">
+        <div class="field span2"><label>ชื่อลูกค้า</label><input type="text" id="einv-cust" value="${inv.custName||''}"></div>
+        <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="einv-tax" value="${inv.custTax||''}"></div>
+        <div class="field"><label>ผู้ติดต่อ</label><input type="text" id="einv-contact" value="${inv.custContact||''}"></div>
+        <div class="field span2"><label>ที่อยู่</label><textarea id="einv-addr" style="min-height:56px">${inv.custAddress||''}</textarea></div>
+      </div>
+      <div class="form-grid" style="gap:10px">
+        <div class="field span2"><label>หมายเหตุ</label><textarea id="einv-note" style="min-height:56px">${inv.note||''}</textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-inv').remove()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveEditINV('${id}')">💾 บันทึก</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.editINV=editINV;
+
+async function saveEditINV(id) {
+  const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
+  const d={docDate:document.getElementById('einv-date').value,docDue:document.getElementById('einv-due').value,
+    custName:document.getElementById('einv-cust').value,custTax:document.getElementById('einv-tax').value,
+    custContact:document.getElementById('einv-contact').value,custAddress:document.getElementById('einv-addr').value,
+    note:document.getElementById('einv-note').value};
+  Object.assign(inv,d);
+  await storeUpdate('invoices',id,d); syncLS('invoices',data.invoices);
+  document.getElementById('modal-edit-inv')?.remove();
+  refreshINVTable(); toast('แก้ไขใบแจ้งหนี้เรียบร้อย','ok');
+}
+window.saveEditINV=saveEditINV;
+
+async function deleteINV(id) {
+  const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
+  if(inv.linkedBilling) { toast('❌ ไม่สามารถลบได้ — ออกใบวางบิลแล้ว','err'); return; }
+  if((inv.paidAmount||0)>0) { toast('❌ ไม่สามารถลบได้ — มีการรับชำระบางส่วนแล้ว','err'); return; }
+  if(!confirm(`ลบใบแจ้งหนี้ ${inv.docNumber} ?\nการลบไม่สามารถย้อนกลับได้`)) return;
+  // unlink quotation
+  if(inv.linkedQt) {
+    const qt=data.quotations.find(q=>q.id===inv.linkedQt);
+    if(qt) { qt.linkedInvoice=null; qt.status='sent'; await storeUpdate('quotations',qt.id,{linkedInvoice:null,status:'sent'}); syncLS('quotations',data.quotations); }
+  }
+  data.invoices=data.invoices.filter(x=>x.id!==id);
+  await storeDelete('invoices',id); syncLS('invoices',data.invoices);
+  refreshINVTable(); toast('ลบใบแจ้งหนี้เรียบร้อย','ok');
+}
+window.deleteINV=deleteINV;
+
+// ══════════════════════════════════════════════════════
+// BILLING LIST
+// ══════════════════════════════════════════════════════
+function renderBilling() {
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="goPage('new-bl')">+ สร้างใบวางบิล</button>`;
+  document.getElementById('page-content').innerHTML = `
+  <div class="filters">
+    <select id="f-co-bl" onchange="refreshBLTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+    <select id="f-st-bl" onchange="refreshBLTable()">
+      <option value="">— ทุกสถานะ —</option>
+      <option value="sent">ส่งแล้ว</option>
+      <option value="received">รับเอกสารแล้ว</option>
+      <option value="waiting-cheque">รอรับเช็ค</option>
+      <option value="partial-paid">ชำระบางส่วน</option>
+      <option value="paid">ชำระแล้ว</option>
+      <option value="cancelled">ยกเลิก</option>
+    </select>
+  </div>
+  <div class="card">
+    <table class="tbl">
+      <thead><tr><th>เลขที่</th><th>วันที่</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">มูลค่า</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody id="bl-tbody"></tbody>
+    </table>
+  </div>`;
+  refreshBLTable();
+}
+function refreshBLTable() {
+  const coF=document.getElementById('f-co-bl')?.value||'';
+  const stF=document.getElementById('f-st-bl')?.value||'';
+  let rows=[...data.billings];
+  if(coF) rows=rows.filter(r=>r.companyId===coF);
+  if(stF) rows=rows.filter(r=>(r.status||'sent')===stF);
+  const tbody=document.getElementById('bl-tbody'); if(!tbody) return;
+  const statusOpts=['sent','received','waiting-cheque','partial-paid','paid','cancelled'];
+  const statusLabels={sent:'ส่งแล้ว',received:'รับเอกสารแล้ว','waiting-cheque':'รอรับเช็ค','partial-paid':'ชำระบางส่วน',paid:'ชำระแล้ว',cancelled:'ยกเลิก'};
+  tbody.innerHTML=rows.length?rows.map(b=>`<tr>
+    <td class="mono">${b.docNumber}</td>
+    <td>${b.docDate}</td>
+    <td style="font-size:12px;color:var(--ink4)">${b.companyName}</td>
+    <td>${b.custName}</td>
+    <td class="r mono bold">${fmt(b.total)}</td>
+    <td>
+      <select class="filters" style="padding:3px 6px;font-size:11px;border-radius:5px" onchange="updateBLStatus('${b.id}',this.value)">
+        ${statusOpts.map(s=>`<option value="${s}"${(b.status||'sent')===s?' selected':''}>${statusLabels[s]}</option>`).join('')}
+      </select>
+    </td>
+    <td style="white-space:nowrap">
+      <button class="btn btn-xs btn-outline" onclick="viewDoc('bl','${b.id}')">ดู</button>
+      <button class="btn btn-xs btn-outline" onclick="editBL('${b.id}')">✏️</button>
+      <button class="btn btn-xs btn-outline" onclick="printBL('${b.id}')">🖨</button>
+      <button class="btn btn-xs btn-danger" onclick="deleteBL('${b.id}')">🗑</button>
+    </td>
+  </tr>`).join(''):'<tr><td colspan="7"><div class="empty"><div class="empty-icon">📬</div><p>ยังไม่มีใบวางบิล</p></div></td></tr>';
+}
+window.refreshBLTable=refreshBLTable;
+
+async function updateBLStatus(id, status) {
+  const bl=data.billings.find(b=>b.id===id); if(!bl) return;
+  bl.status=status;
+  await storeUpdate('billings',id,{status});
+  syncLS('billings',data.billings);
+  toast('อัปเดตสถานะใบวางบิลเรียบร้อย','ok');
+}
+window.updateBLStatus=updateBLStatus;
+
+async function deleteBL(id) {
+  const bl=data.billings.find(b=>b.id===id); if(!bl) return;
+  if(!confirm(`ลบใบวางบิล ${bl.docNumber} ?\nการลบไม่สามารถย้อนกลับได้`)) return;
+  // unlink invoice
+  if(bl.invoiceIds?.length) {
+    for(const invId of bl.invoiceIds) {
+      const inv=data.invoices.find(i=>i.id===invId);
+      if(inv&&inv.linkedBilling===id) {
+        inv.linkedBilling=null;
+        await storeUpdate('invoices',invId,{linkedBilling:null});
+      }
+    }
+    syncLS('invoices',data.invoices);
+  }
+  data.billings=data.billings.filter(b=>b.id!==id);
+  await storeDelete('billings',id);
+  syncLS('billings',data.billings);
+  refreshBLTable(); toast('ลบใบวางบิลเรียบร้อย','ok');
+}
+window.deleteBL=deleteBL;
+
+function editBL(id) {
+  const bl=data.billings.find(b=>b.id===id); if(!bl) return;
+  const statusOpts=['sent','received','waiting-cheque','partial-paid','paid','cancelled'];
+  const statusLabels={sent:'ส่งแล้ว',received:'รับเอกสารแล้ว','waiting-cheque':'รอรับเช็ค','partial-paid':'ชำระบางส่วน',paid:'ชำระแล้ว',cancelled:'ยกเลิก'};
+  document.getElementById('page-content').innerHTML += `
+  <div class="overlay show" id="modal-edit-bl">
+    <div class="modal">
+      <div class="modal-title">✏️ แก้ไขใบวางบิล — ${bl.docNumber}</div>
+      <div class="form-grid" style="gap:10px">
+        <div class="field"><label>วันที่เอกสาร</label><input type="date" id="ebl-date" value="${bl.docDate}"></div>
+        <div class="field"><label>สถานะ</label>
+          <select id="ebl-status">${statusOpts.map(s=>`<option value="${s}"${bl.status===s?' selected':''}>${statusLabels[s]}</option>`).join('')}</select>
+        </div>
+        <div class="field span2"><label>หมายเหตุ</label><textarea id="ebl-note" style="min-height:60px">${bl.note||''}</textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-bl').remove()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveEditBL('${id}')">💾 บันทึก</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.editBL=editBL;
+
+async function saveEditBL(id) {
+  const bl=data.billings.find(b=>b.id===id); if(!bl) return;
+  const d={docDate:document.getElementById('ebl-date').value,status:document.getElementById('ebl-status').value,note:document.getElementById('ebl-note').value};
+  Object.assign(bl,d);
+  await storeUpdate('billings',id,d);
+  syncLS('billings',data.billings);
+  document.getElementById('modal-edit-bl')?.remove();
+  refreshBLTable(); toast('แก้ไขใบวางบิลเรียบร้อย','ok');
+}
+window.saveEditBL=saveEditBL;
+
+// ══════════════════════════════════════════════════════
+// PAYMENTS LIST
+// ══════════════════════════════════════════════════════
+function renderPayments() {
+  const allPmts = data.invoices.flatMap(i=>(i.payments||[]).map(p=>({...p,invId:i.id,invNo:i.docNumber,custName:i.custName,companyName:i.companyName})));
+  allPmts.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  document.getElementById('page-content').innerHTML = `
+  <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;max-width:600px">
+    <div class="stat-card green"><div class="stat-label">รับเดือนนี้</div>
+      <div class="stat-value">${fmt(allPmts.filter(p=>p.date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,p)=>s+p.amount,0))}</div></div>
+    <div class="stat-card"><div class="stat-label">จำนวนครั้ง</div>
+      <div class="stat-value">${allPmts.filter(p=>p.date?.startsWith(new Date().toISOString().slice(0,7))).length}</div></div>
+    <div class="stat-card accent"><div class="stat-label">รับทั้งหมด</div>
+      <div class="stat-value">${fmt(allPmts.reduce((s,p)=>s+p.amount,0))}</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">ประวัติการรับชำระทั้งหมด</div></div>
+    <table class="tbl">
+      <thead><tr><th>วันที่</th><th>ใบแจ้งหนี้</th><th>ลูกค้า</th><th>บริษัท</th><th>ช่องทาง</th><th>หมายเหตุ</th><th class="r">จำนวน</th></tr></thead>
+      <tbody>${allPmts.map(p=>`<tr>
+        <td>${p.date}</td><td class="mono">${p.invNo}</td><td>${p.custName}</td>
+        <td style="font-size:12px;color:var(--ink4)">${p.companyName}</td>
+        <td>${p.method||'—'}</td><td class="muted">${p.note||'—'}</td>
+        <td class="r mono bold" style="color:var(--green)">${fmt(p.amount)}</td>
+      </tr>`).join('')||'<tr><td colspan="7"><div class="empty"><p>ยังไม่มีรายการ</p></div></td></tr>'}</tbody>
+    </table>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// NEW QUOTATION FORM
+// ══════════════════════════════════════════════════════
+function renderNewQT() {
+  _rowCount = 0;
+  document.getElementById('page-content').innerHTML = buildDocForm('qt');
+  initDocForm('qt');
+  addRow('qt'); addRow('qt'); addRow('qt');
+}
+function renderNewINV() {
+  _rowCount = 0;
+  document.getElementById('page-content').innerHTML = buildDocForm('inv');
+  initDocForm('inv');
+  addRow('inv'); addRow('inv'); addRow('inv');
+}
+function renderNewBL() {
+  _rowCount = 0;
+  document.getElementById('page-content').innerHTML = buildDocForm('bl');
+  initDocForm('bl');
+}
+
+function buildDocForm(type) {
+  const labels = {qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
+  const extraFields = type==='inv' ? `
+    <div class="field"><label>ครบกำหนดชำระ</label><input type="date" id="f-due"></div>` :
+    type==='qt' ? `<div class="field"><label>ใช้ได้ถึง</label><input type="date" id="f-valid"></div>` : '';
+  const itemsSection = type!=='bl' ? `
+  <div class="card">
+    <div class="card-header"><div class="card-title">รายการสินค้า/บริการ</div></div>
+    <div class="card-body" style="padding:12px 16px">
+      <table class="items-tbl"><thead><tr>
+        <th style="width:32px">#</th><th>รายการ</th><th style="width:80px">จำนวน</th>
+        <th style="width:80px">หน่วย</th><th style="width:120px" class="r">ราคา/หน่วย</th>
+        <th style="width:120px" class="r">รวม</th><th style="width:32px"></th>
+      </tr></thead><tbody id="items-body-${type}"></tbody></table>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addRow('${type}')">+ เพิ่มรายการ</button>
+      <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-top:12px">
+        <div>
+          <div class="tog-wrap"><label class="tog"><input type="checkbox" id="f-vat" onchange="calcDoc('${type}')"><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></div>
+          <div class="tog-wrap" style="margin-top:6px"><label class="tog"><input type="checkbox" id="f-wht" onchange="calcDoc('${type}')"><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="summary-box" style="margin-top:0;width:260px">
+          <div class="s-row"><span>ก่อน VAT</span><span class="val" id="s-sub">0.00</span></div>
+          <div class="s-row" id="s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="s-vat">0.00</span></div>
+          <div class="s-row" id="s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย</span><span class="val" id="s-wht" style="color:var(--red)">0.00</span></div>
+          <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="s-total">0.00</span></div>
+        </div>
+      </div>
+    </div>
+  </div>` : `
+  <div class="card">
+    <div class="card-header"><div class="card-title">เลือกใบแจ้งหนี้ที่จะวางบิล</div></div>
+    <div class="card-body">
+      <div id="bl-inv-list"></div>
+      <div id="bl-summary" style="margin-top:12px"></div>
+    </div>
+  </div>`;
+
+  return `
+  <div class="card">
+    <div class="card-header"><div class="card-title">📄 ${labels[type]}</div></div>
+    <div class="card-body">
+      <div class="card-title" style="margin-bottom:10px">บริษัทผู้ออกเอกสาร</div>
+      <div class="co-grid" id="co-select-grid">
+        ${companies.map(c=>`<div class="co-card" id="co-${c.id}" onclick="selectCo('${c.id}','${type}')" >
+          <div class="co-name">${c.name}</div>
+          <div class="co-tax">${c.taxId||'—'}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">ข้อมูลเอกสาร</div></div>
+    <div class="card-body">
+      <div class="form-grid-4">
+        <div class="field"><label>เลขที่เอกสาร</label><input type="text" id="f-docno" readonly></div>
+        <div class="field"><label>วันที่</label><input type="date" id="f-date" value="${today()}"></div>
+        ${extraFields}
+        <div class="field"><label>เงื่อนไขการชำระ</label>
+          <select id="f-terms"><option>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option selected>30 วัน</option><option>60 วัน</option></select></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">ข้อมูลลูกค้า</div></div>
+    <div class="card-body">
+      <div class="form-grid">
+        <div class="field span2"><label>ชื่อบริษัท/ลูกค้า</label><input type="text" id="f-cust-name" placeholder="บริษัท ตัวอย่าง จำกัด"></div>
+        <div class="field span2"><label>ที่อยู่</label><textarea id="f-cust-addr" placeholder="ที่อยู่ออกเอกสาร"></textarea></div>
+        <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="f-cust-tax" placeholder="0000000000000"></div>
+        <div class="field"><label>ผู้ติดต่อ / โทร</label><input type="text" id="f-cust-contact"></div>
+      </div>
+    </div>
+  </div>
+  ${itemsSection}
+  <div class="card">
+    <div class="card-header"><div class="card-title">หมายเหตุ</div></div>
+    <div class="card-body"><div class="field"><textarea id="f-note" placeholder="เงื่อนไข, หมายเหตุ..." style="min-height:60px"></textarea></div></div>
+  </div>
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-bottom:24px">
+    <button class="btn btn-ghost" onclick="goPage('${type==='qt'?'quotations':type==='inv'?'invoices':'billing'}')">ยกเลิก</button>
+    <button class="btn btn-outline" onclick="printNewDoc('${type}')">🖨 พิมพ์</button>
+    <button class="btn btn-primary" onclick="saveDoc('${type}')">💾 บันทึก</button>
+  </div>`;
+}
+
+let _selectedCo = null;
+function initDocForm(type) {
+  _selectedCo = null;
+  if(type==='inv') {
+    const dueEl = document.getElementById('f-due');
+    if(dueEl) dueEl.value = addDays(today(), 30);
+  }
+  if(type==='qt') {
+    const validEl = document.getElementById('f-valid');
+    if(validEl) validEl.value = addDays(today(), 30);
+  }
+  if(type==='bl') renderBLInvList();
+}
+
+function selectCo(id, type) {
+  _selectedCo = companies.find(c=>c.id===id)||null;
+  document.querySelectorAll('.co-card').forEach(el=>el.classList.remove('sel'));
+  document.getElementById('co-'+id)?.classList.add('sel');
+  if(_selectedCo) {
+    const prefix = _selectedCo.prefix||'XX';
+    const typeMap = {qt:'QT',inv:'INV',bl:'BL'};
+    const listMap = {qt:data.quotations,inv:data.invoices,bl:data.billings};
+    document.getElementById('f-docno').value = genDocNo(prefix,typeMap[type],listMap[type]);
+    const vatEl = document.getElementById('f-vat');
+    if(vatEl) vatEl.checked = _selectedCo.hasVat;
+    calcDoc(type);
+    if(type==='bl') renderBLInvList();
+  }
+}
+window.selectCo=selectCo;
+
+function renderBLInvList() {
+  const el = document.getElementById('bl-inv-list'); if(!el) return;
+  const coId = _selectedCo?.id;
+  const invs = data.invoices.filter(i=>(!coId||i.companyId===coId)&&['sent','partial','overdue'].includes(invStatus(i)));
+  if(!invs.length) { el.innerHTML='<div class="empty"><p>ไม่มีใบแจ้งหนี้ที่รอวางบิล</p></div>'; return; }
+  el.innerHTML = invs.map(i=>`
+    <div class="pmt-item" style="cursor:pointer" onclick="toggleBLInv('${i.id}',this)">
+      <div class="pmt-icon">🧾</div>
+      <div class="pmt-info">
+        <div class="mono" style="font-size:12px;font-weight:700">${i.docNumber}</div>
+        <div class="pmt-note">${i.custName} — ${fmt(remainAmount(i))} บาท</div>
+      </div>
+      <input type="checkbox" id="bl-chk-${i.id}" value="${i.id}" onchange="updateBLSummary()" style="width:18px;height:18px;cursor:pointer">
+    </div>`).join('');
+}
+window.renderBLInvList=renderBLInvList;
+
+let _blSelected = [];
+function toggleBLInv(id, el) {
+  const chk = document.getElementById('bl-chk-'+id);
+  if(!chk) return;
+  chk.checked = !chk.checked;
+  updateBLSummary();
+}
+window.toggleBLInv=toggleBLInv;
+
+function updateBLSummary() {
+  _blSelected = [...document.querySelectorAll('[id^="bl-chk-"]:checked')].map(el=>el.value);
+  const invs = data.invoices.filter(i=>_blSelected.includes(i.id));
+  const total = invs.reduce((s,i)=>s+remainAmount(i),0);
+  const el = document.getElementById('bl-summary'); if(!el) return;
+  el.innerHTML = _blSelected.length ? `
+    <div class="summary-box" style="width:auto;margin:0">
+      <div class="s-row"><span>เลือก ${_blSelected.length} ใบ</span><span class="val">${fmt(total)} บาท</span></div>
+    </div>` : '';
+}
+window.updateBLSummary=updateBLSummary;
+
+// ROWS
+function addRow(type) {
+  _rowCount++;
+  const tbody = document.getElementById('items-body-'+type); if(!tbody) return;
+  const tr = document.createElement('tr'); tr.id='r'+_rowCount;
+  tr.innerHTML=`<td style="color:var(--ink4);font-size:11px;text-align:center">${_rowCount}</td>
+    <td><input class="item-inp" type="text" placeholder="รายละเอียด" oninput="calcDoc('${type}')"></td>
+    <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="calcDoc('${type}')"></td>
+    <td><input class="item-inp" type="text" placeholder="ชิ้น"></td>
+    <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="calcDoc('${type}')"></td>
+    <td class="row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
+    <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="document.getElementById('r${_rowCount}').remove();calcDoc('${type}')">✕</button></td>`;
+  tbody.appendChild(tr); calcDoc(type);
+}
+window.addRow=addRow;
+
+function calcDoc(type) {
+  const rows=[...document.querySelectorAll(`#items-body-${type} tr`)];
+  let sub=0;
+  rows.forEach(tr=>{
+    // inputs[type=number]: ins[0]=qty, ins[1]=price  (unit is type=text)
+    const ins=tr.querySelectorAll('input[type=number]');
+    const t=(parseFloat(ins[0]?.value)||0)*(parseFloat(ins[1]?.value)||0);
+    sub+=t; const el=tr.querySelector('.row-total'); if(el) el.textContent=fmt(t);
+  });
+  const vat=document.getElementById('f-vat')?.checked?sub*.07:0;
+  const wht=document.getElementById('f-wht')?.checked?sub*.03:0;
+  const total=sub+vat-wht;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el) el.textContent=fmt(v);};
+  set('s-sub',sub); set('s-vat',vat); set('s-wht',wht); set('s-total',total);
+  const vr=document.getElementById('s-vat-row'); if(vr) vr.style.display=vat?'':'none';
+  const wr=document.getElementById('s-wht-row'); if(wr) wr.style.display=wht?'':'none';
+}
+window.calcDoc=calcDoc;
+
+function getFormItems(type) {
+  return [...document.querySelectorAll(`#items-body-${type} tr`)].map(tr=>{
+    const txtIns=tr.querySelectorAll('input[type=text]');
+    const numIns=tr.querySelectorAll('input[type=number]');
+    const desc=txtIns[0]?.value||'';
+    const unit=txtIns[1]?.value||'';
+    const qty=parseFloat(numIns[0]?.value)||0;
+    const price=parseFloat(numIns[1]?.value)||0;
+    return {desc, qty, unit, price, total:qty*price};
+  }).filter(r=>r.desc||r.price>0);
+}
+
+async function saveDoc(type) {
+  if(!_selectedCo) { toast('กรุณาเลือกบริษัทก่อน','err'); return; }
+  const custName = document.getElementById('f-cust-name')?.value?.trim();
+  if(!custName) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
+
+  if(type==='bl') {
+    if(!_blSelected.length) { toast('กรุณาเลือกใบแจ้งหนี้อย่างน้อย 1 ใบ','err'); return; }
+    const invs=data.invoices.filter(i=>_blSelected.includes(i.id));
+    const total=invs.reduce((s,i)=>s+remainAmount(i),0);
+    const bl={
+      docNumber:document.getElementById('f-docno')?.value,
+      docDate:document.getElementById('f-date')?.value,
+      companyId:_selectedCo.id, companyName:_selectedCo.name,
+      custName, custAddress:document.getElementById('f-cust-addr')?.value,
+      custTax:document.getElementById('f-cust-tax')?.value,
+      invoiceIds:_blSelected, total, status:'sent',
+      note:document.getElementById('f-note')?.value,
+    };
+    const id=await storeAdd('billings',bl); bl.id=id||uid();
+    data.billings.push(bl);
+    for(const inv of invs){ inv.linkedBilling=bl.id; await storeUpdate('invoices',inv.id,{linkedBilling:bl.id}); }
+    syncLS('billings', data.billings); syncLS('invoices', data.invoices);
+    toast('บันทึกใบวางบิลเรียบร้อย','ok'); goPage('billing'); return;
+  }
+
+  const items=getFormItems(type);
+  const hasVat=document.getElementById('f-vat')?.checked;
+  const hasWht=document.getElementById('f-wht')?.checked;
+  const sub=items.reduce((s,r)=>s+r.total,0);
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const docData={
+    docNumber:document.getElementById('f-docno')?.value,
+    docDate:document.getElementById('f-date')?.value,
+    companyId:_selectedCo.id, companyName:_selectedCo.name,
+    custName, custAddress:document.getElementById('f-cust-addr')?.value,
+    custTax:document.getElementById('f-cust-tax')?.value,
+    custContact:document.getElementById('f-cust-contact')?.value,
+    items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht,
+    status:'sent', note:document.getElementById('f-note')?.value,
+    ...(type==='inv'?{docDue:document.getElementById('f-due')?.value,paidAmount:0,payments:[],linkedQt:null,linkedBilling:null}:{}),
+    ...(type==='qt'?{docValid:document.getElementById('f-valid')?.value,linkedInvoice:null}:{}),
+  };
+  const col=type==='qt'?'quotations':'invoices';
+  const id=await storeAdd(col,docData); docData.id=id||uid();
+  data[col==='quotations'?'quotations':'invoices'].push(docData);
+  syncLS(col, data[col==='quotations'?'quotations':'invoices']);
+  toast(`บันทึก${type==='qt'?'ใบเสนอราคา':'ใบแจ้งหนี้'}เรียบร้อย`,'ok');
+  goPage(type==='qt'?'quotations':'invoices');
+}
+window.saveDoc=saveDoc;
+
+// ══════════════════════════════════════════════════════
+// CONVERT DOCS
+// ══════════════════════════════════════════════════════
+function convertDoc(action, srcId) {
+  _convertDoc = {action, srcId};
+  const src = action==='qt2inv' ? data.quotations.find(q=>q.id===srcId) : data.invoices.find(i=>i.id===srcId);
+  const titles = {qt2inv:`แปลง QT → ใบแจ้งหนี้\n${src?.docNumber}`, inv2bl:`แปลง INV → ใบวางบิล\n${src?.docNumber}`};
+  document.getElementById('convert-title').textContent = titles[action]||'แปลงเอกสาร';
+  const co=companies.find(c=>c.id===src?.companyId)||{};
+  document.getElementById('convert-body').innerHTML=`
+    <div style="background:var(--bg2);padding:14px;border-radius:var(--r);font-size:13px;margin-bottom:12px">
+      <div style="font-weight:700">${src?.docNumber}</div>
+      <div style="color:var(--ink4)">${src?.custName} — ${fmt(src?.total)} บาท</div>
+    </div>
+    <div class="form-grid" style="gap:10px">
+      <div class="field"><label>วันที่เอกสาร</label><input type="date" id="cv-date" value="${today()}"></div>
+      ${action==='qt2inv'?`<div class="field"><label>ครบกำหนดชำระ</label><input type="date" id="cv-due" value="${addDays(today(),30)}"></div>`:''}
+    </div>`;
+  document.getElementById('convert-confirm-btn').onclick = confirmConvert;
+  document.getElementById('modal-convert').classList.add('show');
+}
+window.convertDoc=convertDoc;
+
+async function confirmConvert() {
+  const {action, srcId} = _convertDoc;
+  const cvDate = document.getElementById('cv-date')?.value||today();
+  if(action==='qt2inv') {
+    const qt=data.quotations.find(q=>q.id===srcId); if(!qt) return;
+    const co=companies.find(c=>c.id===qt.companyId)||{};
+    const inv={
+      docNumber:genDocNo(co.prefix||'X','INV',data.invoices),
+      docDate:cvDate, docDue:document.getElementById('cv-due')?.value||addDays(cvDate,30),
+      companyId:qt.companyId, companyName:qt.companyName,
+      custName:qt.custName, custAddress:qt.custAddress, custTax:qt.custTax,
+      items:qt.items, hasVat:qt.hasVat, hasWht:qt.hasWht,
+      subtotal:qt.subtotal, vat:qt.vat, wht:qt.wht, total:qt.total,
+      paidAmount:0, status:'sent', payments:[], linkedQt:qt.id, linkedBilling:null, note:qt.note,
+    };
+    const id=await storeAdd('invoices',inv); inv.id=id||uid();
+    data.invoices.push(inv);
+    qt.linkedInvoice=inv.id; qt.status='approved';
+    await storeUpdate('quotations',qt.id,{linkedInvoice:inv.id,status:'approved'});
+    syncLS('invoices', data.invoices); syncLS('quotations', data.quotations);
+    toast('แปลงเป็นใบแจ้งหนี้เรียบร้อย','ok');
+    closeModal('modal-convert'); goPage('invoices');
+  } else if(action==='inv2bl') {
+    const inv=data.invoices.find(i=>i.id===srcId); if(!inv) return;
+    const co=companies.find(c=>c.id===inv.companyId)||{};
+    const bl={
+      docNumber:genDocNo(co.prefix||'X','BL',data.billings),
+      docDate:cvDate, companyId:inv.companyId, companyName:inv.companyName,
+      custName:inv.custName, invoiceIds:[inv.id], total:remainAmount(inv), status:'sent',
+    };
+    const id=await storeAdd('billings',bl); bl.id=id||uid();
+    data.billings.push(bl);
+    inv.linkedBilling=bl.id;
+    await storeUpdate('invoices',inv.id,{linkedBilling:bl.id});
+    syncLS('billings', data.billings); syncLS('invoices', data.invoices);
+    toast('แปลงเป็นใบวางบิลเรียบร้อย','ok');
+    closeModal('modal-convert'); goPage('billing');
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// PAYMENT MODAL
+// ══════════════════════════════════════════════════════
+function openPayment(invId) {
+  _payingInvoice = data.invoices.find(i=>i.id===invId);
+  if(!_payingInvoice) return;
+  const rem = remainAmount(_payingInvoice);
+  document.getElementById('pmt-inv-info').innerHTML = `
+    <strong>${_payingInvoice.docNumber}</strong> — ${_payingInvoice.custName}<br>
+    <span style="color:var(--ink4)">ยอดรวม: ${fmt(_payingInvoice.total)} | รับแล้ว: ${fmt(_payingInvoice.paidAmount||0)} | <b style="color:var(--red)">คงเหลือ: ${fmt(rem)}</b></span>`;
+  document.getElementById('pmt-date').value = today();
+  document.getElementById('pmt-amount').value = rem.toFixed(2);
+  document.getElementById('pmt-note').value = '';
+  document.getElementById('pmt-remain-info').innerHTML='';
+  document.getElementById('modal-payment').classList.add('show');
+  document.getElementById('pmt-amount').addEventListener('input', updateRemainPreview);
+}
+window.openPayment=openPayment;
+
+function updateRemainPreview() {
+  if(!_payingInvoice) return;
+  const amt=parseFloat(document.getElementById('pmt-amount').value)||0;
+  const rem=remainAmount(_payingInvoice);
+  const afterRem=rem-amt;
+  const el=document.getElementById('pmt-remain-info');
+  if(afterRem<=0) el.innerHTML=`<span style="color:var(--green)">✅ ชำระครบ — ใบแจ้งหนี้จะเปลี่ยนสถานะเป็น "ชำระแล้ว"</span>`;
+  else el.innerHTML=`<span style="color:var(--orange)">⚠️ ยังคงเหลือ ${fmt(afterRem)} บาท (ชำระบางส่วน)</span>`;
+}
+
+async function confirmPayment() {
+  if(!_payingInvoice) return;
+  const amt=parseFloat(document.getElementById('pmt-amount').value)||0;
+  if(amt<=0) { toast('กรุณากรอกจำนวนเงิน','err'); return; }
+  const rem=remainAmount(_payingInvoice);
+  if(amt>rem+0.01) { toast(`จำนวนเกินยอดคงเหลือ (${fmt(rem)} บาท)`,'err'); return; }
+  const pmt={ id:uid(), date:document.getElementById('pmt-date').value,
+    amount:amt, method:document.getElementById('pmt-method').value,
+    note:document.getElementById('pmt-note').value };
+  _payingInvoice.payments = [...(_payingInvoice.payments||[]), pmt];
+  _payingInvoice.paidAmount = (_payingInvoice.paidAmount||0)+amt;
+  const newSt = invStatus(_payingInvoice);
+  _payingInvoice.status = newSt;
+  await storeUpdate('invoices',_payingInvoice.id,{payments:_payingInvoice.payments,paidAmount:_payingInvoice.paidAmount,status:newSt});
+  syncLS('invoices', data.invoices);
+  closeModal('modal-payment');
+  toast(`บันทึกรับชำระ ${fmt(amt)} บาท เรียบร้อย`,'ok');
+  if(_currentPage==='invoices') refreshINVTable();
+  else if(_currentPage==='dashboard') renderDashboard();
+  else if(_currentPage==='payments') renderPayments();
+}
+window.confirmPayment=confirmPayment;
+
+// ══════════════════════════════════════════════════════
+// VIEW DOC MODAL
+// ══════════════════════════════════════════════════════
+function viewDoc(type, id) {
+  const src = type==='qt'?data.quotations.find(q=>q.id===id):type==='inv'?data.invoices.find(i=>i.id===id):data.billings.find(b=>b.id===id);
+  if(!src) return;
+  _printDocData = {type, src};
+  const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
+  document.getElementById('modal-doc-title').textContent = `${typeLabels[type]} — ${src.docNumber}`;
+  const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
+  let body=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;font-size:13px">
+      <div><div style="font-weight:700;font-size:14px">${co.name}</div>
+        <div style="color:var(--ink4);font-size:12px">${co.address||''}</div>
+        <div style="color:var(--ink4);font-size:12px">เลขภาษี: ${co.taxId||'—'}</div></div>
+      <div style="text-align:right">
+        <div style="font-size:20px;font-weight:700;color:var(--accent)">${typeLabels[type]}</div>
+        <div class="mono" style="font-size:12px;margin-top:4px">${src.docNumber}</div>
+        <div style="font-size:12px;color:var(--ink4)">วันที่: ${src.docDate}</div>
+        ${src.docDue?`<div style="font-size:12px;color:var(--ink4)">ครบกำหนด: ${src.docDue}</div>`:''}
+        ${src.docValid?`<div style="font-size:12px;color:var(--ink4)">ใช้ได้ถึง: ${src.docValid}</div>`:''}
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div style="font-size:13px;margin-bottom:12px">
+      <div style="font-weight:700">${src.custName}</div>
+      <div style="color:var(--ink4)">${src.custAddress||''}</div>
+      ${src.custTax?`<div style="color:var(--ink4);font-size:12px">เลขภาษี: ${src.custTax}</div>`:''}
+    </div>`;
+
+  if(src.items?.length) {
+    body+=`<table class="tbl" style="margin-bottom:12px"><thead><tr>
+      <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th>
+    </tr></thead><tbody>${src.items.map((r,i)=>`<tr>
+      <td style="color:var(--ink4)">${i+1}</td><td>${r.desc}</td><td class="r mono">${r.qty}</td>
+      <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td><td class="r mono bold">${fmt(r.total)}</td>
+    </tr>`).join('')}</tbody></table>
+    <div class="summary-box">
+      <div class="s-row"><span>ก่อน VAT</span><span class="val">${fmt(src.subtotal)}</span></div>
+      ${src.vat?`<div class="s-row"><span>VAT 7%</span><span class="val">${fmt(src.vat)}</span></div>`:''}
+      ${src.wht?`<div class="s-row"><span>หัก ณ ที่จ่าย 3%</span><span class="val" style="color:var(--red)">-${fmt(src.wht)}</span></div>`:''}
+      <div class="s-row total"><span>ยอดสุทธิ</span><span class="val">${fmt(src.total)}</span></div>
+    </div>`;
+  }
+
+  if(type==='inv') {
+    const rem=remainAmount(src);
+    body+=`<div class="divider"></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div class="summary-box" style="margin:0;flex:1">
+        <div class="s-row"><span>ยอดรวม</span><span class="val">${fmt(src.total)}</span></div>
+        <div class="s-row paid"><span>รับแล้ว</span><span class="val">${fmt(src.paidAmount||0)}</span></div>
+        <div class="s-row remain"><span>คงเหลือ</span><span class="val">${fmt(rem)}</span></div>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);margin-bottom:8px">ประวัติการรับชำระ</div>
+        ${(src.payments||[]).length?src.payments.map(p=>`
+          <div class="pmt-item">
+            <div class="pmt-icon">💳</div>
+            <div class="pmt-info"><div style="font-weight:600;font-size:13px">${fmt(p.amount)} บาท</div>
+              <div class="pmt-note">${p.date} · ${p.method||''} ${p.note?'· '+p.note:''}</div></div>
+          </div>`).join(''):'<div style="color:var(--ink4);font-size:13px">ยังไม่มีการรับชำระ</div>'}
+      </div>
+    </div>`;
+  }
+  if(src.note) body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)"><b>หมายเหตุ:</b> ${src.note}</div>`;
+  document.getElementById('modal-doc-body').innerHTML=body;
+  document.getElementById('modal-doc').classList.add('show');
+}
+window.viewDoc=viewDoc;
+
+function printCurrentDoc() {
+  if(!_printDocData) return;
+  const {type, src} = _printDocData;
+  const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
+  const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
+  const html=`<style>
+    body{font-family:'Sarabun',sans-serif;font-size:13px;color:#111;padding:20px}
+    .ph{display:flex;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:14px;margin-bottom:14px}
+    .ph-r{text-align:right}.pt{font-size:22px;font-weight:700;color:#1d4ed8}
+    .pp{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:12px 0}
+    table{width:100%;border-collapse:collapse;margin:12px 0}
+    th{background:#f5f5f5;padding:7px 10px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;border-bottom:2px solid #ddd}
+    td{padding:6px 10px;border-bottom:1px solid #eee}td.r{text-align:right;font-family:monospace}
+    .sum{margin-left:auto;width:240px}.sr{display:flex;justify-content:space-between;padding:3px 0;font-size:13px}
+    .sr.t{border-top:2px solid #333;font-weight:700;font-size:15px;margin-top:6px;padding-top:8px}
+    .sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:40px}
+    .sl{border-top:1px solid #999;padding-top:5px;font-size:11px;color:#666;text-align:center}
+  </style>
+  <div class="ph">
+    <div><div style="font-size:16px;font-weight:700">${co.name}</div>
+      <div style="font-size:11px;color:#666">${co.nameEn||''}</div>
+      <div style="font-size:12px;color:#444;margin-top:4px">${co.address||''}</div>
+      <div style="font-size:12px;color:#444">โทร: ${co.phone||''} | เลขภาษี: ${co.taxId||''}</div></div>
+    <div class="ph-r"><div class="pt">${typeLabels[type]}</div>
+      <div style="font-family:monospace;font-size:12px;margin-top:4px">${src.docNumber}</div>
+      <div style="font-size:12px;color:#666">วันที่: ${src.docDate}</div>
+      ${src.docDue?`<div style="font-size:12px;color:#666">ครบกำหนด: ${src.docDue}</div>`:''}
+      ${src.docValid?`<div style="font-size:12px;color:#666">ใช้ได้ถึง: ${src.docValid}</div>`:''}
+    </div>
+  </div>
+  <div class="pp">
+    <div><div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:4px">ลูกค้า</div>
+      <div style="font-weight:600">${src.custName}</div>
+      <div style="font-size:12px;color:#444">${(src.custAddress||'').replace(/\n/g,'<br>')}</div>
+      ${src.custTax?`<div style="font-size:11px;color:#888">เลขภาษี: ${src.custTax}</div>`:''}
+    </div>
+    <div><div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-bottom:4px">เงื่อนไข</div>
+      <div>${src.paymentTerms||src.terms||'—'}</div></div>
+  </div>
+  ${src.items?.length?`<table><thead><tr><th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th></tr></thead>
+  <tbody>${src.items.map((r,i)=>`<tr><td style="color:#aaa">${i+1}</td><td>${r.desc}</td><td class="r">${r.qty}</td><td>${r.unit||''}</td><td class="r">${fmt(r.price)}</td><td class="r" style="font-weight:700">${fmt(r.total)}</td></tr>`).join('')}</tbody></table>
+  <div class="sum">
+    <div class="sr"><span>ก่อน VAT</span><span>${fmt(src.subtotal)}</span></div>
+    ${src.vat?`<div class="sr"><span>VAT 7%</span><span>${fmt(src.vat)}</span></div>`:''}
+    ${src.wht?`<div class="sr"><span>หัก ณ ที่จ่าย 3%</span><span style="color:#b91c1c">-${fmt(src.wht)}</span></div>`:''}
+    <div class="sr t"><span>ยอดสุทธิ</span><span style="color:#1d4ed8">${fmt(src.total)}</span></div>
+  </div>`:''}
+  ${src.note?`<div style="margin-top:14px;font-size:12px;color:#666"><b>หมายเหตุ:</b> ${src.note}</div>`:''}
+  <div class="sig"><div class="sl">ผู้เสนอ / ผู้มีอำนาจ</div><div class="sl">ผู้อนุมัติ / ลูกค้า</div></div>`;
+  document.getElementById('print-frame').innerHTML=html;
+  window.print();
+}
+window.printCurrentDoc=printCurrentDoc;
+
+function printBL(id) { viewDoc('bl',id); setTimeout(printCurrentDoc,200); }
+window.printBL=printBL;
+function printNewDoc(type) { toast('บันทึกก่อนแล้วค่อยพิมพ์จากหน้าประวัติ','info'); }
+window.printNewDoc=printNewDoc;
+
+// ══════════════════════════════════════════════════════
+// REPORTS
+// ══════════════════════════════════════════════════════
+function renderReportAR() {
+  const byCust={};
+  data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
+    const k=i.custName; if(!byCust[k]) byCust[k]={name:k,total:0,paid:0,remain:0,invs:[]};
+    byCust[k].total+=i.total; byCust[k].paid+=(i.paidAmount||0);
+    byCust[k].remain+=remainAmount(i); byCust[k].invs.push(i);
+  });
+  const rows=Object.values(byCust).sort((a,b)=>b.remain-a.remain);
+  document.getElementById('page-content').innerHTML=`
+  <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;max-width:600px">
+    <div class="stat-card orange"><div class="stat-label">จำนวนลูกค้า</div><div class="stat-value">${rows.length}</div><div class="stat-note">ที่ยังค้างชำระ</div></div>
+    <div class="stat-card red"><div class="stat-label">ยอดค้างรวม</div><div class="stat-value">${fmtInt(Math.round(rows.reduce((s,r)=>s+r.remain,0)))}</div></div>
+    <div class="stat-card green"><div class="stat-label">รับแล้วรวม</div><div class="stat-value">${fmtInt(Math.round(rows.reduce((s,r)=>s+r.paid,0)))}</div></div>
+  </div>
+  <div class="card">
+    <table class="tbl"><thead><tr><th>ลูกค้า</th><th class="r">ยอดรวม</th><th class="r">รับแล้ว</th><th class="r">ค้างชำระ</th><th>%ชำระแล้ว</th><th>จำนวนใบ</th></tr></thead>
+    <tbody>${rows.map(r=>{
+      const pct=r.total?r.paid/r.total*100:0;
+      return `<tr>
+        <td style="font-weight:600">${r.name}</td>
+        <td class="r mono">${fmt(r.total)}</td>
+        <td class="r mono" style="color:var(--green)">${fmt(r.paid)}</td>
+        <td class="r mono bold" style="color:var(--red)">${fmt(r.remain)}</td>
+        <td><div style="display:flex;align-items:center;gap:8px">
+          <div class="progress-wrap" style="width:80px"><div class="progress-bar ${pct>=100?'green':pct>50?'orange':'red'}" style="width:${pct}%"></div></div>
+          <span style="font-size:11px;color:var(--ink4)">${pct.toFixed(0)}%</span></div></td>
+        <td class="c mono">${r.invs.length}</td>
+      </tr>`;}).join('')||'<tr><td colspan="6"><div class="empty"><p>ไม่มียอดค้างชำระ 🎉</p></div></td></tr>'}
+    </tbody></table>
+  </div>`;
+}
+
+function renderReportCO() {
+  const byCo={};
+  data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
+    const k=i.companyId; if(!byCo[k]) byCo[k]={name:i.companyName,total:0,paid:0,remain:0,invCount:0};
+    byCo[k].total+=i.total; byCo[k].paid+=(i.paidAmount||0);
+    byCo[k].remain+=remainAmount(i); byCo[k].invCount++;
+  });
+  const rows=Object.values(byCo).sort((a,b)=>b.remain-a.remain);
+  document.getElementById('page-content').innerHTML=`
+  <div class="card">
+    <table class="tbl"><thead><tr><th>บริษัท (ของเรา)</th><th class="r">ยอดรวม INV</th><th class="r">รับแล้ว</th><th class="r">ค้างชำระ</th><th>% เก็บได้</th><th>จำนวน INV</th></tr></thead>
+    <tbody>${rows.map(r=>{
+      const pct=r.total?r.paid/r.total*100:0;
+      return `<tr>
+        <td style="font-weight:700">${r.name}</td>
+        <td class="r mono">${fmt(r.total)}</td>
+        <td class="r mono" style="color:var(--green)">${fmt(r.paid)}</td>
+        <td class="r mono bold" style="color:var(--red)">${fmt(r.remain)}</td>
+        <td><div style="display:flex;align-items:center;gap:8px">
+          <div class="progress-wrap" style="width:80px"><div class="progress-bar ${pct>=100?'green':pct>50?'orange':'red'}" style="width:${pct}%"></div></div>
+          <span style="font-size:11px;color:var(--ink4)">${pct.toFixed(0)}%</span></div></td>
+        <td class="c mono">${r.invCount}</td>
+      </tr>`;}).join('')||'<tr><td colspan="6"><div class="empty"><p>ไม่มียอดค้างชำระ 🎉</p></div></td></tr>'}
+    </tbody></table>
+  </div>`;
+}
+
+function renderReportAging() {
+  const today2=new Date();
+  const buckets=[{label:'0–30 วัน',color:'var(--green)',rows:[]},{label:'31–60 วัน',color:'#f97316',rows:[]},{label:'61–90 วัน',color:'var(--red)',rows:[]},{label:'90+ วัน',color:'#7f1d1d',rows:[]}];
+  data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
+    const d=daysDiff(i.docDue,today2.toISOString().split('T')[0]);
+    const r=remainAmount(i);
+    const idx=d<=0?0:d<=30?0:d<=60?1:d<=90?2:3;
+    buckets[idx].rows.push({...i,overdueDays:Math.max(0,d),remain:r});
+  });
+  const total=buckets.reduce((s,b)=>s+b.rows.reduce((ss,r)=>ss+r.remain,0),0)||1;
+  document.getElementById('page-content').innerHTML=`
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-header"><div class="card-title">⏳ Aging Summary</div></div>
+    <div class="card-body">
+      ${buckets.map(b=>{
+        const bTotal=b.rows.reduce((s,r)=>s+r.remain,0);
+        return `<div class="aging-row" style="margin-bottom:12px">
+          <div class="aging-label" style="font-weight:700;color:${b.color}">${b.label}</div>
+          <div class="aging-bar-wrap" style="height:28px"><div class="aging-bar" style="width:${bTotal/total*100}%;background:${b.color};font-size:12px"> </div></div>
+          <div class="aging-val" style="color:${b.color};font-size:14px">${fmt(bTotal)}</div>
+        </div>`;}).join('')}
+    </div>
+  </div>
+  ${buckets.map(b=>{
+    if(!b.rows.length) return '';
+    return `<div class="card" style="margin-bottom:14px">
+      <div class="card-header" style="border-left:4px solid ${b.color}">
+        <div class="card-title" style="color:${b.color}">${b.label} — ${fmt(b.rows.reduce((s,r)=>s+r.remain,0))} บาท (${b.rows.length} ใบ)</div>
+      </div>
+      <table class="tbl"><thead><tr><th>เลขที่</th><th>บริษัท</th><th>ลูกค้า</th><th>ครบกำหนด</th><th>เกินกำหนด(วัน)</th><th class="r">ค้างชำระ</th><th></th></tr></thead>
+      <tbody>${b.rows.map(i=>`<tr>
+        <td class="mono">${i.docNumber}</td>
+        <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
+        <td style="font-weight:600">${i.custName}</td>
+        <td style="color:${b.color};font-weight:700">${i.docDue}</td>
+        <td class="c mono bold" style="color:${b.color}">${i.overdueDays}</td>
+        <td class="r mono bold" style="color:${b.color}">${fmt(i.remain)}</td>
+        <td><button class="btn btn-xs btn-success" onclick="openPayment('${i.id}')">+ รับชำระ</button></td>
+      </tr>`).join('')}</tbody></table>
+    </div>`;}).join('')}`;
+}
+
+function renderReportReceipt() {
+  const byMonth={};
+  data.invoices.flatMap(i=>(i.payments||[]).map(p=>({...p,companyName:i.companyName,companyId:i.companyId,custName:i.custName}))).forEach(p=>{
+    const m=p.date?.slice(0,7)||'unknown';
+    if(!byMonth[m]) byMonth[m]={month:m,total:0,count:0,items:[]};
+    byMonth[m].total+=p.amount; byMonth[m].count++; byMonth[m].items.push(p);
+  });
+  const months=Object.values(byMonth).sort((a,b)=>b.month.localeCompare(a.month));
+  const maxTotal=Math.max(...months.map(m=>m.total),1);
+  document.getElementById('page-content').innerHTML=`
+  <div class="report-grid" style="grid-template-columns:1fr">
+    <div class="report-card">
+      <div class="report-card-title">📈 เงินรับรายเดือน</div>
+      ${months.map(m=>{
+        const [y,mo]=m.month.split('-');
+        const label=`${mo}/${y}`;
+        return `<div class="aging-row" style="margin-bottom:10px">
+          <div class="aging-label">${label}</div>
+          <div class="aging-bar-wrap" style="height:24px"><div class="aging-bar" style="width:${m.total/maxTotal*100}%;background:var(--green);font-size:11px"> </div></div>
+          <div class="aging-val" style="color:var(--green)">${fmt(m.total)}</div>
+        </div>`;}).join('')||'<div class="empty"><p>ยังไม่มีข้อมูล</p></div>'}
+    </div>
+  </div>
+  ${months.map(m=>`
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header">
+        <div class="card-title">${m.month} — รับ ${fmt(m.total)} บาท (${m.count} รายการ)</div>
+      </div>
+      <table class="tbl"><thead><tr><th>วันที่</th><th>ลูกค้า</th><th>บริษัท</th><th>ช่องทาง</th><th>หมายเหตุ</th><th class="r">จำนวน</th></tr></thead>
+      <tbody>${m.items.map(p=>`<tr>
+        <td>${p.date}</td><td>${p.custName}</td>
+        <td style="font-size:12px;color:var(--ink4)">${p.companyName}</td>
+        <td>${p.method||'—'}</td><td class="muted">${p.note||'—'}</td>
+        <td class="r mono bold" style="color:var(--green)">${fmt(p.amount)}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="background:var(--bg2)">
+        <td colspan="5" style="font-weight:700;padding:8px 12px">รวม</td>
+        <td class="r mono bold" style="color:var(--green);padding:8px 12px">${fmt(m.total)}</td>
+      </tr></tfoot>
+    </div>`).join('')}`;
+}
+
+// ══════════════════════════════════════════════════════
+// COMPANIES
+// ══════════════════════════════════════════════════════
+function renderCompanies() {
+  document.getElementById('topbar-actions').innerHTML=`
+    <button class="btn btn-ghost btn-sm" onclick="exportData()">📤 Export JSON</button>
+    <label class="btn btn-ghost btn-sm" style="cursor:pointer">📥 Import JSON<input type="file" accept=".json" style="display:none" onchange="importData(event)"></label>
+    <button class="btn btn-primary" onclick="openAddCoModal()">+ เพิ่มบริษัท</button>`;
+  document.getElementById('page-content').innerHTML=`
+  <div class="card">
+    <table class="tbl"><thead><tr><th>ชื่อบริษัท</th><th>เลขผู้เสียภาษี</th><th>ที่อยู่</th><th>โทร</th><th>prefix</th><th>VAT</th><th></th></tr></thead>
+    <tbody id="co-list-tbody"></tbody></table>
+  </div>
+  <div class="overlay" id="modal-co">
+    <div class="modal">
+      <div class="modal-title" id="modal-co-title">เพิ่มบริษัทใหม่</div>
+      <div class="form-grid" style="gap:10px">
+        <div class="field span2"><label>ชื่อบริษัท (ไทย)</label><input type="text" id="co-name" placeholder="บริษัท ตัวอย่าง จำกัด"></div>
+        <div class="field span2"><label>ชื่อบริษัท (อังกฤษ)</label><input type="text" id="co-name-en"></div>
+        <div class="field span2"><label>ที่อยู่</label><textarea id="co-addr"></textarea></div>
+        <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="co-tax" maxlength="13"></div>
+        <div class="field"><label>โทรศัพท์</label><input type="text" id="co-phone"></div>
+        <div class="field"><label>prefix เอกสาร</label><input type="text" id="co-prefix" maxlength="6" placeholder="A, B, CO1..."></div>
+        <div class="field" style="justify-content:flex-end;padding-top:16px">
+          <div class="tog-wrap"><label class="tog"><input type="checkbox" id="co-vat"><span class="tog-sl"></span></label><span class="tog-label">มี VAT</span></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('modal-co')">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveCoModal()">บันทึก</button>
+      </div>
+    </div>
+  </div>`;
+  refreshCoList();
+}
+
+let _editCoId=null;
+function refreshCoList() {
+  const tbody=document.getElementById('co-list-tbody'); if(!tbody) return;
+  tbody.innerHTML=companies.length?companies.map(c=>`<tr>
+    <td><div style="font-weight:700">${c.name}</div><div style="font-size:11px;color:var(--ink4)">${c.nameEn||''}</div></td>
+    <td class="mono">${c.taxId||'—'}</td>
+    <td style="font-size:12px;max-width:200px">${c.address||'—'}</td>
+    <td style="font-size:12px">${c.phone||'—'}</td>
+    <td class="mono">${c.prefix||'—'}</td>
+    <td><span class="badge ${c.hasVat?'badge-sent':'badge-draft'}">${c.hasVat?'มี VAT':'ไม่มี'}</span></td>
+    <td>
+      <button class="btn btn-xs btn-outline" onclick="editCo('${c.id}')">✏️</button>
+      <button class="btn btn-xs btn-danger" onclick="deleteCo('${c.id}')">🗑</button>
+    </td>
+  </tr>`).join(''):'<tr><td colspan="7"><div class="empty"><p>ยังไม่มีบริษัท</p></div></td></tr>';
+}
+
+function openAddCoModal() {
+  _editCoId=null;
+  document.getElementById('modal-co-title').textContent='เพิ่มบริษัทใหม่';
+  ['co-name','co-name-en','co-addr','co-tax','co-phone','co-prefix'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('co-vat').checked=false;
+  document.getElementById('modal-co').classList.add('show');
+}
+window.openAddCoModal=openAddCoModal;
+
+function editCo(id) {
+  const c=companies.find(x=>x.id===id); if(!c) return;
+  _editCoId=id;
+  document.getElementById('modal-co-title').textContent='แก้ไขบริษัท';
+  document.getElementById('co-name').value=c.name||'';
+  document.getElementById('co-name-en').value=c.nameEn||'';
+  document.getElementById('co-addr').value=c.address||'';
+  document.getElementById('co-tax').value=c.taxId||'';
+  document.getElementById('co-phone').value=c.phone||'';
+  document.getElementById('co-prefix').value=c.prefix||'';
+  document.getElementById('co-vat').checked=c.hasVat||false;
+  document.getElementById('modal-co').classList.add('show');
+}
+window.editCo=editCo;
+
+async function saveCoModal() {
+  const d={name:document.getElementById('co-name').value.trim(),nameEn:document.getElementById('co-name-en').value.trim(),
+    address:document.getElementById('co-addr').value.trim(),taxId:document.getElementById('co-tax').value.trim(),
+    phone:document.getElementById('co-phone').value.trim(),prefix:(document.getElementById('co-prefix').value.trim()||'X').toUpperCase(),
+    hasVat:document.getElementById('co-vat').checked};
+  if(!d.name){toast('กรุณากรอกชื่อบริษัท','err');return;}
+  if(_editCoId){
+    await storeUpdate('companies',_editCoId,d);
+    const i=companies.findIndex(c=>c.id===_editCoId); if(i>=0) companies[i]={...companies[i],...d};
+  } else {
+    const id=await storeAdd('companies',d);
+    companies.push({id,...d});
+    data.companies=companies;
+  }
+  syncLS('companies', companies);
+  closeModal('modal-co'); refreshCoList(); toast('บันทึกบริษัทเรียบร้อย','ok');
+}
+window.saveCoModal=saveCoModal;
+
+async function deleteCo(id) {
+  if(!confirm('ลบบริษัทนี้?')) return;
+  await storeDelete('companies',id);
+  companies=companies.filter(c=>c.id!==id); data.companies=companies;
+  syncLS('companies', companies);
+  refreshCoList(); toast('ลบเรียบร้อย');
+}
+window.deleteCo=deleteCo;
+
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+function closeModal(id) { document.getElementById(id)?.classList.remove('show'); }
+window.closeModal=closeModal;
+
+let _toastTimer;
+function toast(msg,type='info'){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className=`toast show ${type}`;
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>{el.className='toast';},3200);
+}
+window.toast=toast;
+
+// Close overlay on backdrop click
+document.querySelectorAll('.overlay').forEach(ov=>{
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.classList.remove('show'); });
+});
+
+// ══════════════════════════════════════════════════════
+// BACKUP — EXPORT / IMPORT JSON
+// ══════════════════════════════════════════════════════
+function exportData() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    version: 2,
+    companies: data.companies,
+    quotations: data.quotations,
+    invoices: data.invoices,
+    billings: data.billings,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0,10);
+  a.href=url; a.download=`ar-backup-${ts}.json`; a.click();
+  URL.revokeObjectURL(url);
+  toast('Export สำเร็จ ✅','ok');
+}
+window.exportData=exportData;
+
+function importData(event) {
+  const file=event.target.files?.[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=async(e)=>{
+    try {
+      const payload=JSON.parse(e.target.result);
+      if(!payload.companies||!payload.quotations||!payload.invoices||!payload.billings) {
+        toast('❌ ไฟล์ไม่ถูกต้อง — ไม่พบข้อมูลที่คาดหวัง','err'); return;
+      }
+      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length}`)) return;
+      data.companies=payload.companies;
+      data.quotations=payload.quotations;
+      data.invoices=payload.invoices;
+      data.billings=payload.billings;
+      companies=data.companies;
+      ['companies','quotations','invoices','billings'].forEach(col=>syncLS(col,data[col]));
+      toast(`Import สำเร็จ — ${payload.companies.length} บริษัท, ${payload.invoices.length} INV ✅`,'ok');
+      goPage(_currentPage);
+    } catch(err) { toast('❌ ไม่สามารถอ่านไฟล์ได้: '+err.message,'err'); }
+  };
+  reader.readAsText(file);
+  event.target.value=''; // reset so same file can be re-imported
+}
+window.importData=importData;
+
+// ══════════════════════════════════════════════════════
+// MOBILE SIDEBAR TOGGLE
+// ══════════════════════════════════════════════════════
+function toggleSidebar() {
+  const sb = document.querySelector('.sidebar');
+  const bd = document.getElementById('sidebar-backdrop');
+  sb.classList.toggle('open');
+  bd.classList.toggle('show');
+}
+function closeSidebar() {
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('show');
+}
+window.toggleSidebar = toggleSidebar;
+window.closeSidebar = closeSidebar;
+
+// ── INIT ──
+(async function init() {
+  // Load all collections (Firebase → localStorage → DEMO)
+  data.companies  = await storeLoad('companies',  DEMO.companies);
+  data.quotations = await storeLoad('quotations', DEMO.quotations);
+  data.invoices   = await storeLoad('invoices',   DEMO.invoices);
+  data.billings   = await storeLoad('billings',   DEMO.billings);
+  companies = data.companies;
+  syncCheckConnection();
+  goPage('dashboard');
+})();
+
+// ══════════════════════════════════════════════════════
+// ADMIN PANEL — กด A ค้าง 3 วินาที เพื่อเปิด
+// ══════════════════════════════════════════════════════
+const ADM_PASS = 'admin1234'; // ← เปลี่ยนรหัสได้ที่นี่
+const ADM_COLS = ['companies','quotations','invoices','billings'];
+let ADM = { companies:[], quotations:[], invoices:[], billings:[] };
+let _admCurrentPage = 'overview';
+let _admEditInvId = null;
+let _admPmtInvId = null;
+let _admRawCol = null;
+let _admConfirmAction = null;
+let _admConfirmKeyword = null;
+let _admToastTimer;
+let _admHoldTimer = null;
+let _admHoldStart = false;
+let _admUnlocked = false;
+
+// ── SHORTCUT: กด A ค้าง 3 วินาที ──
+document.addEventListener('keydown', e => {
+  if(e.key !== 'a' && e.key !== 'A') return;
+  if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if(_admHoldStart) return;
+  _admHoldStart = true;
+  const hint = document.getElementById('adm-hint');
+  hint.classList.add('show');
+  _admHoldTimer = setTimeout(() => {
+    hint.classList.remove('show');
+    admOpen();
+    _admHoldStart = false;
+  }, 3000);
+});
+document.addEventListener('keyup', e => {
+  if(e.key !== 'a' && e.key !== 'A') return;
+  if(_admHoldStart) {
+    _admHoldStart = false;
+    clearTimeout(_admHoldTimer);
+    document.getElementById('adm-hint').classList.remove('show');
+  }
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && document.getElementById('adm-shell').classList.contains('open')) admClose();
+});
+
+function admOpen() {
+  document.getElementById('adm-shell').classList.add('open');
+  if(_admUnlocked) {
+    document.getElementById('adm-lock').classList.add('hidden');
+    document.getElementById('adm-app').classList.add('visible');
+    admLoadAll(); admGoPage(_admCurrentPage);
+  } else {
+    document.getElementById('adm-lock').classList.remove('hidden');
+    document.getElementById('adm-app').classList.remove('visible');
+    setTimeout(() => document.getElementById('adm-pass-input').focus(), 100);
+  }
+}
+function admClose() {
+  document.getElementById('adm-shell').classList.remove('open');
+  document.getElementById('adm-pass-input').value = '';
+}
+function admLock() {
+  _admUnlocked = false;
+  document.getElementById('adm-lock').classList.remove('hidden');
+  document.getElementById('adm-app').classList.remove('visible');
+  document.getElementById('adm-pass-input').value = '';
+  setTimeout(() => document.getElementById('adm-pass-input').focus(), 100);
+}
+function admUnlock() {
+  const pass = document.getElementById('adm-pass-input').value;
+  const errEl = document.getElementById('adm-lock-err');
+  if(pass === ADM_PASS) {
+    _admUnlocked = true;
+    document.getElementById('adm-lock').classList.add('hidden');
+    document.getElementById('adm-app').classList.add('visible');
+    admLoadAll(); admGoPage('overview');
+    errEl.textContent = '';
+  } else {
+    errEl.textContent = '❌ รหัสผ่านไม่ถูกต้อง';
+    document.getElementById('adm-pass-input').value = '';
+    document.getElementById('adm-pass-input').focus();
+    setTimeout(() => { errEl.textContent = ''; }, 2000);
+  }
+}
+window.admUnlock = admUnlock;
+window.admClose = admClose;
+window.admLock = admLock;
+window.admOpen = admOpen;
+
+// ── DATA ──
+function admLsLoad(col) { try { const r=localStorage.getItem('ar_sys_'+col); return r?JSON.parse(r):null; } catch(e){return null;} }
+function admLsSave(col, arr) { try { localStorage.setItem('ar_sys_'+col, JSON.stringify(arr)); } catch(e){} }
+function admLoadAll() { ADM_COLS.forEach(c => { ADM[c] = admLsLoad(c)||[]; }); admUpdateSize(); }
+function admSaveCol(col) { admLsSave(col, ADM[col]); admUpdateSize(); }
+function admUpdateSize() {
+  let total=0; ADM_COLS.forEach(c=>{const v=localStorage.getItem('ar_sys_'+c);if(v)total+=v.length;});
+  const el=document.getElementById('adm-storage-size'); if(el) el.textContent=(total/1024).toFixed(1)+'KB';
+}
+
+// ── UTILS ──
+function admFmt(n){return (n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function admUid(){return 'adm-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);}
+function admToday(){return new Date().toISOString().split('T')[0];}
+function admInvStatus(inv) {
+  if(inv.status==='cancelled') return 'cancelled';
+  if((inv.paidAmount||0)>=inv.total) return 'paid';
+  if((inv.paidAmount||0)>0) return 'partial';
+  const due=new Date(inv.docDue); if(due<new Date()) return 'overdue';
+  return inv.status||'sent';
+}
+function admBadge(status) {
+  const m={draft:'ab-draft ร่าง',sent:'ab-sent ส่งแล้ว',partial:'ab-partial ชำระบางส่วน',
+    paid:'ab-paid ชำระแล้ว',overdue:'ab-overdue เกินกำหนด',cancelled:'ab-cancelled ยกเลิก',
+    approved:'ab-paid อนุมัติ',billed:'ab-sent วางบิล','waiting-cheque':'ab-partial รอรับเช็ค',
+    received:'ab-sent รับเอกสาร','partial-paid':'ab-partial ชำระบางส่วน'};
+  const [cls,...w]=m[status]?.split(' ')||['ab-draft','?'];
+  return `<span class="adm-badge ${cls}">${w.join(' ')}</span>`;
+}
+function admToast(msg,type='info'){
+  const el=document.getElementById('adm-toast');
+  el.textContent=msg; el.className=`adm-toast adm-show adm-${type}`;
+  clearTimeout(_admToastTimer);
+  _admToastTimer=setTimeout(()=>{el.className='adm-toast';},3000);
+}
+function admCloseModal(id){document.getElementById(id)?.classList.remove('adm-show');}
+window.admCloseModal=admCloseModal;
+
+// ── NAVIGATION ──
+function admGoPage(p) {
+  _admCurrentPage=p; admLoadAll();
+  document.querySelectorAll('.adm-nav-item').forEach(el=>el.classList.remove('adm-active'));
+  document.getElementById('adm-nav-'+p)?.classList.add('adm-active');
+  const titles={overview:'Overview',invoices:'ใบแจ้งหนี้',quotations:'ใบเสนอราคา',billings:'ใบวางบิล',payments:'Payments',raw:'Raw Editor',danger:'Danger Zone'};
+  document.getElementById('adm-page-title').textContent=titles[p]||p;
+  document.getElementById('adm-page-content').innerHTML='';
+  ({overview:admPageOverview,invoices:admPageInvoices,quotations:admPageQuotations,
+    billings:admPageBillings,payments:admPagePayments,raw:admPageRaw,danger:admPageDanger})[p]?.();
+}
+window.admGoPage=admGoPage;
+
+// ── OVERVIEW ──
+function admPageOverview(){
+  const invs=ADM.invoices; const totalAR=invs.filter(i=>admInvStatus(i)!=='paid'&&admInvStatus(i)!=='cancelled').reduce((s,i)=>s+Math.max(0,i.total-(i.paidAmount||0)),0);
+  const totalPaid=invs.flatMap(i=>i.payments||[]).reduce((s,p)=>s+p.amount,0);
+  document.getElementById('adm-page-content').innerHTML=`
+  <div class="adm-stat-grid">
+    <div class="adm-stat"><div class="adm-stat-label">บริษัท</div><div class="adm-stat-val">${ADM.companies.length}</div></div>
+    <div class="adm-stat adm-orange"><div class="adm-stat-label">ใบแจ้งหนี้</div><div class="adm-stat-val">${invs.length}</div><div class="adm-stat-note">QT:${ADM.quotations.length} BL:${ADM.billings.length}</div></div>
+    <div class="adm-stat adm-red"><div class="adm-stat-label">ค้างชำระ</div><div class="adm-stat-val" style="font-size:15px">${admFmt(totalAR)}</div></div>
+    <div class="adm-stat adm-green"><div class="adm-stat-label">รับแล้ว</div><div class="adm-stat-val" style="font-size:15px">${admFmt(totalPaid)}</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">📊 localStorage</div></div><div class="adm-card-body">
+      ${ADM_COLS.map(c=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2a2a38;font-family:'IBM Plex Mono',monospace;font-size:11px"><span style="color:#a0a0b8">${c}</span><span>${ADM[c].length} records</span></div>`).join('')}
+    </div></div>
+    <div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">⚡ Quick Actions</div></div><div class="adm-card-body" style="display:flex;flex-direction:column;gap:7px">
+      <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admGoPage('invoices')">🧾 จัดการใบแจ้งหนี้</button>
+      <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admGoPage('payments')">💰 จัดการ Payments</button>
+      <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admExportAll()">📤 Export Backup JSON</button>
+      <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admGoPage('danger')">🗑️ Danger Zone</button>
+    </div></div>
+  </div>`;
+}
+
+// ── INVOICES ──
+function admPageInvoices(){
+  document.getElementById('adm-page-content').innerHTML=`
+  <div class="adm-filters">
+    <select id="adm-f-co" onchange="admRenderInvTable()"><option value="">— ทุกบริษัท —</option>${ADM.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+    <select id="adm-f-st" onchange="admRenderInvTable()"><option value="">— ทุกสถานะ —</option><option value="sent">ส่งแล้ว</option><option value="partial">บางส่วน</option><option value="paid">ชำระแล้ว</option><option value="overdue">เกินกำหนด</option><option value="cancelled">ยกเลิก</option></select>
+    <input type="text" id="adm-f-srch" placeholder="ค้นหา..." oninput="admRenderInvTable()" style="width:160px">
+  </div>
+  <div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">🧾 ใบแจ้งหนี้ทั้งหมด</div><div class="adm-card-sub" id="adm-inv-cnt"></div></div>
+  <table class="adm-tbl"><thead><tr><th>เลขที่</th><th>วันที่</th><th>ครบกำหนด</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">ยอดรวม</th><th class="r">รับแล้ว</th><th class="r">คงเหลือ</th><th>จ่าย</th><th>สถานะ</th><th>Actions</th></tr></thead>
+  <tbody id="adm-inv-tbody"></tbody></table></div>`;
+  admRenderInvTable();
+}
+function admRenderInvTable(){
+  const coF=document.getElementById('adm-f-co')?.value||'', stF=document.getElementById('adm-f-st')?.value||'';
+  const srch=(document.getElementById('adm-f-srch')?.value||'').toLowerCase();
+  let rows=[...ADM.invoices];
+  if(coF) rows=rows.filter(r=>r.companyId===coF);
+  if(stF) rows=rows.filter(r=>admInvStatus(r)===stF);
+  if(srch) rows=rows.filter(r=>(r.custName||'').toLowerCase().includes(srch)||(r.docNumber||'').toLowerCase().includes(srch));
+  document.getElementById('adm-inv-cnt').textContent=`${rows.length} รายการ`;
+  const tbody=document.getElementById('adm-inv-tbody'); if(!tbody) return;
+  tbody.innerHTML=rows.length?rows.map(i=>{
+    const st=admInvStatus(i), rem=Math.max(0,i.total-(i.paidAmount||0)), cnt=(i.payments||[]).length;
+    return `<tr>
+      <td class="adm-mono">${i.docNumber}</td><td class="adm-mono adm-muted">${i.docDate}</td>
+      <td class="adm-mono adm-muted" style="${st==='overdue'?'color:#ef4444':''}">${i.docDue||'—'}</td>
+      <td style="font-size:11px;color:#606078">${i.companyName||'—'}</td><td style="font-weight:600">${i.custName}</td>
+      <td class="r adm-mono">${admFmt(i.total)}</td><td class="r adm-mono" style="color:#22c55e">${admFmt(i.paidAmount||0)}</td>
+      <td class="r adm-mono adm-bold" style="color:${rem>0?'#ef4444':'#22c55e'}">${admFmt(rem)}</td>
+      <td class="c"><span class="adm-badge ${cnt>0?'ab-paid':'ab-draft'}">${cnt}</span></td>
+      <td>${admBadge(st)}</td>
+      <td style="white-space:nowrap">
+        <button class="adm-btn adm-btn-xs adm-btn-ghost" onclick="admEditInv('${i.id}')">✏️</button>
+        <button class="adm-btn adm-btn-xs adm-btn-warn" onclick="admManagePmts('${i.id}')">💰</button>
+        <button class="adm-btn adm-btn-xs adm-btn-danger" onclick="admForceDelInv('${i.id}')">🗑</button>
+      </td></tr>`;
+  }).join(''):'<tr><td colspan="11"><div class="adm-empty"><p>ไม่พบข้อมูล</p></div></td></tr>';
+}
+window.admRenderInvTable=admRenderInvTable;
+
+function admEditInv(id){
+  const inv=ADM.invoices.find(x=>x.id===id); if(!inv) return;
+  _admEditInvId=id;
+  document.getElementById('adm-medit-title').textContent=`✏️ ${inv.docNumber}`;
+  document.getElementById('adm-medit-body').innerHTML=`
+  <div class="adm-row c2"><div class="adm-field"><label>วันที่</label><input type="date" id="aei-date" value="${inv.docDate||''}"></div><div class="adm-field"><label>ครบกำหนด</label><input type="date" id="aei-due" value="${inv.docDue||''}"></div></div>
+  <div class="adm-row c2"><div class="adm-field"><label>ชื่อลูกค้า</label><input type="text" id="aei-cust" value="${inv.custName||''}"></div><div class="adm-field"><label>เลขผู้เสียภาษี</label><input type="text" id="aei-tax" value="${inv.custTax||''}"></div></div>
+  <div class="adm-field"><label>ที่อยู่</label><textarea id="aei-addr">${inv.custAddress||''}</textarea></div>
+  <div class="adm-row c4">
+    <div class="adm-field"><label>ก่อน VAT</label><input type="number" id="aei-sub" value="${inv.subtotal||0}" step="0.01" oninput="admRecalcInv()"></div>
+    <div class="adm-field"><label>VAT</label><input type="number" id="aei-vat" value="${inv.vat||0}" step="0.01" oninput="admRecalcInv()"></div>
+    <div class="adm-field"><label>หัก ณ ที่จ่าย</label><input type="number" id="aei-wht" value="${inv.wht||0}" step="0.01" oninput="admRecalcInv()"></div>
+    <div class="adm-field"><label>ยอดสุทธิ</label><input type="number" id="aei-total" value="${inv.total||0}" step="0.01" style="color:#818cf8;font-weight:700"></div>
+  </div>
+  <div class="adm-row c3">
+    <div class="adm-field"><label>รับชำระแล้ว</label><input type="number" id="aei-paid" value="${inv.paidAmount||0}" step="0.01" style="color:#22c55e"></div>
+    <div class="adm-field"><label>สถานะ (override)</label><select id="aei-status">
+      <option value="draft"${inv.status==='draft'?' selected':''}>ร่าง</option>
+      <option value="sent"${inv.status==='sent'?' selected':''}>ส่งแล้ว</option>
+      <option value="partial"${inv.status==='partial'?' selected':''}>ชำระบางส่วน</option>
+      <option value="paid"${inv.status==='paid'?' selected':''}>ชำระแล้ว</option>
+      <option value="overdue"${inv.status==='overdue'?' selected':''}>เกินกำหนด</option>
+      <option value="cancelled"${inv.status==='cancelled'?' selected':''}>ยกเลิก</option>
+    </select></div>
+    <div class="adm-field"><label>หมายเหตุ</label><input type="text" id="aei-note" value="${inv.note||''}"></div>
+  </div>`;
+  document.getElementById('adm-modal-edit-inv').classList.add('adm-show');
+}
+window.admEditInv=admEditInv;
+function admRecalcInv(){
+  const s=parseFloat(document.getElementById('aei-sub')?.value||0), v=parseFloat(document.getElementById('aei-vat')?.value||0), w=parseFloat(document.getElementById('aei-wht')?.value||0);
+  document.getElementById('aei-total').value=(s+v-w).toFixed(2);
+}
+window.admRecalcInv=admRecalcInv;
+function admSaveEditInv(){
+  const inv=ADM.invoices.find(x=>x.id===_admEditInvId); if(!inv) return;
+  Object.assign(inv,{docDate:document.getElementById('aei-date').value,docDue:document.getElementById('aei-due').value,
+    custName:document.getElementById('aei-cust').value,custTax:document.getElementById('aei-tax').value,
+    custAddress:document.getElementById('aei-addr').value,subtotal:parseFloat(document.getElementById('aei-sub').value)||0,
+    vat:parseFloat(document.getElementById('aei-vat').value)||0,wht:parseFloat(document.getElementById('aei-wht').value)||0,
+    total:parseFloat(document.getElementById('aei-total').value)||0,paidAmount:parseFloat(document.getElementById('aei-paid').value)||0,
+    status:document.getElementById('aei-status').value,note:document.getElementById('aei-note').value});
+  admSaveCol('invoices'); admCloseModal('adm-modal-edit-inv'); admRenderInvTable();
+  // sync main system in-memory
+  const mainInv=data.invoices.find(x=>x.id===_admEditInvId); if(mainInv) Object.assign(mainInv,inv);
+  admToast('บันทึกเรียบร้อย ✅','ok');
+}
+window.admSaveEditInv=admSaveEditInv;
+
+function admForceDelInv(id){
+  const inv=ADM.invoices.find(x=>x.id===id); if(!inv) return;
+  admShowConfirm(`⚠️ Force Delete: ${inv.docNumber}`,
+    `ลูกค้า: <strong>${inv.custName}</strong><br>ยอด: ${admFmt(inv.total)} บาท<br>Payments: <strong style="color:#ef4444">${(inv.payments||[]).length} รายการ</strong><br><br>ไม่สามารถย้อนกลับได้`,
+    'พิมพ์ DELETE เพื่อยืนยัน','DELETE',()=>{
+      if(inv.linkedQt){const qt=ADM.quotations.find(q=>q.id===inv.linkedQt);if(qt){qt.linkedInvoice=null;qt.status='sent';}}
+      if(inv.linkedBilling){const bl=ADM.billings.find(b=>b.id===inv.linkedBilling);if(bl)bl.invoiceIds=(bl.invoiceIds||[]).filter(x=>x!==id);}
+      ADM.invoices=ADM.invoices.filter(x=>x.id!==id);
+      ADM_COLS.forEach(c=>admSaveCol(c));
+      // sync main
+      data.invoices=data.invoices.filter(x=>x.id!==id);
+      data.quotations=ADM.quotations; data.billings=ADM.billings;
+      admRenderInvTable(); admToast('Force deleted ✅','ok');
+    });
+}
+window.admForceDelInv=admForceDelInv;
+
+// ── PAYMENTS MANAGER ──
+function admManagePmts(id){
+  _admPmtInvId=id;
+  const inv=ADM.invoices.find(x=>x.id===id); if(!inv) return;
+  document.getElementById('adm-mpmts-title').textContent=`💰 ${inv.docNumber} — ${inv.custName}`;
+  admRenderPmtsModal(inv);
+  document.getElementById('adm-modal-pmts').classList.add('adm-show');
+}
+window.admManagePmts=admManagePmts;
+function admRenderPmtsModal(inv){
+  const pmts=inv.payments||[], rem=Math.max(0,inv.total-(inv.paidAmount||0));
+  document.getElementById('adm-mpmts-body').innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+    <div style="background:#1c1c22;padding:11px;border-radius:6px;text-align:center"><div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#606078;text-transform:uppercase;margin-bottom:3px">ยอดรวม</div><div style="font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700">${admFmt(inv.total)}</div></div>
+    <div style="background:rgba(34,197,94,.08);padding:11px;border-radius:6px;text-align:center;border:1px solid rgba(34,197,94,.2)"><div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#22c55e;text-transform:uppercase;margin-bottom:3px">รับแล้ว</div><div style="font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;color:#22c55e">${admFmt(inv.paidAmount||0)}</div></div>
+    <div style="background:${rem>0?'rgba(239,68,68,.08)':'rgba(34,197,94,.08)'};padding:11px;border-radius:6px;text-align:center;border:1px solid ${rem>0?'rgba(239,68,68,.2)':'rgba(34,197,94,.2)'}"><div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:${rem>0?'#ef4444':'#22c55e'};text-transform:uppercase;margin-bottom:3px">คงเหลือ</div><div style="font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;color:${rem>0?'#ef4444':'#22c55e'}">${admFmt(rem)}</div></div>
+  </div>
+  <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#606078;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Payment Records (${pmts.length})</div>
+  ${pmts.map(p=>`<div class="adm-pmt-row"><div class="adm-pmt-date">${p.date}</div><div class="adm-pmt-method">${p.method||'—'}</div><div class="adm-pmt-note">${p.note||''}</div><div class="adm-pmt-amt">+${admFmt(p.amount)}</div>
+    <button class="adm-btn adm-btn-xs adm-btn-warn" onclick="admEditPmt('${inv.id}','${p.id}')">✏️</button>
+    <button class="adm-btn adm-btn-xs adm-btn-danger" onclick="admDelPmt('${inv.id}','${p.id}')">🗑</button>
+  </div>`).join('')||'<div class="adm-empty" style="padding:16px"><p>ยังไม่มี payment</p></div>'}
+  <div style="border:1px solid #363648;border-radius:6px;padding:12px;background:#1c1c22;margin-top:10px">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#606078;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">➕ เพิ่ม Payment</div>
+    <div class="adm-row c4">
+      <div class="adm-field"><label>วันที่</label><input type="date" id="adm-np-date" value="${admToday()}"></div>
+      <div class="adm-field"><label>จำนวน</label><input type="number" id="adm-np-amt" value="${rem.toFixed(2)}" step="0.01" min="0.01"></div>
+      <div class="adm-field"><label>ช่องทาง</label><select id="adm-np-method"><option>โอนธนาคาร</option><option>เช็ค</option><option>เงินสด</option><option>พร้อมเพย์</option></select></div>
+      <div class="adm-field"><label>หมายเหตุ</label><input type="text" id="adm-np-note" placeholder="(ไม่บังคับ)"></div>
+    </div>
+    <button class="adm-btn adm-btn-success" onclick="admAddPmt('${inv.id}')">✅ เพิ่ม Payment</button>
+  </div>`;
+}
+function admAddPmt(invId){
+  const inv=ADM.invoices.find(x=>x.id===invId); if(!inv) return;
+  const amt=parseFloat(document.getElementById('adm-np-amt')?.value||0);
+  if(amt<=0){admToast('กรุณากรอกจำนวน','err');return;}
+  const pmt={id:admUid(),date:document.getElementById('adm-np-date').value,amount:amt,method:document.getElementById('adm-np-method').value,note:document.getElementById('adm-np-note').value};
+  inv.payments=[...(inv.payments||[]),pmt]; inv.paidAmount=(inv.paidAmount||0)+amt;
+  if(inv.paidAmount>=inv.total) inv.status='paid'; else if(inv.paidAmount>0) inv.status='partial';
+  admSaveCol('invoices');
+  // sync main
+  const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
+  admRenderPmtsModal(inv); admRenderInvTable(); admToast(`เพิ่ม ${admFmt(amt)} บาท ✅`,'ok');
+}
+window.admAddPmt=admAddPmt;
+function admDelPmt(invId,pmtId){
+  const inv=ADM.invoices.find(x=>x.id===invId); if(!inv) return;
+  const pmt=(inv.payments||[]).find(p=>p.id===pmtId); if(!pmt) return;
+  if(!confirm(`ลบ payment ${admFmt(pmt.amount)} บาท (${pmt.date}) ?`)) return;
+  inv.payments=(inv.payments||[]).filter(p=>p.id!==pmtId);
+  inv.paidAmount=Math.max(0,(inv.paidAmount||0)-pmt.amount);
+  if(inv.paidAmount<=0&&['paid','partial'].includes(inv.status)) inv.status='sent';
+  else if(inv.paidAmount>0&&inv.paidAmount<inv.total) inv.status='partial';
+  admSaveCol('invoices');
+  const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
+  admRenderPmtsModal(inv); admRenderInvTable(); admToast('ลบ payment เรียบร้อย','ok');
+}
+window.admDelPmt=admDelPmt;
+function admEditPmt(invId,pmtId){
+  const inv=ADM.invoices.find(x=>x.id===invId); if(!inv) return;
+  const pmt=(inv.payments||[]).find(p=>p.id===pmtId); if(!pmt) return;
+  const nd=prompt('วันที่ (YYYY-MM-DD):',pmt.date); if(nd===null) return;
+  const na=parseFloat(prompt('จำนวน (บาท):',pmt.amount)||pmt.amount);
+  const nm=prompt('ช่องทาง:',pmt.method||''); if(nm===null) return;
+  const nn=prompt('หมายเหตุ:',pmt.note||''); if(nn===null) return;
+  const old=pmt.amount; pmt.date=nd; pmt.amount=na; pmt.method=nm; pmt.note=nn;
+  inv.paidAmount=Math.max(0,(inv.paidAmount||0)-old+na);
+  if(inv.paidAmount>=inv.total) inv.status='paid'; else if(inv.paidAmount>0) inv.status='partial'; else inv.status='sent';
+  admSaveCol('invoices');
+  const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
+  admRenderPmtsModal(inv); admRenderInvTable(); admToast('แก้ไขเรียบร้อย','ok');
+}
+window.admEditPmt=admEditPmt;
+
+// ── QUOTATIONS ──
+function admPageQuotations(){
+  document.getElementById('adm-page-content').innerHTML=`<div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">📋 ใบเสนอราคา</div><div class="adm-card-sub">${ADM.quotations.length} รายการ</div></div>
+  <table class="adm-tbl"><thead><tr><th>เลขที่</th><th>วันที่</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">ยอด</th><th>สถานะ</th><th>linked</th><th>Actions</th></tr></thead>
+  <tbody>${ADM.quotations.map(q=>`<tr>
+    <td class="adm-mono">${q.docNumber}</td><td class="adm-mono adm-muted">${q.docDate}</td>
+    <td style="font-size:11px;color:#606078">${q.companyName||'—'}</td><td style="font-weight:600">${q.custName}</td>
+    <td class="r adm-mono">${admFmt(q.total)}</td><td>${admBadge(q.status||'draft')}</td>
+    <td class="adm-mono" style="font-size:10px;color:${q.linkedInvoice?'#22c55e':'#606078'}">${q.linkedInvoice?'✓ INV':'—'}</td>
+    <td style="white-space:nowrap">
+      <button class="adm-btn adm-btn-xs adm-btn-warn" onclick="admEditQT('${q.id}')">✏️ สถานะ</button>
+      <button class="adm-btn adm-btn-xs adm-btn-danger" onclick="admForceDelQT('${q.id}')">🗑 Force</button>
+    </td></tr>`).join('')||'<tr><td colspan="8"><div class="adm-empty"><p>ไม่มีข้อมูล</p></div></td></tr>'}
+  </tbody></table></div>`;
+}
+function admEditQT(id){
+  const q=ADM.quotations.find(x=>x.id===id); if(!q) return;
+  const opts=['draft','sent','approved','cancelled'];
+  const val=prompt(`สถานะใหม่ (${opts.join('/')}) :`,q.status||'sent'); if(!val||!opts.includes(val.trim())) return;
+  q.status=val.trim();
+  const cl=q.linkedInvoice&&confirm('Unlink Invoice ด้วยไหม?');
+  if(cl){const inv=ADM.invoices.find(i=>i.id===q.linkedInvoice);if(inv)inv.linkedQt=null;q.linkedInvoice=null;admSaveCol('invoices');}
+  admSaveCol('quotations'); data.quotations=ADM.quotations; admPageQuotations(); admToast('อัปเดตเรียบร้อย','ok');
+}
+window.admEditQT=admEditQT;
+function admForceDelQT(id){
+  const q=ADM.quotations.find(x=>x.id===id); if(!q) return;
+  admShowConfirm(`⚠️ Force Delete QT: ${q.docNumber}`,`ลูกค้า: <strong>${q.custName}</strong><br>ยอด: ${admFmt(q.total)} บาท`,'พิมพ์ DELETE','DELETE',()=>{
+    if(q.linkedInvoice){const inv=ADM.invoices.find(i=>i.id===q.linkedInvoice);if(inv)inv.linkedQt=null;admSaveCol('invoices');}
+    ADM.quotations=ADM.quotations.filter(x=>x.id!==id); admSaveCol('quotations');
+    data.quotations=ADM.quotations; admPageQuotations(); admToast('Deleted ✅','ok');
+  });
+}
+window.admForceDelQT=admForceDelQT;
+
+// ── BILLINGS ──
+function admPageBillings(){
+  const stOpts=['sent','received','waiting-cheque','partial-paid','paid','cancelled'];
+  const stLabel={sent:'ส่งแล้ว',received:'รับเอกสาร','waiting-cheque':'รอเช็ค','partial-paid':'บางส่วน',paid:'ชำระแล้ว',cancelled:'ยกเลิก'};
+  document.getElementById('adm-page-content').innerHTML=`<div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">📬 ใบวางบิล</div><div class="adm-card-sub">${ADM.billings.length} รายการ</div></div>
+  <table class="adm-tbl"><thead><tr><th>เลขที่</th><th>วันที่</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">มูลค่า</th><th>สถานะ</th><th>Actions</th></tr></thead>
+  <tbody>${ADM.billings.map(b=>`<tr>
+    <td class="adm-mono">${b.docNumber}</td><td class="adm-mono adm-muted">${b.docDate}</td>
+    <td style="font-size:11px;color:#606078">${b.companyName||'—'}</td><td style="font-weight:600">${b.custName}</td>
+    <td class="r adm-mono">${admFmt(b.total)}</td>
+    <td><select style="background:#1c1c22;border:1px solid #2a2a38;border-radius:4px;color:#e8e8f0;font-size:11px;padding:2px 6px" onchange="admUpdateBLStatus('${b.id}',this.value)">
+      ${stOpts.map(s=>`<option value="${s}"${(b.status||'sent')===s?' selected':''}>${stLabel[s]}</option>`).join('')}
+    </select></td>
+    <td style="white-space:nowrap">
+      <button class="adm-btn adm-btn-xs adm-btn-danger" onclick="admForceDelBL('${b.id}')">🗑 Force</button>
+    </td></tr>`).join('')||'<tr><td colspan="7"><div class="adm-empty"><p>ไม่มีข้อมูล</p></div></td></tr>'}
+  </tbody></table></div>`;
+}
+function admUpdateBLStatus(id,status){
+  const b=ADM.billings.find(x=>x.id===id); if(!b) return;
+  b.status=status; admSaveCol('billings'); data.billings=ADM.billings; admToast('อัปเดตสถานะ ✅','ok');
+}
+window.admUpdateBLStatus=admUpdateBLStatus;
+function admForceDelBL(id){
+  const b=ADM.billings.find(x=>x.id===id); if(!b) return;
+  admShowConfirm(`⚠️ Force Delete BL: ${b.docNumber}`,`ลูกค้า: <strong>${b.custName}</strong><br>มูลค่า: ${admFmt(b.total)} บาท`,'พิมพ์ DELETE','DELETE',()=>{
+    (b.invoiceIds||[]).forEach(invId=>{const inv=ADM.invoices.find(i=>i.id===invId);if(inv)inv.linkedBilling=null;});
+    admSaveCol('invoices'); ADM.billings=ADM.billings.filter(x=>x.id!==id); admSaveCol('billings');
+    data.invoices=ADM.invoices; data.billings=ADM.billings; admPageBillings(); admToast('Deleted ✅','ok');
+  });
+}
+window.admForceDelBL=admForceDelBL;
+
+// ── ALL PAYMENTS ──
+function admPagePayments(){
+  const all=ADM.invoices.flatMap(i=>(i.payments||[]).map(p=>({...p,invId:i.id,invNo:i.docNumber,custName:i.custName,companyName:i.companyName})));
+  all.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const total=all.reduce((s,p)=>s+p.amount,0);
+  document.getElementById('adm-page-content').innerHTML=`
+  <div class="adm-stat-grid" style="grid-template-columns:repeat(3,1fr);max-width:480px;margin-bottom:14px">
+    <div class="adm-stat adm-green"><div class="adm-stat-label">รวมรับ</div><div class="adm-stat-val" style="font-size:16px">${admFmt(total)}</div></div>
+    <div class="adm-stat"><div class="adm-stat-label">ครั้ง</div><div class="adm-stat-val">${all.length}</div></div>
+    <div class="adm-stat adm-accent"><div class="adm-stat-label">ใบ INV</div><div class="adm-stat-val">${new Set(all.map(p=>p.invId)).size}</div></div>
+  </div>
+  <div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">💰 Payment Records ทั้งหมด</div><div class="adm-card-sub">${all.length} รายการ</div></div>
+  <table class="adm-tbl"><thead><tr><th>วันที่</th><th>ใบแจ้งหนี้</th><th>ลูกค้า</th><th>บริษัท</th><th>ช่องทาง</th><th>หมายเหตุ</th><th class="r">จำนวน</th><th>Actions</th></tr></thead>
+  <tbody>${all.map(p=>`<tr>
+    <td class="adm-mono">${p.date}</td><td class="adm-mono">${p.invNo}</td>
+    <td style="font-weight:600">${p.custName}</td><td style="font-size:11px;color:#606078">${p.companyName}</td>
+    <td>${p.method||'—'}</td><td class="adm-muted">${p.note||'—'}</td>
+    <td class="r adm-mono adm-bold" style="color:#22c55e">${admFmt(p.amount)}</td>
+    <td style="white-space:nowrap">
+      <button class="adm-btn adm-btn-xs adm-btn-warn" onclick="admEditPmt('${p.invId}','${p.id}')">✏️</button>
+      <button class="adm-btn adm-btn-xs adm-btn-danger" onclick="admDelPmtAndRefresh('${p.invId}','${p.id}')">🗑</button>
+    </td></tr>`).join('')||'<tr><td colspan="8"><div class="adm-empty"><p>ไม่มีข้อมูล</p></div></td></tr>'}
+  </tbody></table></div>`;
+}
+function admDelPmtAndRefresh(invId,pmtId){
+  const inv=ADM.invoices.find(x=>x.id===invId); if(!inv) return;
+  const pmt=(inv.payments||[]).find(p=>p.id===pmtId); if(!pmt) return;
+  if(!confirm(`ลบ payment ${admFmt(pmt.amount)} บาท (${pmt.date}) ?`)) return;
+  inv.payments=(inv.payments||[]).filter(p=>p.id!==pmtId);
+  inv.paidAmount=Math.max(0,(inv.paidAmount||0)-pmt.amount);
+  if(inv.paidAmount<=0&&['paid','partial'].includes(inv.status)) inv.status='sent';
+  else if(inv.paidAmount>0&&inv.paidAmount<inv.total) inv.status='partial';
+  admSaveCol('invoices');
+  const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
+  admPagePayments(); admToast('ลบ payment เรียบร้อย','ok');
+}
+window.admDelPmtAndRefresh=admDelPmtAndRefresh;
+
+// ── RAW EDITOR ──
+function admPageRaw(){
+  document.getElementById('adm-page-content').innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+    ${ADM_COLS.map(c=>`<button class="adm-btn adm-btn-ghost" style="flex-direction:column;padding:16px;height:auto;justify-content:center" onclick="admOpenRaw('${c}')">
+      <div style="font-size:20px;margin-bottom:4px">${{companies:'🏢',quotations:'📋',invoices:'🧾',billings:'📬'}[c]}</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700">${c}</div>
+      <div style="font-size:10px;color:#606078;font-family:'IBM Plex Mono',monospace">${ADM[c].length} records</div>
+    </button>`).join('')}
+  </div>
+  <div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">🔑 เปลี่ยนรหัสผ่าน Admin</div></div><div class="adm-card-body">
+    <div class="adm-row c3" style="align-items:flex-end">
+      <div class="adm-field"><label>รหัสใหม่</label><input type="password" id="adm-np1" placeholder="••••••••"></div>
+      <div class="adm-field"><label>ยืนยัน</label><input type="password" id="adm-np2" placeholder="••••••••"></div>
+      <button class="adm-btn adm-btn-warn" onclick="admChangePass()">เปลี่ยนรหัสผ่าน</button>
+    </div>
+    <div style="font-size:10px;color:#606078;font-family:'IBM Plex Mono',monospace;margin-top:6px">⚠️ มีผล session นี้เท่านั้น — แก้ ADM_PASS ใน source code เพื่อถาวร</div>
+  </div></div>`;
+}
+function admOpenRaw(col){
+  _admRawCol=col;
+  document.getElementById('adm-mraw-title').textContent=`⚙️ Raw Editor — ${col} (${ADM[col].length} records)`;
+  document.getElementById('adm-raw-ta').value=JSON.stringify(ADM[col],null,2);
+  document.getElementById('adm-modal-raw').classList.add('adm-show');
+}
+window.admOpenRaw=admOpenRaw;
+function admSaveRaw(){
+  if(!_admRawCol) return;
+  try{
+    const parsed=JSON.parse(document.getElementById('adm-raw-ta').value);
+    if(!Array.isArray(parsed)){admToast('❌ ต้องเป็น Array','err');return;}
+    if(!confirm(`บันทึก ${_admRawCol}: ${parsed.length} records?`)) return;
+    ADM[_admRawCol]=parsed; admSaveCol(_admRawCol);
+    data[_admRawCol]=parsed; if(_admRawCol==='companies') companies=parsed;
+    admCloseModal('adm-modal-raw'); admGoPage(_admCurrentPage); admToast('บันทึกเรียบร้อย ✅','ok');
+  }catch(e){admToast('❌ JSON ไม่ถูกต้อง: '+e.message,'err');}
+}
+window.admSaveRaw=admSaveRaw;
+function admChangePass(){
+  const p1=document.getElementById('adm-np1')?.value, p2=document.getElementById('adm-np2')?.value;
+  if(!p1||p1.length<6){admToast('❌ อย่างน้อย 6 ตัว','err');return;}
+  if(p1!==p2){admToast('❌ รหัสไม่ตรงกัน','err');return;}
+  window._admPassOverride=p1; admToast(`เปลี่ยนเป็น "${p1}" (session นี้)`,'ok');
+}
+window.admChangePass=admChangePass;
+
+// ── DANGER ZONE ──
+function admPageDanger(){
+  document.getElementById('adm-page-content').innerHTML=`
+  <div style="font-size:12px;color:#a0a0b8;margin-bottom:16px;font-family:'IBM Plex Mono',monospace">⚠️ ทุกการดำเนินการในหน้านี้ไม่สามารถย้อนกลับได้</div>
+  <button class="adm-btn adm-btn-success" style="margin-bottom:16px" onclick="admExportAll()">📤 Export Backup ก่อน</button>
+
+  <div class="adm-danger-zone">
+    <div class="adm-danger-title">🧹 ลบ Invoice ที่ยังไม่ชำระ</div>
+    <div class="adm-danger-desc">ลบเฉพาะ Invoice ที่ paidAmount = 0 เหมาะสำหรับเคลียร์ข้อมูลทดสอบ</div>
+    <button class="adm-btn adm-btn-warn" onclick="admDelUnpaid()">🧹 ลบ Invoice ที่ยังไม่ชำระทั้งหมด</button>
+  </div>
+
+  <div class="adm-danger-zone">
+    <div class="adm-danger-title">💣 Reset Collection เดี่ยว</div>
+    <div class="adm-danger-desc">ลบข้อมูลใน collection ที่เลือกทั้งหมด</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${['quotations','invoices','billings'].map(c=>`<button class="adm-btn adm-btn-danger" onclick="admResetCol('${c}')">🗑️ Clear ${c}</button>`).join('')}
+    </div>
+  </div>
+
+  <div class="adm-danger-zone">
+    <div class="adm-danger-title">☠️ Nuclear Reset — ล้างทุกอย่าง</div>
+    <div class="adm-danger-desc">ลบข้อมูลทั้งหมดรวมถึงบริษัท เอกสาร และ payments ระบบจะกลับสู่สถานะเริ่มต้น (ไม่โหลด demo)</div>
+    <button class="adm-btn adm-btn-danger" onclick="admResetAll()">☠️ Reset ทั้งระบบ</button>
+  </div>
+
+  <div class="adm-card" style="margin-top:16px"><div class="adm-card-header"><div class="adm-card-title">🔧 Fix Tools</div></div><div class="adm-card-body" style="display:flex;flex-direction:column;gap:7px">
+    <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admFixPaid()">🔧 คำนวณ paidAmount ใหม่จาก payment records</button>
+    <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admFixStatus()">🔧 อัปเดต Invoice status ทั้งหมด</button>
+    <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admClearSeq()">🔧 Reset sequence counter เลขเอกสาร</button>
+    <label class="adm-btn adm-btn-ghost" style="justify-content:flex-start;cursor:pointer">📥 Import JSON Backup<input type="file" accept=".json" style="display:none" onchange="admImportAll(event)"></label>
+  </div></div>`;
+}
+
+function admDelUnpaid(){
+  const toDelete=ADM.invoices.filter(i=>(i.paidAmount||0)===0);
+  if(!toDelete.length){admToast('ไม่มีใบที่ยังไม่ชำระ','info');return;}
+  admShowConfirm('🧹 ลบ Invoice ไม่ชำระ',
+    `จะลบ <strong style="color:#ef4444">${toDelete.length} ใบ</strong> (paidAmount = 0)`,
+    'พิมพ์ DELETE','DELETE',()=>{
+      const delIds=new Set(toDelete.map(i=>i.id));
+      ADM.quotations.forEach(q=>{if(q.linkedInvoice&&delIds.has(q.linkedInvoice)){q.linkedInvoice=null;q.status='sent';}});
+      ADM.billings.forEach(b=>{b.invoiceIds=(b.invoiceIds||[]).filter(x=>!delIds.has(x));});
+      ADM.invoices=ADM.invoices.filter(i=>!delIds.has(i.id));
+      ADM_COLS.forEach(c=>admSaveCol(c));
+      data.invoices=ADM.invoices; data.quotations=ADM.quotations; data.billings=ADM.billings;
+      admPageDanger(); admToast(`ลบ ${toDelete.length} ใบ เรียบร้อย`,'ok');
+    });
+}
+window.admDelUnpaid=admDelUnpaid;
+
+function admResetCol(col){
+  admShowConfirm(`💣 Clear ${col}`,`จะลบ <strong style="color:#ef4444">${ADM[col].length} รายการ</strong> ใน ${col}`,'พิมพ์ CLEAR','CLEAR',()=>{
+    ADM[col]=[]; admSaveCol(col); data[col]=[]; if(col==='companies') companies=[];
+    admPageDanger(); admToast(`Cleared ${col}`,'ok');
+  });
+}
+window.admResetCol=admResetCol;
+
+function admResetAll(){
+  admShowConfirm('☠️ NUCLEAR RESET',
+    `จะลบข้อมูลทั้งหมด:<br>${ADM_COLS.map(c=>`• ${c}: ${ADM[c].length} รายการ`).join('<br>')}<br><br>ระบบจะ<strong style="color:#22c55e">เริ่มว่างเปล่า</strong> (ไม่โหลด demo)`,
+    'พิมพ์ RESET ALL','RESET ALL',()=>{
+      ADM_COLS.forEach(col=>{ADM[col]=[];admLsSave(col,[]);data[col]=[];});
+      companies=[];
+      // clear seq counters
+      Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_')).forEach(k=>localStorage.removeItem(k));
+      admPageDanger(); admToast('ล้างข้อมูลทั้งหมดเรียบร้อย ✅','ok');
+    });
+}
+window.admResetAll=admResetAll;
+
+function admFixPaid(){
+  let fixed=0;
+  ADM.invoices.forEach(inv=>{
+    const calc=(inv.payments||[]).reduce((s,p)=>s+p.amount,0);
+    if(Math.abs(calc-(inv.paidAmount||0))>0.01){inv.paidAmount=calc;fixed++;}
+  });
+  admSaveCol('invoices'); data.invoices=ADM.invoices;
+  admToast(`แก้ paidAmount ${fixed} ใบ`,'ok');
+}
+window.admFixPaid=admFixPaid;
+
+function admFixStatus(){
+  let n=0;
+  ADM.invoices.forEach(inv=>{
+    if(inv.status==='cancelled') return;
+    const st=admInvStatus(inv); if(st!==inv.status){inv.status=st;n++;}
+  });
+  admSaveCol('invoices'); data.invoices=ADM.invoices;
+  admToast(`อัปเดต status ${n} ใบ`,'ok');
+}
+window.admFixStatus=admFixStatus;
+
+function admClearSeq(){
+  const keys=Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_'));
+  keys.forEach(k=>localStorage.removeItem(k));
+  admToast(`ล้าง seq counter ${keys.length} รายการ`,'ok');
+}
+window.admClearSeq=admClearSeq;
+
+// ── EXPORT / IMPORT ──
+function admExportAll(){
+  const p={exportedAt:new Date().toISOString(),version:2,...Object.fromEntries(ADM_COLS.map(c=>[c,ADM[c]]))};
+  const blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=`ar-backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
+  URL.revokeObjectURL(url); admToast('Export เรียบร้อย ✅','ok');
+}
+window.admExportAll=admExportAll;
+
+function admImportAll(event){
+  const file=event.target.files?.[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const p=JSON.parse(e.target.result);
+      if(!p.companies||!p.invoices){admToast('❌ ไฟล์ไม่ถูกต้อง','err');return;}
+      if(!confirm(`Import จาก ${file.name}?\nบริษัท:${p.companies.length} INV:${p.invoices.length}\nข้อมูลปัจจุบันจะถูกแทนที่`)) return;
+      ADM_COLS.forEach(col=>{ADM[col]=p[col]||[];admSaveCol(col);data[col]=ADM[col];});
+      companies=ADM.companies;
+      admGoPage(_admCurrentPage); admToast('Import เรียบร้อย ✅','ok');
+    }catch(err){admToast('❌ '+err.message,'err');}
+  };
+  reader.readAsText(file); event.target.value='';
+}
+window.admImportAll=admImportAll;
+
+// ── CONFIRM DIALOG ──
+function admShowConfirm(title,body,hint,keyword,action){
+  _admConfirmAction=action; _admConfirmKeyword=keyword;
+  document.getElementById('adm-confirm-title').textContent=title;
+  document.getElementById('adm-confirm-body').innerHTML=body;
+  document.getElementById('adm-confirm-hint').textContent=hint;
+  const inp=document.getElementById('adm-confirm-input'), btn=document.getElementById('adm-confirm-ok-btn');
+  inp.value=''; inp.placeholder=keyword; btn.disabled=true; btn.style.opacity='.5';
+  inp.oninput=()=>{const ok=inp.value===keyword;btn.disabled=!ok;btn.style.opacity=ok?'1':'.5';};
+  document.getElementById('adm-modal-confirm').classList.add('adm-show');
+}
+document.getElementById('adm-confirm-ok-btn').onclick=()=>{
+  if(_admConfirmAction&&document.getElementById('adm-confirm-input').value===_admConfirmKeyword){
+    _admConfirmAction(); admCloseModal('adm-modal-confirm'); _admConfirmAction=null;
+  }
+};
+// close adm-overlays on backdrop click
+document.querySelectorAll('.adm-overlay').forEach(ov=>{
+  ov.addEventListener('click',e=>{if(e.target===ov) ov.classList.remove('adm-show');});
+});
+</script>
+</body>
+</html>
