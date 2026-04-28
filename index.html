@@ -376,9 +376,41 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   body>*:not(#print-frame){display:none!important}
   #print-frame{display:block!important;padding:0}
 }
+/* ── LOADING SCREEN ── */
+#loading-screen{position:fixed;inset:0;background:#18181b;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .4s}
+#loading-screen.fade-out{opacity:0;pointer-events:none}
+.loading-logo{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#818cf8;letter-spacing:.2em;text-transform:uppercase;margin-bottom:4px}
+.loading-title{font-size:18px;font-weight:700;color:#fff}
+.loading-spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.1);border-top-color:#6366f1;border-radius:50%;animation:spin .8s linear infinite;margin:8px 0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-msg{font-size:12px;color:rgba(255,255,255,.4);font-family:'IBM Plex Mono',monospace;min-height:18px;text-align:center}
+.loading-sub{font-size:10px;color:rgba(255,255,255,.2);font-family:'IBM Plex Mono',monospace}
+
+/* ── BEFOREUNLOAD OVERLAY ── */
+#saving-screen{position:fixed;inset:0;background:rgba(24,24,27,.92);z-index:9998;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;backdrop-filter:blur(4px)}
+#saving-screen.show{display:flex}
+.saving-spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.1);border-top-color:#22c55e;border-radius:50%;animation:spin .8s linear infinite}
+.saving-msg{font-size:13px;color:#fff;font-family:'IBM Plex Mono',monospace;font-weight:600}
+.saving-sub{font-size:10px;color:rgba(255,255,255,.4);font-family:'IBM Plex Mono',monospace}
 </style>
 </head>
 <body>
+
+<!-- ── LOADING SCREEN ── -->
+<div id="loading-screen">
+  <div class="loading-logo">▸ AR SYSTEM</div>
+  <div class="loading-title">กำลังโหลดข้อมูล...</div>
+  <div class="loading-spinner"></div>
+  <div class="loading-msg" id="loading-msg">เชื่อมต่อ Firebase...</div>
+  <div class="loading-sub" id="loading-sub">กรุณารอสักครู่</div>
+</div>
+
+<!-- ── SAVING SCREEN (beforeunload) ── -->
+<div id="saving-screen">
+  <div class="saving-spinner"></div>
+  <div class="saving-msg">💾 กำลังบันทึกข้อมูล...</div>
+  <div class="saving-sub">กรุณารอสักครู่ก่อนปิดหน้าต่าง</div>
+</div>
 <div class="layout">
 
 <!-- ── SIDEBAR ── -->
@@ -2444,17 +2476,124 @@ function closeSidebar() {
 window.toggleSidebar = toggleSidebar;
 window.closeSidebar = closeSidebar;
 
-// ── INIT ──
+// ── INIT — Auto Pull จาก Firebase ทุกครั้งที่เปิด ──
 (async function init() {
-  // Load all collections (Firebase → localStorage → DEMO)
-  data.companies  = await storeLoad('companies',  DEMO.companies);
-  data.quotations = await storeLoad('quotations', DEMO.quotations);
-  data.invoices   = await storeLoad('invoices',   DEMO.invoices);
-  data.billings   = await storeLoad('billings',   DEMO.billings);
-  companies = data.companies;
+  const msgEl  = document.getElementById('loading-msg');
+  const subEl  = document.getElementById('loading-sub');
+  const screen = document.getElementById('loading-screen');
+
+  function setMsg(msg, sub) {
+    if(msgEl) msgEl.textContent = msg;
+    if(subEl) subEl.textContent = sub || '';
+  }
+
+  try {
+    if(_fbdb) {
+      // ── มี Firebase → Pull ก่อนเสมอ ──
+      setMsg('เชื่อมต่อ Firebase สำเร็จ', 'กำลังดึงข้อมูล...');
+      const COLS = ['companies','quotations','invoices','billings'];
+      let total = 0;
+      for(const col of COLS) {
+        setMsg(`กำลังดึง ${col}...`, 'Firebase → เครื่อง');
+        const snap = await _fbdb.collection(col).get();
+        const arr = snap.docs.map(d => {
+          const dd = d.data();
+          if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+          if(dd._syncedAt?.toDate) delete dd._syncedAt;
+          return {id: d.id, ...dd};
+        });
+        lsSave(col, arr);
+        data[col] = arr;
+        total += arr.length;
+      }
+      companies = data.companies;
+      setMsg(`✅ โหลดสำเร็จ — ${total} รายการ`, 'กำลังเข้าสู่ระบบ...');
+    } else {
+      // ── ไม่มี Firebase → โหลดจาก localStorage ──
+      setMsg('ไม่พบ Firebase', 'โหลดจาก localStorage...');
+      data.companies  = lsLoad('companies')  || DEMO.companies;
+      data.quotations = lsLoad('quotations') || DEMO.quotations;
+      data.invoices   = lsLoad('invoices')   || DEMO.invoices;
+      data.billings   = lsLoad('billings')   || DEMO.billings;
+      companies = data.companies;
+      setMsg('⚠️ โหลดจาก localStorage', 'ไม่ได้เชื่อมต่อ Firebase');
+    }
+  } catch(e) {
+    // Firebase error → fallback localStorage
+    setMsg('⚠️ Firebase error — โหลดจาก localStorage', e.message);
+    data.companies  = lsLoad('companies')  || DEMO.companies;
+    data.quotations = lsLoad('quotations') || DEMO.quotations;
+    data.invoices   = lsLoad('invoices')   || DEMO.invoices;
+    data.billings   = lsLoad('billings')   || DEMO.billings;
+    companies = data.companies;
+    console.warn('Firebase pull failed:', e);
+  }
+
+  // รอ 400ms แล้ว fade out loading screen
+  await new Promise(r => setTimeout(r, 400));
+  screen.classList.add('fade-out');
+  setTimeout(() => { screen.style.display = 'none'; }, 450);
+
   syncCheckConnection();
   goPage('dashboard');
 })();
+
+// ── AUTO PUSH เมื่อปิด/ออกจากหน้า ──
+let _autoSaving = false;
+async function autoPushOnExit() {
+  if(!_fbdb || _autoSaving) return;
+  _autoSaving = true;
+  const saving = document.getElementById('saving-screen');
+  if(saving) saving.classList.add('show');
+  try {
+    const COLS = ['companies','quotations','invoices','billings'];
+    for(const col of COLS) {
+      const arr = data[col] || lsLoad(col) || [];
+      // batch delete เก่า
+      const snapOld = await _fbdb.collection(col).get();
+      if(snapOld.docs.length > 0) {
+        const bDel = _fbdb.batch();
+        snapOld.docs.forEach(d => bDel.delete(d.ref));
+        await bDel.commit();
+      }
+      // batch write ใหม่ (chunks of 400)
+      for(let i = 0; i < arr.length; i += 400) {
+        const chunk = arr.slice(i, i + 400);
+        const batch = _fbdb.batch();
+        chunk.forEach(doc => {
+          const {id, ...rest} = doc;
+          batch.set(_fbdb.collection(col).doc(id), {
+            ...rest,
+            _syncedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        });
+        await batch.commit();
+      }
+    }
+  } catch(e) {
+    console.warn('Auto push failed:', e);
+  }
+  _autoSaving = false;
+  if(saving) saving.classList.remove('show');
+}
+
+// visibilitychange — เมื่อ tab ถูกซ่อน (เปลี่ยน tab / กดโฮม iPad)
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden') autoPushOnExit();
+});
+
+// pagehide — เมื่อปิด tab หรือ navigate ออก (รองรับ iOS Safari)
+window.addEventListener('pagehide', () => { autoPushOnExit(); });
+
+// beforeunload — เมื่อปิด browser บน desktop
+window.addEventListener('beforeunload', (e) => {
+  if(_fbdb && !_autoSaving) {
+    autoPushOnExit();
+    // บน desktop แสดง confirm dialog ให้รอ
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL — กด A ค้าง 3 วินาที เพื่อเปิด
