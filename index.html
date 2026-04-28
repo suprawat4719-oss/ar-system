@@ -360,6 +360,16 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .sync-btn.push:hover{border-color:rgba(34,197,94,.5);color:#22c55e;background:rgba(34,197,94,.08)}
 .sync-last{font-size:9px;color:rgba(255,255,255,.2);font-family:'IBM Plex Mono',monospace;text-align:center}
 
+/* ── COMPANY LOGO ── */
+.co-logo-auto{display:inline-flex;align-items:center;justify-content:center;border-radius:8px;font-weight:900;font-family:'IBM Plex Mono',monospace;letter-spacing:1px;color:#fff;flex-shrink:0;text-transform:uppercase}
+.co-logo-img{border-radius:8px;object-fit:contain;background:#fff}
+.logo-upload-area{border:2px dashed var(--border2);border-radius:var(--r);padding:16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg2)}
+.logo-upload-area:hover{border-color:var(--accent);background:var(--accent-light)}
+.logo-upload-area input{display:none}
+.logo-preview-wrap{display:flex;align-items:center;gap:12px;margin-top:10px}
+.logo-preview-box{width:80px;height:80px;border:1px solid var(--border);border-radius:var(--r);display:flex;align-items:center;justify-content:center;background:var(--bg2);overflow:hidden;flex-shrink:0}
+.logo-clear-btn{font-size:11px;color:var(--red);cursor:pointer;text-decoration:underline}
+
 /* ── SMALL MOBILE (≤400px) ── */
 @media(max-width:400px){
   .stat-grid{grid-template-columns:1fr 1fr}
@@ -1688,8 +1698,11 @@ function buildDocForm(type) {
     <div class="card-body">
       <div class="card-title" style="margin-bottom:10px">บริษัทผู้ออกเอกสาร</div>
       <div class="co-grid" id="co-select-grid">
-        ${companies.map(c=>`<div class="co-card" id="co-${c.id}" onclick="selectCo('${c.id}','${type}')" >
-          <div class="co-name">${c.name}</div>
+        ${companies.map(c=>`<div class="co-card" id="co-${c.id}" onclick="selectCo('${c.id}','${type}')">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            ${coLogoHTML(c,28,10)}
+            <div class="co-name">${c.name}</div>
+          </div>
           <div class="co-tax">${c.taxId||'—'}</div>
         </div>`).join('')}
       </div>
@@ -2022,11 +2035,18 @@ function viewDoc(type, id) {
   const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
   document.getElementById('modal-doc-title').textContent = `${typeLabels[type]} — ${src.docNumber}`;
   const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
+  const logoHtml = coLogoHTML(co, 56, 16);
   let body=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;font-size:13px">
-      <div><div style="font-weight:700;font-size:14px">${co.name}</div>
-        <div style="color:var(--ink4);font-size:12px">${co.address||''}</div>
-        <div style="color:var(--ink4);font-size:12px">เลขภาษี: ${co.taxId||'—'}</div></div>
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        ${logoHtml}
+        <div>
+          <div style="font-weight:700;font-size:14px">${co.name}</div>
+          <div style="color:var(--ink4);font-size:11px">${co.nameEn||''}</div>
+          <div style="color:var(--ink4);font-size:12px">${co.address||''}</div>
+          <div style="color:var(--ink4);font-size:12px">เลขภาษี: ${co.taxId||'—'} ${co.phone?'| โทร: '+co.phone:''}</div>
+        </div>
+      </div>
       <div style="text-align:right">
         <div style="font-size:20px;font-weight:700;color:var(--accent)">${typeLabels[type]}</div>
         <div class="mono" style="font-size:12px;margin-top:4px">${src.docNumber}</div>
@@ -2102,10 +2122,15 @@ function printCurrentDoc() {
     .sl{border-top:1px solid #999;padding-top:5px;font-size:11px;color:#666;text-align:center}
   </style>
   <div class="ph">
-    <div><div style="font-size:16px;font-weight:700">${co.name}</div>
-      <div style="font-size:11px;color:#666">${co.nameEn||''}</div>
-      <div style="font-size:12px;color:#444;margin-top:4px">${co.address||''}</div>
-      <div style="font-size:12px;color:#444">โทร: ${co.phone||''} | เลขภาษี: ${co.taxId||''}</div></div>
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      ${co.logoData ? `<img src="${co.logoData}" style="width:60px;height:60px;object-fit:contain;border-radius:6px;flex-shrink:0">` : `<div style="width:60px;height:60px;border-radius:8px;background:${coLogoColor(co.prefix||co.name)};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;font-family:monospace;flex-shrink:0">${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}</div>`}
+      <div>
+        <div style="font-size:16px;font-weight:700">${co.name}</div>
+        <div style="font-size:11px;color:#666">${co.nameEn||''}</div>
+        <div style="font-size:12px;color:#444;margin-top:4px">${co.address||''}</div>
+        <div style="font-size:12px;color:#444">โทร: ${co.phone||''} | เลขภาษี: ${co.taxId||''}</div>
+      </div>
+    </div>
     <div class="ph-r"><div class="pt">${typeLabels[type]}</div>
       <div style="font-family:monospace;font-size:12px;margin-top:4px">${src.docNumber}</div>
       <div style="font-size:12px;color:#666">วันที่: ${src.docDate}</div>
@@ -2291,6 +2316,33 @@ function renderReportReceipt() {
 // ══════════════════════════════════════════════════════
 // COMPANIES
 // ══════════════════════════════════════════════════════
+// ── LOGO HELPERS ──
+// สีพื้นหลัง auto-logo ตาม prefix
+const LOGO_COLORS = ['#1d4ed8','#0891b2','#0f766e','#6d28d9','#be185d','#c2410c','#15803d','#b45309'];
+function coLogoColor(prefix) {
+  let n=0; for(const c of (prefix||'A')) n+=c.charCodeAt(0);
+  return LOGO_COLORS[n % LOGO_COLORS.length];
+}
+function coLogoHTML(co, size=40, fontSize=14) {
+  if(co.logoData) {
+    return `<img src="${co.logoData}" class="co-logo-img" width="${size}" height="${size}" style="width:${size}px;height:${size}px">`;
+  }
+  const label = (co.prefix||co.name||'?').slice(0,3).toUpperCase();
+  const bg = coLogoColor(co.prefix||co.name);
+  return `<div class="co-logo-auto" style="width:${size}px;height:${size}px;background:${bg};font-size:${fontSize}px">${label}</div>`;
+}
+window.coLogoHTML = coLogoHTML;
+
+// ── อ่านไฟล์รูปเป็น base64 ──
+function readFileAsBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
 function renderCompanies() {
   document.getElementById('topbar-actions').innerHTML=`
     <button class="btn btn-ghost btn-sm" onclick="exportData()">📤 Export JSON</button>
@@ -2298,7 +2350,7 @@ function renderCompanies() {
     <button class="btn btn-primary" onclick="openAddCoModal()">+ เพิ่มบริษัท</button>`;
   document.getElementById('page-content').innerHTML=`
   <div class="card">
-    <table class="tbl"><thead><tr><th>ชื่อบริษัท</th><th>เลขผู้เสียภาษี</th><th>ที่อยู่</th><th>โทร</th><th>prefix</th><th>VAT</th><th></th></tr></thead>
+    <table class="tbl"><thead><tr><th>โลโก้</th><th>ชื่อบริษัท</th><th>เลขผู้เสียภาษี</th><th>ที่อยู่</th><th>โทร</th><th>prefix</th><th>VAT</th><th></th></tr></thead>
     <tbody id="co-list-tbody"></tbody></table>
   </div>
   <div class="overlay" id="modal-co">
@@ -2310,9 +2362,24 @@ function renderCompanies() {
         <div class="field span2"><label>ที่อยู่</label><textarea id="co-addr"></textarea></div>
         <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="co-tax" maxlength="13"></div>
         <div class="field"><label>โทรศัพท์</label><input type="text" id="co-phone"></div>
-        <div class="field"><label>prefix เอกสาร</label><input type="text" id="co-prefix" maxlength="6" placeholder="A, B, CO1..."></div>
+        <div class="field"><label>prefix เอกสาร</label><input type="text" id="co-prefix" maxlength="6" placeholder="A, B, CO1..." oninput="updateLogoPreview()"></div>
         <div class="field" style="justify-content:flex-end;padding-top:16px">
           <div class="tog-wrap"><label class="tog"><input type="checkbox" id="co-vat"><span class="tog-sl"></span></label><span class="tog-label">มี VAT</span></div>
+        </div>
+        <div class="field span2">
+          <label>โลโก้บริษัท</label>
+          <label class="logo-upload-area" id="logo-upload-area">
+            <input type="file" accept="image/*" id="co-logo-file" onchange="handleLogoUpload(event)">
+            <div style="font-size:13px;color:var(--ink4)">📁 คลิกเพื่ออัปโหลดโลโก้ (PNG, JPG, SVG)</div>
+            <div style="font-size:11px;color:var(--ink4);margin-top:4px">หรือจะใช้ auto-logo จาก prefix ก็ได้</div>
+          </label>
+          <div class="logo-preview-wrap" id="logo-preview-wrap">
+            <div class="logo-preview-box" id="logo-preview-box"></div>
+            <div>
+              <div style="font-size:12px;font-weight:600;margin-bottom:4px" id="logo-preview-label">Auto Logo (จาก Prefix)</div>
+              <div class="logo-clear-btn" id="logo-clear-btn" onclick="clearLogo()" style="display:none">✕ ลบโลโก้ที่อัปโหลด (ใช้ Auto แทน)</div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -2325,9 +2392,45 @@ function renderCompanies() {
 }
 
 let _editCoId=null;
+let _pendingLogoData = null; // base64 ที่รอบันทึก
+
+function updateLogoPreview() {
+  const prefix = document.getElementById('co-prefix')?.value || '';
+  const co = { prefix, name: document.getElementById('co-name')?.value || '' };
+  const box = document.getElementById('logo-preview-box');
+  const label = document.getElementById('logo-preview-label');
+  if(!box) return;
+  if(_pendingLogoData) {
+    box.innerHTML = `<img src="${_pendingLogoData}" style="width:72px;height:72px;object-fit:contain;border-radius:6px">`;
+    if(label) label.textContent = 'โลโก้ที่อัปโหลด';
+    document.getElementById('logo-clear-btn').style.display = 'block';
+  } else {
+    box.innerHTML = coLogoHTML(co, 72, 22);
+    if(label) label.textContent = `Auto Logo "${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}"`;
+    document.getElementById('logo-clear-btn').style.display = 'none';
+  }
+}
+window.updateLogoPreview = updateLogoPreview;
+
+async function handleLogoUpload(event) {
+  const file = event.target.files?.[0]; if(!file) return;
+  if(file.size > 500*1024) { toast('ไฟล์ใหญ่เกิน 500KB — ลองบีบอัดก่อน','err'); return; }
+  _pendingLogoData = await readFileAsBase64(file);
+  updateLogoPreview();
+  toast('โหลดโลโก้เรียบร้อย ✅','ok');
+}
+window.handleLogoUpload = handleLogoUpload;
+
+function clearLogo() {
+  _pendingLogoData = null;
+  document.getElementById('co-logo-file').value = '';
+  updateLogoPreview();
+}
+window.clearLogo = clearLogo;
 function refreshCoList() {
   const tbody=document.getElementById('co-list-tbody'); if(!tbody) return;
   tbody.innerHTML=companies.length?companies.map(c=>`<tr>
+    <td>${coLogoHTML(c,36,12)}</td>
     <td><div style="font-weight:700">${c.name}</div><div style="font-size:11px;color:var(--ink4)">${c.nameEn||''}</div></td>
     <td class="mono">${c.taxId||'—'}</td>
     <td style="font-size:12px;max-width:200px">${c.address||'—'}</td>
@@ -2338,21 +2441,23 @@ function refreshCoList() {
       <button class="btn btn-xs btn-outline" onclick="editCo('${c.id}')">✏️</button>
       <button class="btn btn-xs btn-danger" onclick="deleteCo('${c.id}')">🗑</button>
     </td>
-  </tr>`).join(''):'<tr><td colspan="7"><div class="empty"><p>ยังไม่มีบริษัท</p></div></td></tr>';
+  </tr>`).join(''):'<tr><td colspan="8"><div class="empty"><p>ยังไม่มีบริษัท</p></div></td></tr>';
 }
 
 function openAddCoModal() {
-  _editCoId=null;
+  _editCoId=null; _pendingLogoData=null;
   document.getElementById('modal-co-title').textContent='เพิ่มบริษัทใหม่';
   ['co-name','co-name-en','co-addr','co-tax','co-phone','co-prefix'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('co-vat').checked=false;
+  document.getElementById('co-logo-file').value='';
+  updateLogoPreview();
   document.getElementById('modal-co').classList.add('show');
 }
 window.openAddCoModal=openAddCoModal;
 
 function editCo(id) {
   const c=companies.find(x=>x.id===id); if(!c) return;
-  _editCoId=id;
+  _editCoId=id; _pendingLogoData=c.logoData||null;
   document.getElementById('modal-co-title').textContent='แก้ไขบริษัท';
   document.getElementById('co-name').value=c.name||'';
   document.getElementById('co-name-en').value=c.nameEn||'';
@@ -2361,6 +2466,8 @@ function editCo(id) {
   document.getElementById('co-phone').value=c.phone||'';
   document.getElementById('co-prefix').value=c.prefix||'';
   document.getElementById('co-vat').checked=c.hasVat||false;
+  document.getElementById('co-logo-file').value='';
+  updateLogoPreview();
   document.getElementById('modal-co').classList.add('show');
 }
 window.editCo=editCo;
@@ -2369,7 +2476,8 @@ async function saveCoModal() {
   const d={name:document.getElementById('co-name').value.trim(),nameEn:document.getElementById('co-name-en').value.trim(),
     address:document.getElementById('co-addr').value.trim(),taxId:document.getElementById('co-tax').value.trim(),
     phone:document.getElementById('co-phone').value.trim(),prefix:(document.getElementById('co-prefix').value.trim()||'X').toUpperCase(),
-    hasVat:document.getElementById('co-vat').checked};
+    hasVat:document.getElementById('co-vat').checked,
+    logoData:_pendingLogoData||null};
   if(!d.name){toast('กรุณากรอกชื่อบริษัท','err');return;}
   if(_editCoId){
     await storeUpdate('companies',_editCoId,d);
@@ -2379,6 +2487,7 @@ async function saveCoModal() {
     companies.push({id,...d});
     data.companies=companies;
   }
+  _pendingLogoData=null;
   syncLS('companies', companies);
   closeModal('modal-co'); refreshCoList(); toast('บันทึกบริษัทเรียบร้อย','ok');
 }
