@@ -1,9 +1,10 @@
+<!-- AR SYSTEM v1.9 — 2026-04-28 03:23 | แก้ modal บริษัท (sticky header/footer + ปุ่มย้อนกลับ), เพิ่มเบอร์โทรผู้ออกเอกสาร -->
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System — Invoice & Payment</title>
+<title>AR System | v1.9 — 2026-04-28 03:23</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -428,7 +429,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">Accounts Receivable</div>
+    <div class="logo-sub">v1.9 — 2026-04-28 03:23</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1732,6 +1733,7 @@ function buildDocForm(type) {
           <label style="color:var(--accent)">✍️ ผู้จัดทำเอกสาร (ฝ่ายเรา)</label>
           <input type="text" id="f-prepared-by" placeholder="ชื่อ-นามสกุล ผู้ออกเอกสาร">
         </div>
+        <div class="field"><label>เบอร์โทรผู้ออกเอกสาร</label><input type="text" id="f-prepared-phone" placeholder="08x-xxx-xxxx"></div>
       </div>
     </div>
   </div>
@@ -1789,6 +1791,8 @@ function selectCo(id, type) {
     // auto-fill ผู้จัดทำจากข้อมูลบริษัท
     const pbEl = document.getElementById('f-prepared-by');
     if(pbEl && !pbEl.value && _selectedCo.contactPerson) pbEl.value = _selectedCo.contactPerson;
+    const pcEl = document.getElementById('f-prepared-phone');
+    if(pcEl && !pcEl.value && _selectedCo.contactPhone) pcEl.value = _selectedCo.contactPhone;
   }
 }
 window.selectCo=selectCo;
@@ -1958,6 +1962,7 @@ async function saveDoc(type) {
     custTax:document.getElementById('f-cust-tax')?.value,
     custContact:document.getElementById('f-cust-contact')?.value,
     preparedBy:document.getElementById('f-prepared-by')?.value,
+    preparedPhone:document.getElementById('f-prepared-phone')?.value,
     items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht,
     status:'sent', note:document.getElementById('f-note')?.value,
     payMethod:getSelectedPayMethod(),
@@ -2306,7 +2311,8 @@ function printCurrentDoc() {
           ${src.paymentTerms||src.terms?`เงื่อนไข: <b>${src.paymentTerms||src.terms}</b><br>`:''}
           ${src.preparedBy?`ผู้จัดทำ: <b>${src.preparedBy}</b><br>`:''}
           ${co.contactPerson&&!src.preparedBy?`ผู้ติดต่อ: <b>${co.contactPerson}</b><br>`:''}
-          ${co.phone?`โทร: <b>${co.phone}</b><br>`:''}
+          ${co.contactPhone?`โทร (ผู้ติดต่อ): <b>${co.contactPhone}</b><br>`:co.phone?`โทร: <b>${co.phone}</b><br>`:''}
+          ${co.contactEmail?`อีเมล: ${co.contactEmail}<br>`:''}
           ${src.payMethod?.method?`วิธีชำระ: <b>${src.payMethod.method}</b>`:''}
         </div>
       </div>
@@ -2367,6 +2373,7 @@ function printCurrentDoc() {
         <div class="sig-line"></div>
         <div class="sig-label">ผู้เสนอ / ผู้มีอำนาจลงนาม</div>
         ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${src.preparedBy||co.contactPerson})</div>`:'<div class="sig-name">(................................)</div>'}
+        ${src.preparedPhone||co.contactPhone?`<div style="font-size:10px;color:#888;margin-top:2px">โทร: ${src.preparedPhone||co.contactPhone}</div>`:''}
       </div>
       <div class="sig-box">
         <div class="sig-line"></div>
@@ -2584,17 +2591,32 @@ function renderCompanies() {
     <tbody id="co-list-tbody"></tbody></table>
   </div>
   <div class="overlay" id="modal-co">
-    <div class="modal">
-      <div class="modal-title" id="modal-co-title">เพิ่มบริษัทใหม่</div>
+    <div class="modal" style="padding:0;display:flex;flex-direction:column;max-height:92vh">
+      <!-- Sticky header with buttons -->
+      <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--white);border-radius:var(--r2) var(--r2) 0 0;position:sticky;top:0;z-index:10">
+        <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-co')" style="padding:6px 10px">← ย้อนกลับ</button>
+        <div class="modal-title" id="modal-co-title" style="margin:0;flex:1;font-size:15px">เพิ่มบริษัทใหม่</div>
+        <button class="btn btn-primary btn-sm" onclick="saveCoModal()">💾 บันทึก</button>
+      </div>
+      <!-- Scrollable body -->
+      <div style="overflow-y:auto;padding:20px;flex:1">
       <div class="form-grid" style="gap:10px">
         <div class="field span2"><label>ชื่อบริษัท (ไทย)</label><input type="text" id="co-name" placeholder="บริษัท ตัวอย่าง จำกัด"></div>
         <div class="field span2"><label>ชื่อบริษัท (อังกฤษ)</label><input type="text" id="co-name-en"></div>
         <div class="field span2"><label>ที่อยู่</label><textarea id="co-addr"></textarea></div>
         <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="co-tax" maxlength="13"></div>
-        <div class="field"><label>โทรศัพท์</label><input type="text" id="co-phone"></div>
+        <div class="field"><label>โทรศัพท์บริษัท (หัวกระดาษ)</label><input type="text" id="co-phone" placeholder="02-xxx-xxxx"></div>
         <div class="field"><label>อีเมล</label><input type="text" id="co-email" placeholder="example@company.com"></div>
         <div class="field"><label>เว็บไซต์</label><input type="text" id="co-website" placeholder="www.company.com"></div>
-        <div class="field span2"><label>ผู้ติดต่อ / ผู้จัดทำเอกสาร (default)</label><input type="text" id="co-contact-person" placeholder="ชื่อ-นามสกุล ผู้ออกเอกสาร"></div>
+
+        <!-- ผู้ออกเอกสาร/ผู้ติดต่อ -->
+        <div class="field span2" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+          <label style="color:var(--accent);font-weight:700">👤 ผู้ออกเอกสาร / ผู้ติดต่อ (default)</label>
+        </div>
+        <div class="field span2"><label>ชื่อผู้ออกเอกสาร / เซลล์ / ผู้ติดต่อ</label><input type="text" id="co-contact-person" placeholder="ชื่อ-นามสกุล"></div>
+        <div class="field"><label>เบอร์โทรผู้ออกเอกสาร</label><input type="text" id="co-contact-phone" placeholder="08x-xxx-xxxx"></div>
+        <div class="field"><label>อีเมลผู้ออกเอกสาร</label><input type="text" id="co-contact-email" placeholder="sales@company.com"></div>
+
         <div class="field"><label>prefix เอกสาร</label><input type="text" id="co-prefix" maxlength="6" placeholder="A, B, CO1..." oninput="updateLogoPreview()"></div>
         <div class="field" style="justify-content:flex-end;padding-top:16px">
           <div class="tog-wrap"><label class="tog"><input type="checkbox" id="co-vat"><span class="tog-sl"></span></label><span class="tog-label">มี VAT</span></div>
@@ -2677,10 +2699,12 @@ function renderCompanies() {
             </div>
           </div>
         </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeModal('modal-co')">ยกเลิก</button>
-        <button class="btn btn-primary" onclick="saveCoModal()">บันทึก</button>
+      </div><!-- /form-grid -->
+      </div><!-- /scrollable body -->
+      <!-- Sticky footer -->
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0;background:var(--white);border-radius:0 0 var(--r2) var(--r2)">
+        <button class="btn btn-ghost" onclick="closeModal('modal-co')">← ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveCoModal()">💾 บันทึกบริษัท</button>
       </div>
     </div>
   </div>`;
@@ -2743,7 +2767,7 @@ function refreshCoList() {
 function openAddCoModal() {
   _editCoId=null; _pendingLogoData=null;
   document.getElementById('modal-co-title').textContent='เพิ่มบริษัทใหม่';
-  ['co-name','co-name-en','co-addr','co-tax','co-phone','co-prefix','co-email','co-website','co-contact-person',
+  ['co-name','co-name-en','co-addr','co-tax','co-phone','co-prefix','co-email','co-website','co-contact-person','co-contact-phone','co-contact-email',
    'co-bank1-accname','co-bank1-accno','co-bank1-branch',
    'co-bank2-accname','co-bank2-accno','co-bank2-branch'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ['co-bank1-name','co-bank2-name'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
@@ -2769,6 +2793,8 @@ function editCo(id) {
   document.getElementById('co-email').value=c.email||'';
   document.getElementById('co-website').value=c.website||'';
   document.getElementById('co-contact-person').value=c.contactPerson||'';
+  document.getElementById('co-contact-phone').value=c.contactPhone||'';
+  document.getElementById('co-contact-email').value=c.contactEmail||'';
   // bank 1
   const b1=c.banks?.[0]||{};
   document.getElementById('co-bank1-name').value=b1.bankName||'';
@@ -2801,7 +2827,10 @@ async function saveCoModal() {
   const d={name:gv('co-name'),nameEn:gv('co-name-en'),address:gv('co-addr'),taxId:gv('co-tax'),
     phone:gv('co-phone'),prefix:(gv('co-prefix')||'X').toUpperCase(),
     hasVat:document.getElementById('co-vat').checked,
-    email:gv('co-email'),website:gv('co-website'),contactPerson:gv('co-contact-person'),
+    email:gv('co-email'),website:gv('co-website'),
+    contactPerson:gv('co-contact-person'),
+    contactPhone:gv('co-contact-phone'),
+    contactEmail:gv('co-contact-email'),
     logoData:_pendingLogoData||null, banks};
   if(!d.name){toast('กรุณากรอกชื่อบริษัท','err');return;}
   if(_editCoId){
