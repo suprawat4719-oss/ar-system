@@ -1,0 +1,1678 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>เบิกล่วงหน้า</title>
+<style>
+:root{--navy:#0D1B2A;--blue:#1A6FA0;--green:#16A34A;--green-bg:#DCFCE7;--red:#DC2626;--red-bg:#FEE2E2;--gray:#6B7280;--border:#E5E7EB;--shadow:0 2px 12px rgba(0,0,0,.08)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:sans-serif;background:#F0F4F8;color:var(--navy)}
+.hdr{background:var(--navy);padding:14px 16px;display:flex;align-items:center;position:sticky;top:0;z-index:99}
+.hdr h1{color:#fff;font-size:17px;flex:1}
+.hdr-sub{font-size:10.5px;color:#94A3B8;margin-top:1px}
+.badge{font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.1);color:#94A3B8;white-space:nowrap}
+.badge.on{background:rgba(22,163,74,.2);color:#4ADE80}
+.badge.local{background:rgba(245,158,11,.2);color:#FCD34D}
+.badge.saving{background:rgba(59,130,246,.2);color:#93C5FD}
+.ver-badge{font-size:10px;background:rgba(255,255,255,.08);color:#64748B;padding:2px 7px;border-radius:20px;font-weight:600;cursor:help;margin-left:6px;vertical-align:middle}
+.noti{padding:8px 14px;font-size:12px;text-align:center;display:none}
+.noti.warn{background:#FEF3C7;color:#92400E;display:block}
+.tabs{background:#fff;display:flex;border-bottom:2px solid var(--border);position:sticky;top:52px;z-index:98}
+.tb{flex:1;padding:11px 4px;border:none;background:none;font-size:12px;color:var(--gray);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;font-family:inherit;white-space:nowrap}
+.tb.on{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.pg{display:none;padding:14px}.pg.on{display:block}
+.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+.row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.row label{font-size:12px;color:var(--gray);white-space:nowrap}
+select,input[type=text],input[type=number]{border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;width:100%;background:#fff;font-family:inherit}
+select:focus,input:focus{outline:none;border-color:var(--blue)}
+.sel{flex:1}
+.plus{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:20px;cursor:pointer;line-height:1}
+.emp-card{background:var(--navy);border-radius:12px;padding:16px;color:#fff;margin-bottom:12px}
+.emp-card .nm{font-size:15px;font-weight:600;margin-bottom:3px}
+.emp-card .sub{font-size:11px;color:#94A3B8;margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fi label{font-size:11px;color:#94A3B8;display:block;margin-bottom:3px}
+.fi input{background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);border-radius:8px;padding:7px 9px;font-size:13px;width:100%;color:#fff;font-family:inherit}
+.fi input:focus{outline:none;border-color:rgba(255,255,255,.4)}
+.sum2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.sbox{background:#fff;border-radius:12px;padding:12px;box-shadow:var(--shadow);text-align:center}
+.sbox .sl{font-size:11px;color:var(--gray);margin-bottom:3px}
+.sbox .sv{font-size:17px;font-weight:700}
+.obox{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between}
+.ov{font-size:20px;font-weight:700;padding:5px 14px;border-radius:8px}
+.ov.pos{color:var(--green);background:var(--green-bg)}
+.ov.neg{color:var(--red);background:var(--red-bg)}
+/* transaction card */
+.txc{background:#fff;border-radius:10px;padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow);display:flex;align-items:flex-start;gap:10px}
+.txi{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.txi.legacy{background:var(--blue)}
+.txi.req-pend{background:#F59E0B}
+.txi.req-ok{background:var(--green)}
+.txi.req-rej{background:var(--red)}
+.txinfo{flex:1;min-width:0}
+.txd{font-size:11px;color:var(--gray)}.txb{font-size:13px;font-weight:500}.txs{font-size:11px;color:var(--gray)}
+.txa{font-size:14px;font-weight:700;color:var(--blue);white-space:nowrap}
+.txr{font-size:10px;color:#CBD5E1}
+.del{background:none;border:none;color:#CBD5E1;font-size:17px;cursor:pointer;padding:4px}
+.del:hover{color:var(--red)}
+/* status badges */
+.stb{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;margin-top:3px}
+.stb-pend{background:#FEF3C7;color:#92400E}
+.stb-ok{background:var(--green-bg);color:#166534}
+.stb-rej{background:var(--red-bg);color:#991B1B}
+/* approve buttons */
+.ap-btns{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.btnx{border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+.btnx-g{background:var(--green-bg);color:#166534}
+.btnx-r{background:var(--red-bg);color:#991B1B}
+/* upload */
+.uarea{border:2px dashed var(--border);border-radius:14px;padding:28px 16px;text-align:center;cursor:pointer;margin-bottom:12px;background:#fff}
+.uarea:hover,.uarea.over{border-color:var(--blue);background:#EFF6FF}
+.uicon{font-size:44px;margin-bottom:10px}
+.prev{background:#fff;border-radius:10px;overflow:hidden;margin-bottom:12px;display:none}
+.prev img{width:100%;max-height:260px;object-fit:contain;background:#f8f8f8}
+.prev .pi{padding:10px 14px}
+.rcard{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;display:none}
+.rcard .rt{font-size:13px;font-weight:600;margin-bottom:10px}
+.rf{margin-bottom:9px}.rf label{font-size:11px;color:var(--gray);display:block;margin-bottom:2px}
+.lstate{background:#FEF3C7;border-radius:12px;padding:18px;text-align:center;margin-bottom:12px;display:none}
+.spin{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.btn{width:100%;padding:13px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;font-family:inherit}
+.btn-g{background:var(--green);color:#fff}
+.btn-b{background:var(--blue);color:#fff}
+.btn-o{background:#fff;color:var(--blue);border:2px solid var(--blue)}
+.btn-y{background:#F59E0B;color:#fff}
+.btn-p{background:#7C3AED;color:#fff}
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end;overflow-y:auto}
+.mo.on{display:flex}
+.mbox{background:#fff;border-radius:18px 18px 0 0;padding:22px 18px 32px;width:100%;animation:su .3s ease;margin-top:auto}
+@keyframes su{from{transform:translateY(100%)}}
+.mbox h3{font-size:15px;font-weight:600;margin-bottom:14px}
+.mf{margin-bottom:11px}.mf label{font-size:11px;color:var(--gray);display:block;margin-bottom:3px}
+.mf input,.mf select{border:1.5px solid var(--border);border-radius:9px;padding:10px 13px;font-size:14px;width:100%;font-family:inherit}
+.empty{text-align:center;padding:28px 16px;color:var(--gray)}
+.empty .ei{font-size:38px;margin-bottom:8px}
+.toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:9px 18px;border-radius:22px;font-size:12px;z-index:999;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.stitle{font-size:13px;font-weight:600;margin-bottom:8px}
+.sec-title{font-size:12px;font-weight:600;color:var(--gray);margin:14px 0 8px;text-transform:uppercase;letter-spacing:.5px}
+.expbox{background:#F3F4F6;border-radius:10px;padding:12px;margin-bottom:14px;font-size:13px}
+.exprow{display:flex;justify-content:space-between;margin-bottom:5px}
+.exprow.last{border-top:1px solid var(--border);padding-top:7px;margin-top:5px}
+.divider{border:none;border-top:1px solid var(--border);margin:12px 0}
+.xsec{background:rgba(255,255,255,.06);border-radius:10px;padding:12px;margin-top:10px}
+.xsec .xt{font-size:11px;color:#94A3B8;margin-bottom:8px;font-weight:600}
+.xgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.xfi label{font-size:11px;color:#94A3B8;display:block;margin-bottom:2px}
+.xfi input{background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);border-radius:8px;padding:7px 9px;font-size:13px;width:100%;color:#fff;font-family:inherit}
+.xfi input:focus{outline:none;border-color:rgba(255,255,255,.4)}
+.xfi.full{grid-column:1/-1}
+/* settings */
+.set-card{background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.set-card .sc-t{font-size:13px;font-weight:700;margin-bottom:4px}
+.set-card .sc-s{font-size:11.5px;color:var(--gray);margin-bottom:10px}
+/* autosave indicator */
+#save-indicator{font-size:10px;color:#94A3B8;margin-left:6px}
+/* advance records */
+.adv-hist{background:#F9FAFB;border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:12px;border-left:3px solid var(--border)}
+.adv-hist.type-adv{border-left-color:#D97706}
+.adv-hist.type-rep{border-left-color:var(--green)}
+.adv-hist.type-clr{border-left-color:var(--blue)}
+.ah-type{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;margin-right:4px}
+.type-advance{background:#FEF3C7;color:#92400E}
+.type-repayment{background:var(--green-bg);color:#166534}
+.type-clear{background:#DBEAFE;color:#1E40AF}
+.adv-act-btns{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:12px}
+.adv-act-btn{padding:8px 4px;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div style="flex:1">
+    <h1>💼 เบิกล่วงหน้า
+      <span class="ver-badge" id="verBadge" title="...">v3.4</span>
+    </h1>
+    <div class="hdr-sub">ระบบบันทึกเบิกเงินล่วงหน้าพนักงาน <span id="save-indicator"></span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <button onclick="syncDown()" title="ดึงข้อมูลล่าสุดจาก Firebase มาบันทึกในเครื่อง" style="font-size:10px;background:rgba(255,255,255,.1);color:#94A3B8;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:3px 10px;cursor:pointer;font-family:inherit;white-space:nowrap">🔄 Firebase</button>
+    <div class="badge" id="sb">⏳ กำลังโหลด...</div>
+  </div>
+</div>
+
+<div class="noti" id="noti"></div>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tb on" onclick="goTab('dashboard',this)">📊 สรุป</button>
+  <button class="tb" onclick="goTab('upload',this)">📸 อัพโหลดสลิป</button>
+  <button class="tb" onclick="goTab('payroll',this)">💰 Payroll</button>
+  <button class="tb" onclick="goTab('export',this)">📤 ส่งออก</button>
+  <button class="tb" onclick="goTab('settings',this)">⚙️ ตั้งค่า</button>
+</div>
+
+<!-- ── DASHBOARD ── -->
+<div class="pg on" id="pg-dashboard">
+  <div class="card row" style="margin-bottom:12px">
+    <label>พนักงาน</label>
+    <select class="sel" id="sel1" onchange="selEmp()"></select>
+    <button class="plus" onclick="openMo()">+</button>
+  </div>
+  <div id="mo-nav-dash"></div>
+  <div id="dash"></div>
+</div>
+
+<!-- ── UPLOAD ── -->
+<div class="pg" id="pg-upload">
+  <div class="card row" style="margin-bottom:12px">
+    <label>บันทึกให้</label>
+    <select class="sel" id="sel2"></select>
+  </div>
+  <div class="uarea" id="dz" onclick="document.getElementById('fi').click()"
+    ondragover="dzEv(event,'dz',true)" ondragleave="dzEv(event,'dz',false)" ondrop="dzDrop(event)">
+    <div class="uicon">📷</div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:4px">อัพโหลดสลิปโอนเงิน</div>
+    <div style="font-size:12px;color:var(--gray)">แตะเพื่อเลือกรูปสลิป · ลากไฟล์มาวาง</div>
+  </div>
+  <input type="file" id="fi" accept="image/*,.pdf" style="display:none" onchange="onFile(this)">
+  <div class="prev" id="prev">
+    <img id="pimg" src="" alt="slip">
+    <div class="pi"><span style="background:#DBEAFE;color:var(--blue);padding:2px 8px;border-radius:20px;font-size:11px">🖼️ ตรวจสอบรูปแล้ว</span></div>
+  </div>
+  <div class="lstate" id="ls"><div class="spin"></div><p style="font-weight:600">กำลังอ่านข้อมูลจากสลิป...</p></div>
+  <div class="rcard" id="rc">
+    <div class="rt">✅ ข้อมูลจากสลิป — ตรวจสอบก่อนบันทึก</div>
+    <div class="rf"><label>วันที่โอน</label><input type="text" id="rd"></div>
+    <div class="rf"><label>ธนาคารผู้โอน</label><input type="text" id="rb"></div>
+    <div class="rf"><label>ผู้รับโอน</label><input type="text" id="rp" placeholder="ชื่อผู้รับโอนจากสลิป"></div>
+    <div class="rf"><label>จำนวนเงิน (บาท)</label><input type="number" id="ra"></div>
+    <div class="rf"><label>เลขที่อ้างอิง</label><input type="text" id="rr"></div>
+    <div class="rf"><label>หมวดหมู่</label>
+      <select id="rcat">
+        <option>เบิกล่วงหน้าเงินเดือน</option><option>เบิกค่าโปรเจ็กต์</option><option>เบิกด่วน</option>
+        <option>คืนค่าใช้จ่าย</option><option>ค่าน้ำมัน</option><option>ค่าเดินทาง</option>
+        <option>ค่าอาหาร</option><option>อื่นๆ</option>
+      </select>
+    </div>
+    <div class="rf"><label>ลิงก์รูปสลิป (Drive)</label><input type="text" id="rl" placeholder="วางลิงก์ Google Drive"></div>
+    <div id="match-hint" style="display:none;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400E;margin-bottom:8px"></div>
+    <button class="btn btn-g" onclick="saveTx()">💾 บันทึกรายการนี้</button>
+    <button class="btn btn-o" onclick="resetUp()">🔄 อัพโหลดใหม่</button>
+  </div>
+</div>
+
+<!-- ── PAYROLL ── -->
+<div class="pg" id="pg-payroll">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <div class="stitle">💰 ตารางเงินเดือนพนักงาน</div>
+    <button class="btn btn-p" style="font-size:12px;padding:8px 14px" onclick="printPayrollAll()">📄 พิมพ์สลิปทุกคน</button>
+  </div>
+  <div id="mo-nav-pay"></div>
+  <div id="payroll-table"></div>
+</div>
+
+<!-- ── EXPORT ── -->
+<div class="pg" id="pg-export">
+  <div class="card row" style="margin-bottom:12px">
+    <label>พนักงาน</label>
+    <select class="sel" id="sel3" onchange="renderExp()"></select>
+  </div>
+  <div id="expbox"><p style="color:var(--gray);font-size:13px">เลือกพนักงานเพื่อส่งออกข้อมูล</p></div>
+  <hr class="divider">
+  <button class="btn btn-p" onclick="printSlip()">📄 ออกสลิปเงินเดือน PDF</button>
+  <button class="btn btn-y" onclick="syncDown()">🔄 ดึงข้อมูลจาก Firebase</button>
+</div>
+
+<!-- ── SETTINGS ── -->
+<div class="pg" id="pg-settings">
+  <div class="set-card">
+    <div class="sc-t">🔑 Anthropic API Key (OCR)</div>
+    <div class="sc-s">ใส่ API Key เพื่อให้ระบบอ่านสลิปอัตโนมัติ — เก็บใน localStorage เท่านั้น ไม่มีในโค้ด</div>
+    <div style="display:flex;gap:8px">
+      <input type="password" id="apiKeyInput" style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px" placeholder="sk-ant-api03-…">
+      <button class="btn btn-b" onclick="saveApiKey()" style="width:auto;padding:8px 16px;margin-top:0">💾 บันทึก</button>
+    </div>
+    <div id="apiKeyStatus" style="font-size:12px;margin-top:6px;color:var(--gray)">ยังไม่ได้ตั้งค่า</div>
+    <div style="margin-top:8px;background:#FEF9C3;border:1px solid #FDE047;border-radius:7px;padding:8px 12px;font-size:11.5px;color:#713F12">
+      ⚠️ ไม่มี API Key ฝังในโค้ด — กรอกเองที่นี่ก่อนใช้ OCR
+    </div>
+  </div>
+  <div class="set-card">
+    <div class="sc-t">🔄 Auto-Save</div>
+    <div class="sc-s">ระบบจะบันทึกอัตโนมัติ: ทุก 30 วินาที (เมื่อออนไลน์) + ทันทีก่อนปิดแอป</div>
+    <div id="last-save-info" style="font-size:12px;color:var(--gray)">ยังไม่เคยบันทึกในเซสชันนี้</div>
+    <button class="btn btn-b" onclick="manualSave()" style="margin-top:10px">💾 บันทึกตอนนี้เลย</button>
+  </div>
+  <div class="set-card" style="background:#F8FAFC">
+    <div class="sc-t" style="color:var(--gray)">ℹ️ เวอร์ชัน</div>
+    <div id="ver-detail" style="font-size:12px;color:var(--gray);line-height:1.8"></div>
+  </div>
+</div>
+
+<!-- MODAL: เพิ่ม/แก้ไขพนักงาน -->
+<div class="mo" id="mo" onclick="if(event.target===this)closeMo()">
+  <div class="mbox">
+    <h3 id="mo-title">➕ เพิ่มพนักงาน</h3>
+    <div class="mf"><label>ชื่อ-นามสกุล *</label><input type="text" id="mn" placeholder="เช่น นายประจวบ ศิธรกุล"></div>
+    <div class="mf"><label>แผนก / ตำแหน่ง</label><input type="text" id="mdept" placeholder="เช่น ฝ่ายขาย"></div>
+    <div class="mf"><label>ธนาคาร / เลขบัญชี</label><input type="text" id="mk" placeholder="เช่น KTB / 092-xxx-0476"></div>
+    <div class="mf"><label>เงินเดือน (บาท)</label><input type="number" id="ms" placeholder="0"></div>
+    <div class="mf"><label>ยอดยกมาจากเดือนก่อน (บาท)</label><input type="number" id="mc" placeholder="0"></div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-b" onclick="saveEmp()" style="flex:1;margin-top:0">บันทึก</button>
+      <button class="btn btn-o" onclick="closeMo()" style="width:auto;padding:13px 20px;margin-top:0">ยกเลิก</button>
+    </div>
+    <button id="mo-del-btn" onclick="deleteEmpModal()" style="display:none;width:100%;margin-top:10px;padding:11px;border:none;border-radius:10px;background:#FEE2E2;color:#991B1B;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🗑️ ลบพนักงานนี้</button>
+  </div>
+</div>
+
+<!-- MODAL: บันทึกเบิก / หักคืน / เคลียร์ยอด -->
+<div class="mo" id="mo-advrec" onclick="if(event.target===this)closeAdvRecMo()">
+  <div class="mbox">
+    <h3 id="mo-advrec-title">➕ บันทึกเบิก</h3>
+    <div class="mf"><label>พนักงาน</label><div id="mo-advrec-empname" style="font-weight:600;font-size:14px;padding:4px 0;color:var(--navy)"></div></div>
+    <div class="mf"><label>จำนวนเงิน (บาท) *</label><input type="number" id="mo-advrec-amount" placeholder="0.00" min="0" style="font-size:16px"></div>
+    <div class="mf"><label>วันที่</label><input type="date" id="mo-advrec-date"></div>
+    <div class="mf"><label>หมายเหตุ</label><input type="text" id="mo-advrec-note" placeholder="ระบุเหตุผล / รายละเอียด"></div>
+    <div id="mo-advrec-extra">
+      <div class="mf"><label>หมวดหมู่</label>
+        <select id="mo-advrec-cat">
+          <option>เบิกล่วงหน้าเงินเดือน</option><option>เบิกค่าโปรเจ็กต์</option>
+          <option>เบิกด่วน</option><option>อื่นๆ</option>
+        </select>
+      </div>
+      <div class="mf"><label>เลขอ้างอิง</label><input type="text" id="mo-advrec-ref" placeholder="ถ้ามี"></div>
+      <div class="mf"><label>ลิงก์สลิป</label><input type="text" id="mo-advrec-slip" placeholder="https://..."></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button id="mo-advrec-savebtn" class="btn btn-b" onclick="saveAdvRecMo()" style="flex:1;margin-top:0">💾 บันทึก</button>
+      <button class="btn btn-o" onclick="closeAdvRecMo()" style="width:auto;padding:13px 20px;margin-top:0">ยกเลิก</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ประวัติเบิกล่วงหน้า -->
+<div class="mo" id="mo-history" onclick="if(event.target===this)closeHistoryMo()">
+  <div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <h3 id="mo-history-title">📋 ประวัติเบิกล่วงหน้า</h3>
+    <div id="mo-history-body"></div>
+    <button class="btn btn-o" onclick="closeHistoryMo()" style="margin-top:10px">ปิด</button>
+  </div>
+</div>
+
+<script>
+// ── VERSION ───────────────────────────────────────────────────────────────────
+var BUILD_TIME = "2026-05-02 22:00";
+var BUILD_LABEL = "v3.6 · 2 พ.ค. 2569";
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+var db, emps=[], requests=[], ledger=[], curId=null, imgB64=null, imgMime="image/jpeg", isOnline=false;
+var curMo=(function(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2); })();
+var LOCAL_KEY='advance_tracker_v2';
+var LOCAL_REQ='advance_requests_local';
+var LOCAL_LEDGER='advance_ledger_local';
+var _hasPendingChanges=false, _lastSaveAt=null, _editEmpId=null;
+// cache รายเดือนจาก advance_monthly — keyed by YYYY-MM
+var monthlyRecords={};
+// advance_records: repayment + clear records สร้างโดย Advance App
+var advanceRecords=[];
+var LOCAL_ADVREC='advance_records_local';
+// modal state
+var _advRecType=null, _advRecEmpId=null;
+
+// ── FIREBASE INIT ─────────────────────────────────────────────────────────────
+(function(){
+  var s1=document.createElement('script');
+  s1.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js';
+  s1.onload=function(){
+    var s2=document.createElement('script');
+    s2.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js';
+    s2.onload=function(){
+      try{
+        firebase.initializeApp({
+          apiKey:"AIzaSyDgjfoPXa9hWIypcUKsGq7-2EP5FvGB3iM",
+          authDomain:"advance-tracker-cadf5.firebaseapp.com",
+          projectId:"advance-tracker-cadf5",
+          storageBucket:"advance-tracker-cadf5.firebasestorage.app",
+          messagingSenderId:"186461314782",
+          appId:"1:186461314782:web:552ad245c22d36a53cac4f"
+        });
+        db=firebase.firestore();
+        // เปิด offline persistence เพื่อ queue writes แม้ offline
+        db.enablePersistence({synchronizeTabs:false})
+          .catch(function(e){ console.warn('Persistence:',e.code); });
+        loadAll();
+      }catch(e){ console.warn('Firebase init:',e); setSB('offline'); }
+    };
+    document.head.appendChild(s2);
+  };
+  document.head.appendChild(s1);
+})();
+
+// ── LOCAL STORAGE HELPERS ─────────────────────────────────────────────────────
+function saveLocal(){
+  try{localStorage.setItem(LOCAL_KEY,JSON.stringify(emps));}catch(e){}
+}
+function saveLocalReqs(){
+  try{localStorage.setItem(LOCAL_REQ,JSON.stringify(requests));}catch(e){}
+}
+function saveLocalLedger(){
+  try{localStorage.setItem(LOCAL_LEDGER,JSON.stringify(ledger));}catch(e){}
+}
+function saveLocalAdvRecs(){
+  try{localStorage.setItem(LOCAL_ADVREC,JSON.stringify(advanceRecords));}catch(e){}
+}
+function loadLocal(){
+  try{var d=localStorage.getItem(LOCAL_KEY);if(d)emps=JSON.parse(d);}catch(e){emps=[];}
+  try{var d=localStorage.getItem(LOCAL_REQ);if(d)requests=JSON.parse(d);}catch(e){requests=[];}
+  try{var d=localStorage.getItem(LOCAL_LEDGER);if(d)ledger=JSON.parse(d);}catch(e){ledger=[];}
+  try{var d=localStorage.getItem(LOCAL_ADVREC);if(d)advanceRecords=JSON.parse(d);}catch(e){advanceRecords=[];}
+}
+
+// ── ADVANCE ACCOUNTING ────────────────────────────────────────────────────────
+// คำนวณยอดเบิกสะสม / เคลียร์แล้ว / คงค้าง ของพนักงาน
+function calculateEmployeeAdvance(empId){
+  // advances = ทุก request ที่ไม่ถูกปฏิเสธ (source: Finance App + Advance App upload)
+  var empReqs=requests.filter(function(r){
+    return r.employeeId===empId && r.status!=='rejected' && r.status!=='cancelled';
+  });
+  var totalAdvance=empReqs.reduce(function(s,r){return s+Number(r.amount||0);},0);
+  // cleared = repayment + clear records ที่สร้างใน Advance App
+  var empRecs=advanceRecords.filter(function(r){
+    return r.employeeId===empId && r.status!=='cancelled';
+  });
+  var totalCleared=empRecs.filter(function(r){return r.type==='repayment'||r.type==='clear';})
+    .reduce(function(s,r){return s+Number(r.amount||0);},0);
+  var outstanding=Math.max(0, totalAdvance-totalCleared);
+  return{totalAdvance:totalAdvance, totalCleared:totalCleared, outstanding:outstanding};
+}
+
+// บันทึก advance_record (repayment | clear) ลง Firestore + local
+async function saveAdvanceRecord(type, empId, amount, note, date){
+  var emp=emps.find(function(e){return e.id===empId;});
+  var now=new Date().toISOString();
+  var d=date||now.slice(0,10);
+  var rec={
+    id:uid(),
+    employeeId:empId,
+    employeeName:emp?emp.name:'',
+    type:type,
+    amount:Number(amount)||0,
+    date:d,
+    monthKey:d.slice(0,7),
+    note:note||'',
+    source:'advance_app',
+    status:'active',
+    createdAt:now,
+    updatedAt:now,
+    _localOnly:true
+  };
+  advanceRecords.unshift(rec);
+  saveLocalAdvRecs(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    try{
+      var docData=Object.assign({},rec); delete docData._localOnly;
+      await db.collection('advance_records').doc(rec.id).set(docData);
+      advanceRecords[0]._localOnly=false;
+      saveLocalAdvRecs();
+    }catch(e){console.warn('[advance_records] save:',e);}
+  }
+  return rec;
+}
+
+// ── ADVANCE RECORD MODAL ──────────────────────────────────────────────────────
+function openAdvRecMo(type, empId){
+  _advRecType=type; _advRecEmpId=empId;
+  var emp=emps.find(function(e){return e.id===empId;});
+  var titles={advance:'➕ บันทึกเบิกล่วงหน้า',repayment:'↩ บันทึกหักคืน',clear:'✅ เคลียร์ยอดคงค้าง'};
+  var btnClrs={advance:'var(--blue)',repayment:'var(--green)',clear:'#1D4ED8'};
+  document.getElementById('mo-advrec-title').textContent=titles[type]||'บันทึก';
+  document.getElementById('mo-advrec-empname').textContent=emp?emp.name:'';
+  document.getElementById('mo-advrec-amount').value='';
+  document.getElementById('mo-advrec-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('mo-advrec-note').value='';
+  document.getElementById('mo-advrec-extra').style.display=type==='advance'?'block':'none';
+  document.getElementById('mo-advrec-savebtn').style.background=btnClrs[type]||'var(--blue)';
+  // auto-fill clear amount = outstanding
+  if(type==='clear'){
+    var calc=calculateEmployeeAdvance(empId);
+    if(calc.outstanding>0) document.getElementById('mo-advrec-amount').value=calc.outstanding;
+    document.getElementById('mo-advrec-note').value='เคลียร์ยอดคงค้างทั้งหมด';
+  }
+  document.getElementById('mo-advrec').classList.add('on');
+}
+function closeAdvRecMo(){
+  document.getElementById('mo-advrec').classList.remove('on');
+  _advRecType=null; _advRecEmpId=null;
+}
+async function saveAdvRecMo(){
+  if(!_advRecType||!_advRecEmpId)return;
+  var amt=parseFloat(document.getElementById('mo-advrec-amount').value);
+  if(!amt||amt<=0){toast('⚠️ กรุณากรอกจำนวนเงิน');return;}
+  var date=document.getElementById('mo-advrec-date').value||new Date().toISOString().slice(0,10);
+  var note=document.getElementById('mo-advrec-note').value||'';
+  var empId=_advRecEmpId;
+
+  if(_advRecType==='advance'){
+    // สร้าง advance_requests (ใช้ระบบเดิม + show ใน transaction list)
+    var cat=document.getElementById('mo-advrec-cat').value||'เบิกล่วงหน้าเงินเดือน';
+    var refNo=(document.getElementById('mo-advrec-ref').value||'').trim();
+    var slipUrl=(document.getElementById('mo-advrec-slip').value||'').trim();
+    var emp=emps.find(function(e){return e.id===empId;});
+    var txId=uid();
+    var tx={id:txId,date:date,bank:'-',recipient:emp?emp.name:'',amount:amt,ref:refNo,imgUrl:slipUrl,savedAt:new Date().toISOString()};
+    if(!emp.transactions) emp.transactions=[];
+    emp.transactions.push(tx);
+    saveLocal(); _hasPendingChanges=true;
+    if(isOnline&&db) try{await db.collection('employees').doc(empId).update({transactions:emp.transactions});}catch(err){}
+    var req={id:txId,requestId:txId,employeeId:empId,employeeName:emp?emp.name:'',amount:amt,date:date,category:cat,referenceNo:refNo,bankName:'-',receiverName:emp?emp.name:'',slipUrl:slipUrl,note:note,status:'approved',syncStatus:'pending',createdAt:new Date().toISOString(),createdBy:'advance_tracker',_localOnly:true};
+    requests.unshift(req);
+    saveLocalReqs(); _hasPendingChanges=true;
+    if(isOnline&&db){try{var dReq=Object.assign({},req);delete dReq._localOnly;await db.collection('advance_requests').doc(txId).set(dReq);requests[0]._localOnly=false;saveLocalReqs();}catch(err){}}
+    toast('✅ บันทึกเบิกแล้ว');
+  } else {
+    await saveAdvanceRecord(_advRecType, empId, amt, note, date);
+    toast(_advRecType==='repayment'?'✅ บันทึกหักคืนแล้ว':'✅ เคลียร์ยอดแล้ว');
+  }
+  closeAdvRecMo();
+  refSel(); renderDash(); renderPayroll();
+}
+
+// ── HISTORY MODAL ─────────────────────────────────────────────────────────────
+function openHistoryMo(empId){
+  var emp=emps.find(function(e){return e.id===empId;});
+  document.getElementById('mo-history-title').textContent='📋 ประวัติ: '+(emp?emp.name:'');
+  var calc=calculateEmployeeAdvance(empId);
+  // advances from requests
+  var advs=requests.filter(function(r){return r.employeeId===empId&&r.status!=='rejected';});
+  advs.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
+  // repayments / clears from advance_records
+  var reps=advanceRecords.filter(function(r){return r.employeeId===empId&&r.status!=='cancelled';});
+  reps.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
+  var advH=advs.length?advs.map(function(r){
+    var stC=r.status==='approved'?'var(--green)':r.status==='rejected'?'var(--red)':'#F59E0B';
+    var stL=r.status==='approved'?'อนุมัติ':r.status==='rejected'?'ปฏิเสธ':'รออนุมัติ';
+    return'<div class="adv-hist type-adv">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center">'
+        +'<span><span class="ah-type type-advance">เบิก</span><b>'+fmtMoney(r.amount)+'</b></span>'
+        +'<span style="font-size:10px;font-weight:700;color:'+stC+'">'+stL+'</span>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--gray);margin-top:3px">📅 '+r.date+(r.category?' · '+r.category:'')+(r.referenceNo?' · Ref:'+r.referenceNo:'')+'</div>'
+      +(r.note?'<div style="font-size:11px;color:var(--gray)">📝 '+r.note+'</div>':'')
+    +'</div>';
+  }).join(''):'<p style="color:var(--gray);font-size:12px;padding:8px">ยังไม่มีรายการเบิก</p>';
+  var repH=reps.length?reps.map(function(r){
+    var cls=r.type==='repayment'?'type-repayment':'type-clear';
+    var lbl=r.type==='repayment'?'หักคืน':'เคลียร์';
+    var hcls=r.type==='repayment'?'type-rep':'type-clr';
+    return'<div class="adv-hist '+hcls+'">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center">'
+        +'<span><span class="ah-type '+cls+'">'+lbl+'</span><b>'+fmtMoney(r.amount)+'</b></span>'
+        +'<span style="font-size:10px;color:var(--gray)">'+r.date+'</span>'
+      +'</div>'
+      +(r.note?'<div style="font-size:11px;color:var(--gray);margin-top:3px">📝 '+r.note+'</div>':'')
+    +'</div>';
+  }).join(''):'<p style="color:var(--gray);font-size:12px;padding:8px">ยังไม่มีรายการหักคืน</p>';
+  var outColor=calc.outstanding>0?'var(--red)':'var(--green)';
+  document.getElementById('mo-history-body').innerHTML=
+    '<div style="background:#F9FAFB;border-radius:10px;padding:12px;margin-bottom:14px">'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">'
+        +'<div><div style="font-size:10px;color:var(--gray)">เบิกสะสม</div><div style="font-size:15px;font-weight:700;color:#D97706">'+fmtMoney(calc.totalAdvance)+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--gray)">เคลียร์แล้ว</div><div style="font-size:15px;font-weight:700;color:var(--green)">'+fmtMoney(calc.totalCleared)+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--gray)">คงค้าง</div><div style="font-size:15px;font-weight:700;color:'+outColor+'">'+fmtMoney(calc.outstanding)+'</div></div>'
+      +'</div>'
+    +'</div>'
+    +'<div class="sec-title">📤 รายการเบิก ('+advs.length+')</div>'+advH
+    +'<div class="sec-title" style="margin-top:10px">↩ รายการหักคืน / เคลียร์ ('+reps.length+')</div>'+repH;
+  document.getElementById('mo-history').classList.add('on');
+}
+function closeHistoryMo(){document.getElementById('mo-history').classList.remove('on');}
+
+// ── STATUS UI ─────────────────────────────────────────────────────────────────
+function setSB(mode){
+  var b=document.getElementById('sb'),n=document.getElementById('noti');
+  if(mode==='online'){b.textContent='🟢 ออนไลน์';b.className='badge on';n.className='noti';}
+  else if(mode==='offline'){b.textContent='🟡 ออฟไลน์';b.className='badge local';n.className='noti warn';n.textContent='⚠️ ไม่มีอินเทอร์เน็ต — ใช้ข้อมูลในเครื่อง บันทึกได้ตามปกติ';}
+  else if(mode==='saving'){b.textContent='💾 บันทึก...';b.className='badge saving';}
+  else{b.textContent='⏳ กำลังโหลด...';b.className='badge';}
+}
+function setLastSave(){
+  _lastSaveAt=new Date();
+  var ts=_lastSaveAt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  var si=document.getElementById('save-indicator');
+  if(si) si.textContent='· บันทึกล่าสุด '+ts;
+  var li=document.getElementById('last-save-info');
+  if(li) li.textContent='บันทึกล่าสุด: '+ts;
+  setTimeout(function(){ setSB(isOnline?'online':'offline'); }, 1500);
+}
+
+// ── ADVANCE MONTHLY HELPERS ───────────────────────────────────────────────────
+function getMonthKey(d){ return (d||'').slice(0,7); }
+
+// โหลด advance_monthly/{monthKey}/records/ แล้ว merge เข้า requests array
+async function loadAdvanceByMonth(monthKey){
+  if(!db||!isOnline) return;
+  try{
+    var snap=await db.collection('advance_monthly').doc(monthKey).collection('records').get();
+    if(snap.empty){ monthlyRecords[monthKey]=[]; return; }
+    var recs=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+    monthlyRecords[monthKey]=recs;
+    // แปลงเป็น advance_requests format แล้ว merge (dedup by id)
+    var existing=new Set(requests.map(function(r){return r.id;}));
+    var newReqs=recs
+      .filter(function(r){ return !existing.has(r.id); })
+      .map(function(r){
+        return {
+          id:r.id,
+          requestId:r.id,
+          employeeId:r.employeeId||'',
+          employeeName:r.employeeName||'',
+          amount:r.amount||0,
+          date:r.transferDate||monthKey+'-01',
+          transferDate:r.transferDate||'',
+          transferTime:r.transferTime||'',
+          category:r.category||'',
+          payrollType:r.payrollType||'',
+          bankName:r.bankName||'',
+          receiverName:r.receiverName||'',
+          referenceNo:r.referenceNo||'',
+          slipFileId:r.slipFileId||'',
+          slipUrl:r.slipUrl||'',
+          note:r.note||'',
+          ocrText:r.ocrText||'',
+          ocrConfidence:r.ocrConfidence||0,
+          monthKey:r.monthKey||monthKey,
+          status:'approved',
+          syncStatus:r.syncStatus||'linked',
+          createdAt:r.createdAt||'',
+          _fromMonthly:true,
+        };
+      });
+    if(newReqs.length>0){
+      requests=requests.concat(newReqs);
+      saveLocalReqs();
+    }
+    console.log('[advance_monthly] loaded '+recs.length+' records for '+monthKey);
+  }catch(e){
+    console.warn('[advance_monthly] load failed for '+monthKey,e);
+  }
+}
+
+// ── LOAD ALL ──────────────────────────────────────────────────────────────────
+async function loadAll(){
+  // 1. โหลด localStorage ก่อน (เร็ว)
+  loadLocal();
+  if(emps.length>0){
+    if(!curId) curId=emps[0].id;
+    refSel(); renderDash();
+  }
+  if(!db){ setSB('offline'); return; }
+  // 2. โหลด Firebase ใน background
+  try{
+    // โหลด employees
+    var es=await db.collection('employees').get();
+    if(!es.empty){
+      var fbEmps=es.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      // merge: เก็บ extras/deducts ที่อาจแก้ไข local แต่ยังไม่ sync
+      fbEmps.forEach(function(fe){
+        var local=emps.find(function(e){return e.id===fe.id;});
+        if(local){
+          // ใช้ Firebase เป็น base แต่ถ้า local มี transactions เพิ่ม ให้รวมกัน
+          var mergedTx=mergeTxArrays(fe.transactions||[], local.transactions||[]);
+          Object.assign(fe,{transactions:mergedTx});
+        }
+      });
+      // เพิ่ม local-only employees (id ขึ้นต้น local_)
+      var fbIds=new Set(fbEmps.map(function(e){return e.id;}));
+      emps.filter(function(e){return e.id.startsWith('local_');}).forEach(function(e){
+        if(!fbIds.has(e.id)) fbEmps.push(e);
+      });
+      emps=fbEmps;
+      saveLocal();
+    }
+    // โหลด advance_requests
+    try{
+      var rs=await db.collection('advance_requests').orderBy('createdAt','desc').limit(500).get();
+      if(!rs.empty){
+        var fbReqs=rs.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+        var localIds=new Set(fbReqs.map(function(r){return r.id;}));
+        var localOnly=requests.filter(function(r){return !localIds.has(r.id);});
+        requests=[].concat(fbReqs,localOnly);
+        saveLocalReqs();
+      }
+    }catch(e){ console.warn('advance_requests load:',e); }
+    // โหลด advance_ledger
+    try{
+      var ls=await db.collection('advance_ledger').orderBy('date','desc').limit(1000).get();
+      if(!ls.empty){
+        ledger=ls.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+        saveLocalLedger();
+      }
+    }catch(e){ console.warn('advance_ledger load:',e); }
+    // โหลด advance_records (repayment + clear)
+    try{
+      var ars=await db.collection('advance_records').limit(2000).get();
+      if(!ars.empty){
+        var fbAdvRecs=ars.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+        var fbArIds=new Set(fbAdvRecs.map(function(r){return r.id;}));
+        var localOnlyAr=advanceRecords.filter(function(r){return !fbArIds.has(r.id);});
+        advanceRecords=fbAdvRecs.concat(localOnlyAr);
+        saveLocalAdvRecs();
+      }
+    }catch(e){ console.warn('advance_records load:',e); }
+
+    isOnline=true;
+    // โหลด advance_monthly สำหรับเดือนปัจจุบัน (fast path)
+    await loadAdvanceByMonth(curMo);
+
+    setSB('online');
+    if(!curId&&emps.length>0) curId=emps[0].id;
+    refSel(); renderDash(); renderExp();
+  }catch(e){
+    console.warn('Firebase load:',e);
+    isOnline=false; setSB('offline');
+    if(!curId&&emps.length>0){curId=emps[0].id;refSel();renderDash();}
+  }
+}
+
+// merge สอง transaction arrays โดยไม่ duplicate (เทียบ id + ref + amount+date)
+function mergeTxArrays(base, extra){
+  var result=[].concat(base);
+  extra.forEach(function(t){
+    var dup=result.some(function(r){
+      if(t.id&&r.id&&t.id===r.id) return true;
+      if(t.ref&&r.ref&&t.ref===r.ref) return true;
+      return false;
+    });
+    if(!dup) result.push(t);
+  });
+  return result;
+}
+
+async function syncDown(){
+  toast('🔄 กำลังดึงข้อมูลจาก Firebase...');
+  try{
+    var es=await db.collection('employees').get();
+    emps=es.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+    saveLocal();
+    var rs=await db.collection('advance_requests').orderBy('createdAt','desc').limit(500).get();
+    if(!rs.empty){
+      requests=rs.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      saveLocalReqs();
+    }
+    var ls=await db.collection('advance_ledger').orderBy('date','desc').limit(1000).get();
+    if(!ls.empty){
+      ledger=ls.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      saveLocalLedger();
+    }
+    isOnline=true;
+    // โหลด advance_records
+    try{
+      var arsDown=await db.collection('advance_records').limit(2000).get();
+      if(!arsDown.empty){
+        advanceRecords=arsDown.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+        saveLocalAdvRecs();
+      }
+    }catch(e){ console.warn('advance_records syncDown:',e); }
+    // reset monthlyRecords cache แล้วโหลดเดือนปัจจุบันใหม่
+    monthlyRecords={};
+    await loadAdvanceByMonth(curMo);
+    setSB('online');
+    if(!curId&&emps.length>0) curId=emps[0].id;
+    refSel(); renderDash(); renderExp();
+    toast('✅ ดึงข้อมูลสำเร็จ — '+emps.length+' พนักงาน / '+requests.length+' คำขอ / '+advanceRecords.length+' records');
+  }catch(e){ toast('❌ ไม่สามารถเชื่อมต่อ Firebase ได้'); }
+}
+
+// ── AUTO-SAVE ─────────────────────────────────────────────────────────────────
+async function saveToFirebase(){
+  if(!db) return false;
+  try{
+    setSB('saving');
+    // บันทึก employees (batch)
+    var dirtyEmps=emps.filter(function(e){return !e.id.startsWith('local_');});
+    if(dirtyEmps.length>0){
+      var batch=db.batch();
+      dirtyEmps.forEach(function(e){
+        var d=Object.assign({},e); delete d.id;
+        batch.set(db.collection('employees').doc(e.id),d,{merge:true});
+      });
+      await batch.commit();
+    }
+    // บันทึก requests ที่ยังไม่ sync
+    var pendingReqs=requests.filter(function(r){return r._localOnly;});
+    if(pendingReqs.length>0){
+      var batch2=db.batch();
+      pendingReqs.forEach(function(r){
+        var d=Object.assign({},r); delete d.id; delete d._localOnly;
+        batch2.set(db.collection('advance_requests').doc(r.id),d);
+      });
+      await batch2.commit();
+      // mark as synced
+      requests=requests.map(function(r){
+        if(r._localOnly){var c=Object.assign({},r);delete c._localOnly;return c;}
+        return r;
+      });
+      saveLocalReqs();
+    }
+    // บันทึก advance_records ที่ยังไม่ sync
+    var pendingAdvRecs=advanceRecords.filter(function(r){return r._localOnly;});
+    if(pendingAdvRecs.length>0){
+      var batch3=db.batch();
+      pendingAdvRecs.forEach(function(r){
+        var dAr=Object.assign({},r); delete dAr._localOnly;
+        batch3.set(db.collection('advance_records').doc(r.id),dAr);
+      });
+      await batch3.commit();
+      advanceRecords=advanceRecords.map(function(r){
+        if(r._localOnly){var c=Object.assign({},r);delete c._localOnly;return c;}
+        return r;
+      });
+      saveLocalAdvRecs();
+    }
+    isOnline=true; _hasPendingChanges=false;
+    setLastSave();
+    return true;
+  }catch(e){
+    console.warn('[AutoSave]',e);
+    isOnline=false; setSB('offline');
+    return false;
+  }
+}
+
+async function manualSave(){
+  var ok=await saveToFirebase();
+  toast(ok?'✅ บันทึกขึ้น Firebase แล้ว':'⚠️ บันทึกในเครื่อง (Firebase ไม่พร้อม)');
+}
+
+// periodic save ทุก 30 วินาที
+setInterval(function(){
+  if(isOnline&&_hasPendingChanges) saveToFirebase();
+},30000);
+
+// save before close
+window.addEventListener('beforeunload',function(){
+  // save local ก่อนเสมอ
+  saveLocal(); saveLocalReqs();
+  // fire-and-forget Firebase save
+  if(isOnline&&db&&_hasPendingChanges) saveToFirebase();
+});
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function fmtMoney(n){ return '฿'+(n||0).toLocaleString('th-TH',{minimumFractionDigits:2}); }
+function fmt(n){ return (n||0).toLocaleString('th-TH',{minimumFractionDigits:2}); }
+function getApiKey(){ return localStorage.getItem('anthropic_api_key')||''; }
+
+// ── MONTH NAVIGATION ──────────────────────────────────────────────────────────
+function moLabel(m){ var mn=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']; var p=m.split('-'); return mn[+p[1]-1]+' '+(+p[0]+543); }
+function navMo(dir){
+  var p=curMo.split('-'); var y=+p[0],mo=+p[1]; mo+=dir;
+  if(mo>12){mo=1;y++;}else if(mo<1){mo=12;y--;}
+  curMo=y+'-'+('0'+mo).slice(-2);
+  // โหลด advance_monthly ของเดือนใหม่ถ้ายังไม่มี
+  if(db&&isOnline&&!monthlyRecords[curMo]){
+    loadAdvanceByMonth(curMo).then(function(){ renderDash(); renderPayroll(); renderExp(); });
+  } else {
+    renderDash(); renderPayroll(); renderExp();
+  }
+}
+function moNavHtml(){
+  return '<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 0 12px">'
+    +'<button onclick="navMo(-1)" style="background:var(--blue);border:none;border-radius:8px;width:36px;height:36px;color:#fff;font-size:18px;cursor:pointer;line-height:1">◀</button>'
+    +'<span style="font-size:15px;font-weight:700;min-width:120px;text-align:center;color:var(--navy)">📅 '+moLabel(curMo)+'</span>'
+    +'<button onclick="navMo(1)" style="background:var(--blue);border:none;border-radius:8px;width:36px;height:36px;color:#fff;font-size:18px;cursor:pointer;line-height:1">▶</button>'
+    +'</div>';
+}
+
+// ดึง requests ของพนักงานคนนี้ (advance_requests เป็น source of truth)
+function getMergedTx(emp){
+  var txs=[];
+  // 1. advance_requests (primary source)
+  requests.filter(function(r){ return r.employeeId===emp.id; }).forEach(function(r){
+    txs.push({
+      id:r.id, _fromReq:true,
+      date:r.date||'-', bank:r.bankName||r.transferDate||'-',
+      recipient:r.receiverName||r.employeeName||'',
+      amount:r.amount||0, ref:r.referenceNo||'',
+      imgUrl:r.slipUrl||'', note:r.note||'',
+      category:r.category||'',
+      status:r.status||'pending_approval',
+      syncStatus:r.syncStatus||'pending',
+      savedAt:r.createdAt||''
+    });
+  });
+  // 2. employees.transactions[] ที่ไม่มีใน requests (legacy records)
+  var reqIds=new Set(txs.map(function(t){return t.id;}));
+  (emp.transactions||[]).forEach(function(t){
+    if(!reqIds.has(t.id)) txs.push(Object.assign({},t,{_legacy:true,status:t.status||'approved'}));
+  });
+  txs.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  return txs;
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function goTab(t,btn){
+  document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on');});
+  document.querySelectorAll('.tb').forEach(function(b){b.classList.remove('on');});
+  document.getElementById('pg-'+t).classList.add('on');
+  if(btn)btn.classList.add('on');
+  if(t==='export')renderExp();
+  if(t==='settings')renderSettings();
+  if(t==='payroll')renderPayroll();
+}
+
+// ── PAYROLL DASHBOARD ─────────────────────────────────────────────────────────
+function renderPayroll(){
+  var navEl=document.getElementById('mo-nav-pay');
+  if(navEl) navEl.innerHTML=moNavHtml();
+  var c=document.getElementById('payroll-table');
+  if(!emps.length){c.innerHTML='<div class="empty"><div class="ei">👤</div><p>ยังไม่มีพนักงาน</p></div>';return;}
+
+  var rows=emps.map(function(emp){
+    var allTx=getMergedTx(emp);
+    var moTx=allTx.filter(function(t){ return (t.date||'').startsWith(curMo); });
+    var approved=moTx.filter(function(t){return (t.status==='approved'||t._legacy)&&t.status!=='rejected';});
+    var pending=moTx.filter(function(t){return t.status==='pending_approval';});
+    var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
+    var moSal=getMoSalary(emp,curMo);var moCar=getMoCarry(emp,curMo);
+    var totalAdv=approved.reduce(function(s,t){return s+Number(t.amount);},0);
+    var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
+    var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
+    var net=moSal+totalExtra-totalDeduct-moCar-totalAdv;
+    var negStyle=net<0?'color:var(--red);font-weight:700':'color:var(--green);font-weight:700';
+    var advCalc=calculateEmployeeAdvance(emp.id);
+    var outStyle=advCalc.outstanding>0?'color:var(--red);font-weight:700':'color:var(--green);font-weight:700';
+    return'<tr style="border-bottom:1px solid var(--border)">'
+      +'<td style="padding:10px 12px;font-weight:600">'+emp.name+(emp.dept?'<br><span style="font-size:11px;color:var(--gray)">'+emp.dept+'</span>':'')+(emp.bank?'<br><span style="font-size:11px;color:var(--blue)">🏦 '+emp.bank+'</span>':'')+'</td>'
+      +'<td style="padding:10px 12px;text-align:right">'+fmtMoney(moSal)+'</td>'
+      +'<td style="padding:10px 12px;text-align:right;color:var(--green)">'+fmtMoney(totalExtra)+'</td>'
+      +'<td style="padding:10px 12px;text-align:right;color:var(--red)">'+fmtMoney(totalDeduct+moCar)+'</td>'
+      +'<td style="padding:10px 12px;text-align:right;color:var(--blue)">'+fmtMoney(totalAdv)
+        +(pending.length?'<br><span style="font-size:10px;color:#F59E0B">('+pending.length+' รอ)</span>':'')+'</td>'
+      +'<td style="padding:10px 12px;text-align:right"><span style="'+negStyle+'">'+(net>=0?'+':'')+fmtMoney(net)+'</span></td>'
+      +'<td style="padding:10px 12px;text-align:right"><span style="'+outStyle+'">'+(advCalc.outstanding>0?fmtMoney(advCalc.outstanding):'✅')+'</span></td>'
+      +'<td style="padding:10px 12px;text-align:center">'
+        +'<button onclick="goTab(\'dashboard\',document.querySelectorAll(\'.tb\')[0]);curId=\''+emp.id+'\';refSel();renderDash()" style="font-size:11px;background:var(--blue);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer">ดู</button> '
+        +'<button onclick="printSlipEmp(\''+emp.id+'\')" style="font-size:11px;background:#7C3AED;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer">สลิป</button>'
+      +'</td>'
+    +'</tr>';
+  }).join('');
+
+  var totalAll=emps.reduce(function(s,emp){
+    var ex2=getEx(emp,curMo);var de2=getDe(emp,curMo);
+    var sal2=getMoSalary(emp,curMo);var car2=getMoCarry(emp,curMo);
+    var moTxAll=getMergedTx(emp).filter(function(t){ return (t.date||'').startsWith(curMo); });
+    var approved=moTxAll.filter(function(t){return t.status==='approved'||t._legacy;});
+    var totalAdv=approved.reduce(function(s2,t){return s2+Number(t.amount);},0);
+    var net=sal2+((ex2.ot||0)+(ex2.travel||0)+(ex2.phone||0)+(ex2.other||0))-((de2.absent||0)+(de2.insurance||0)+(de2.social||0))-car2-totalAdv;
+    return s+net;
+  },0);
+
+  var totalOutstanding=emps.reduce(function(s,e){return s+calculateEmployeeAdvance(e.id).outstanding;},0);
+  c.innerHTML='<div class="card" style="overflow-x:auto;padding:0">'
+    +'<table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:#F0F4F8;font-size:11.5px;color:var(--gray)">'
+    +'<th style="padding:10px 12px;text-align:left">พนักงาน</th>'
+    +'<th style="padding:10px 12px;text-align:right">เงินเดือน</th>'
+    +'<th style="padding:10px 12px;text-align:right">รายรับเพิ่ม</th>'
+    +'<th style="padding:10px 12px;text-align:right">หัก+ยกมา</th>'
+    +'<th style="padding:10px 12px;text-align:right">เบิกรวม</th>'
+    +'<th style="padding:10px 12px;text-align:right">สุทธิ</th>'
+    +'<th style="padding:10px 12px;text-align:right">คงค้าง</th>'
+    +'<th style="padding:10px 12px;text-align:center">Actions</th>'
+    +'</tr></thead>'
+    +'<tbody>'+rows+'</tbody>'
+    +'<tfoot><tr style="background:#F0F4F8;font-weight:700">'
+    +'<td colspan="5" style="padding:10px 12px;font-size:13px">รวมสุทธิทุกคน</td>'
+    +'<td style="padding:10px 12px;text-align:right;font-size:15px;'+(totalAll>=0?'color:var(--green)':'color:var(--red)')+'">'+( totalAll>=0?'+':'')+fmtMoney(totalAll)+'</td>'
+    +'<td style="padding:10px 12px;text-align:right;font-size:14px;'+(totalOutstanding>0?'color:var(--red)':'color:var(--green)')+'">'+fmtMoney(totalOutstanding)+'</td>'
+    +'<td></td>'
+    +'</tr></tfoot>'
+    +'</table></div>';
+}
+
+async function printPayrollAll(){
+  // สั่งพิมพ์สลิปทีละคน
+  for(var i=0;i<emps.length;i++){
+    printSlipEmp(emps[i].id);
+    if(i<emps.length-1) await new Promise(function(r){setTimeout(r,400);});
+  }
+}
+
+function printSlipEmp(eid){
+  var emp=emps.find(function(e){return e.id===eid;});
+  if(!emp){toast('กรุณาเลือกพนักงานก่อน');return;}
+  printSlipForEmp(eid);
+}
+
+function refSel(){
+  ['sel1','sel2','sel3'].forEach(function(id){
+    var el=document.getElementById(id);if(!el)return;
+    el.innerHTML=emps.length===0
+      ?'<option value="">-- ยังไม่มีพนักงาน --</option>'
+      :emps.map(function(e){return'<option value="'+e.id+'"'+(e.id===curId?' selected':'')+'>'+e.name+'</option>';}).join('');
+  });
+}
+function selEmp(){curId=document.getElementById('sel1').value;renderDash();}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function getEmp(){return emps.find(function(e){return e.id===curId;});}
+function fv(id){return Math.max(0,parseFloat(document.getElementById(id).value)||0);}
+
+// ── PER-MONTH DATA HELPERS ────────────────────────────────────────────────────
+// monthData[YYYY-MM] = { salary, extras:{ot,travel,phone,other}, deducts:{absent,insurance,social} }
+// "ยกมาเดือนก่อน" (carry) คำนวณอัตโนมัติจากยอดสุทธิของเดือนก่อน ไม่ต้องกรอกเอง
+
+function getMonthData(emp, mo){
+  var hist = emp.monthData || {};
+  return hist[mo] || {};
+}
+function setMonthData(emp, mo, patch){
+  if(!emp.monthData) emp.monthData = {};
+  emp.monthData[mo] = Object.assign({}, emp.monthData[mo] || {}, patch);
+}
+
+// ย้ายเดือน YYYY-MM ไป +dir เดือน
+function shiftMonth(mo, dir){
+  var p=mo.split('-'); var y=+p[0],m=+p[1];
+  m+=dir;
+  if(m>12){m=1;y++;}else if(m<1){m=12;y--;}
+  return y+'-'+('0'+m).slice(-2);
+}
+
+// ดึง extras ของเดือนนั้น
+// ถ้าเดือนนั้นยังไม่มีข้อมูล → {} (ว่าง) เพื่อให้แต่ละเดือนเป็นอิสระ
+// ไม่ fallback ข้ามเดือน — กรอกใหม่แต่ละเดือน
+function getEx(emp, mo){
+  var md=getMonthData(emp,mo);
+  return (md&&md.extras)?md.extras:{};
+}
+// ดึง deducts ของเดือนนั้น (เป็นอิสระต่อเดือน)
+function getDe(emp, mo){
+  var md=getMonthData(emp,mo);
+  return (md&&md.deducts)?md.deducts:{};
+}
+// ดึง salary ของเดือนนั้น
+// fallback → global salary เพราะเงินเดือนพื้นฐานมักเหมือนกันทุกเดือน
+// ต่างจาก extras/deducts ที่แปรผัน → ต้องกรอกใหม่ทุกเดือน
+function getMoSalary(emp, mo){
+  var md=getMonthData(emp,mo);
+  return (md&&md.salary!=null)?md.salary:(emp.salary||0);
+}
+
+// คำนวณยอดสุทธิของเดือนนั้น (ใช้ข้อมูล per-month ทั้งหมด)
+// totalAdv = ยอดเบิกที่อนุมัติแล้วของเดือนนั้น (ส่งเข้ามาจากข้างนอก)
+function calcNet(emp, mo, totalAdv){
+  var ex=getEx(emp,mo);
+  var de=getDe(emp,mo);
+  var sal=getMoSalary(emp,mo);
+  var carry=getMoCarry(emp,mo); // carry ของเดือนนี้ (auto จากเดือนก่อน)
+  var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
+  var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
+  return sal+totalExtra-totalDeduct-carry-totalAdv;
+}
+
+// คำนวณยอดเบิก (approved+legacy) ของเดือนนั้น
+function getMoTotalAdv(emp, mo){
+  var allTx=getMergedTx(emp);
+  var moTx=allTx.filter(function(t){return (t.date||'').startsWith(mo)&&t.status!=='rejected';});
+  var approved=moTx.filter(function(t){return !t._fromReq||(t._fromReq&&t.status==='approved');});
+  return approved.reduce(function(s,t){return s+Number(t.amount);},0);
+}
+
+// "ยกมาเดือนก่อน" = ถ้าเดือนก่อนยอดสุทธิติดลบ ให้นำมาหักเดือนนี้
+// ถ้าบวก = พนักงานได้รับเกิน ไม่มียอดค้าง (carry = 0)
+// เดือนก่อนที่ไม่มีข้อมูลเลย (ก่อนเริ่มใช้ระบบ) → ใช้ emp.carry global เป็น initial carry
+function getMoCarry(emp, mo){
+  var prevMo=shiftMonth(mo,-1);
+  var prevMd=getMonthData(emp,prevMo);
+  // ถ้าเดือนก่อนไม่มีข้อมูล monthData เลย → ใช้ global carry (initial)
+  var hasPrevData=emp.monthData&&emp.monthData[prevMo];
+  if(!hasPrevData){
+    return emp.carry||0; // initial carry จาก modal
+  }
+  // คำนวณ net ของเดือนก่อน
+  var prevAdv=getMoTotalAdv(emp,prevMo);
+  var prevNet=calcNet(emp,prevMo,prevAdv);
+  // ถ้า net ติดลบ = ยังได้รับไม่ครบ → นำมาหักเดือนนี้ (เป็นค่าบวก)
+  return prevNet<0?Math.abs(prevNet):0;
+}
+
+function renderDash(){
+  var navEl=document.getElementById('mo-nav-dash');
+  if(navEl) navEl.innerHTML=moNavHtml();
+  var emp=getEmp(),c=document.getElementById('dash');
+  if(!emp){c.innerHTML='<div class="empty"><div class="ei">👤</div><p>เพิ่มพนักงานก่อนเริ่มใช้งาน</p></div>';return;}
+  var allTx=getMergedTx(emp);
+  var moTx=allTx.filter(function(t){ return (t.date||'').startsWith(curMo); });
+  // ไม่นับรายการที่ถูกปฏิเสธ (rejected) ในยอดรวม
+  var moTxActive=moTx.filter(function(t){ return t.status!=='rejected'; });
+  var tot=moTxActive.reduce(function(s,t){return s+Number(t.amount);},0);
+  var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
+  var moSalary=getMoSalary(emp,curMo);
+  var moCarry=getMoCarry(emp,curMo);
+  var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
+  var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
+  var net=moSalary+totalExtra-totalDeduct-moCarry-tot;
+  var pos=net>=0;
+
+  // pending requests count (filtered to month)
+  var pendCount=moTx.filter(function(t){return t._fromReq&&t.status==='pending_approval';}).length;
+
+  var txH=moTx.length===0
+    ?'<div class="empty"><div class="ei">📭</div><p>ไม่มีรายการเบิกในเดือนนี้</p></div>'
+    :moTx.map(function(t,i){
+      var isReq=t._fromReq;
+      var statusCls=isReq?(t.status==='approved'?'req-ok':t.status==='rejected'?'req-rej':'req-pend'):'legacy';
+      var statusIcon=isReq?(t.status==='approved'?'✅':t.status==='rejected'?'❌':'⏳'):'🏦';
+      var stBadge='';
+      if(isReq){
+        var bc=t.status==='approved'?'stb-ok':t.status==='rejected'?'stb-rej':'stb-pend';
+        var bl=t.status==='approved'?'อนุมัติแล้ว':t.status==='rejected'?'ปฏิเสธ':'รออนุมัติ';
+        stBadge='<span class="stb '+bc+'">'+bl+'</span>';
+        // syncStatus indicator
+        if(t.syncStatus==='linked') stBadge+=' <span style="font-size:10px;color:#16A34A">● linked</span>';
+        else if(t.syncStatus==='error') stBadge+=' <span style="font-size:10px;color:#DC2626">● error</span>';
+        else if(t.syncStatus==='pending') stBadge+=' <span style="font-size:10px;color:#D97706">● รอ sync</span>';
+      }
+      if(t._legacy) stBadge+=' <span style="font-size:10px;color:#94A3B8">legacy</span>';
+      var apBtns='';
+      if(isReq&&t.status==='pending_approval'){
+        apBtns='<div class="ap-btns">'
+          +'<button class="btnx btnx-g" onclick="approveReq(\''+t.id+'\')">✓ อนุมัติ</button>'
+          +'<button class="btnx btnx-r" onclick="rejectReq(\''+t.id+'\')">✕ ปฏิเสธ</button>'
+          +'</div>';
+      }
+      var delBtn=isReq
+        ?'<button class="del" onclick="delReq(\''+t.id+'\')">🗑️</button>'
+        :'<button class="del" onclick="delTxById(\''+t.id+'\')">🗑️</button>';
+      return'<div class="txc">'
+        +'<div class="txi '+statusCls+'">'+statusIcon+'</div>'
+        +'<div class="txinfo">'
+          +'<div class="txd">'+t.date+'</div>'
+          +'<div class="txb">'+(t.category||t.bank||'-')+'</div>'
+          +(t.recipient?'<div class="txs">ผู้รับ: '+t.recipient+'</div>':'')
+          +(t.note?'<div class="txs">'+t.note+'</div>':'')
+          +'<div class="txr">'+(t.ref||'')+'</div>'
+          +stBadge
+          +apBtns
+        +'</div>'
+        +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'
+          +'<div class="txa">'+fmtMoney(t.amount)+'</div>'
+          +(t.imgUrl?'<a href="'+t.imgUrl+'" target="_blank" style="font-size:11px;color:var(--blue);text-decoration:none">🖼️ สลิป</a>':'')
+          +delBtn
+        +'</div>'
+        +'</div>';
+    }).join('');
+
+  // advance accounting summary (คำนวณหลัง txH เพราะต้องการ emp.id)
+  var advCalc=calculateEmployeeAdvance(emp.id);
+  var outColor=advCalc.outstanding>0?'var(--red)':'var(--green)';
+  var outLabel=advCalc.outstanding<=0?'✅ เคลียร์แล้ว':fmtMoney(advCalc.outstanding);
+  var advSumH=
+    '<div class="sec-title" style="margin-top:12px;color:var(--navy)">💳 บัญชีเบิกล่วงหน้า (สะสมทั้งหมด)</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">'
+      +'<div class="sbox"><div class="sl">เบิกสะสม</div><div class="sv" style="color:#D97706;font-size:13px">'+fmtMoney(advCalc.totalAdvance)+'</div></div>'
+      +'<div class="sbox"><div class="sl">เคลียร์แล้ว</div><div class="sv" style="color:var(--green);font-size:13px">'+fmtMoney(advCalc.totalCleared)+'</div></div>'
+      +'<div class="sbox"><div class="sl">คงค้าง</div><div class="sv" style="color:'+outColor+';font-size:13px">'+outLabel+'</div></div>'
+    +'</div>'
+    +'<div class="adv-act-btns">'
+      +'<button class="adv-act-btn" onclick="openAdvRecMo(\'advance\',\''+emp.id+'\')" style="background:#FEF3C7;color:#92400E">➕ บันทึกเบิก</button>'
+      +'<button class="adv-act-btn" onclick="openAdvRecMo(\'repayment\',\''+emp.id+'\')" style="background:var(--green-bg);color:#166534">↩ หักคืน</button>'
+      +'<button class="adv-act-btn" onclick="openAdvRecMo(\'clear\',\''+emp.id+'\')" style="background:#DBEAFE;color:#1E40AF">✅ เคลียร์ยอด</button>'
+      +'<button class="adv-act-btn" onclick="openHistoryMo(\''+emp.id+'\')" style="background:#F3F4F6;color:var(--navy)">📋 ประวัติ</button>'
+    +'</div>';
+
+  c.innerHTML=
+    '<div class="emp-card">'
+      +'<div style="display:flex;align-items:flex-start;justify-content:space-between">'
+        +'<div><div class="nm">'+emp.name+'</div>'
+        +'<div class="sub">'+(emp.dept?emp.dept+(emp.bank?' · ':''):'')+''+(emp.bank||'')+'</div></div>'
+        +'<button onclick="openMo(\''+emp.id+'\')" style="background:rgba(255,255,255,.1);border:none;border-radius:6px;color:#94A3B8;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit">✏️ แก้ไข</button>'
+      +'</div>'
+      +'<div class="grid2">'
+        +'<div class="fi"><label>ฐานเงินเดือน (บาท)</label><input type="number" value="'+(moSalary||'')+'" placeholder="กรอกเงินเดือน" onchange="updSalary(this.value)"></div>'
+        +'<div class="fi"><label>ยกมาเดือนก่อน (อัตโนมัติ)</label>'
+          +'<div style="background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);border-radius:8px;padding:7px 9px;font-size:13px;color:'+(moCarry>0?'#FCA5A5':'#94A3B8')+'">'+(moCarry>0?'-฿'+fmt(moCarry):'ไม่มียอดค้าง')+'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div class="xsec">'
+        +'<div class="xt">➕ รายได้เพิ่มเติม</div>'
+        +'<div class="xgrid">'
+          +'<div class="xfi"><label>ค่าล่วงเวลา</label><input type="number" id="x_ot" value="'+(ex.ot||'')+'" placeholder="0"></div>'
+          +'<div class="xfi"><label>ค่าเดินทาง</label><input type="number" id="x_travel" value="'+(ex.travel||'')+'" placeholder="0"></div>'
+          +'<div class="xfi"><label>ค่าโทร</label><input type="number" id="x_phone" value="'+(ex.phone||'')+'" placeholder="0"></div>'
+          +'<div class="xfi"><label>รายรับอื่นๆ</label><input type="number" id="x_other" value="'+(ex.other||'')+'" placeholder="0"></div>'
+        +'</div>'
+      +'</div>'
+      +'<div class="xsec" style="margin-top:8px">'
+        +'<div class="xt" style="color:#FCA5A5">➖ รายการหัก</div>'
+        +'<div class="xgrid">'
+          +'<div class="xfi"><label>ขาด/ลา/มาสาย</label><input type="number" id="d_absent" value="'+(de.absent||'')+'" placeholder="0"></div>'
+          +'<div class="xfi"><label>หักเงินประกัน</label><input type="number" id="d_insurance" value="'+(de.insurance||'')+'" placeholder="0"></div>'
+          +'<div class="xfi full"><label>หักประกันสังคม</label><input type="number" id="d_social" value="'+(de.social||'')+'" placeholder="0"></div>'
+        +'</div>'
+        +'<button onclick="saveExtras()" style="margin-top:10px;width:100%;padding:9px;border:none;border-radius:8px;background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💾 บันทึกรายได้ / หัก</button>'
+      +'</div>'
+    +'</div>'
+    +'<div class="expbox" style="margin-bottom:12px">'
+      +'<div class="exprow"><span style="color:var(--gray)">เงินเดือน</span><span style="font-weight:600">฿'+fmt(moSalary)+'</span></div>'
+      +(totalExtra>0?'<div class="exprow"><span style="color:var(--gray)">รายได้เพิ่มเติม</span><span style="font-weight:600;color:var(--green)">+฿'+fmt(totalExtra)+'</span></div>':'')
+      +(totalDeduct>0?'<div class="exprow"><span style="color:var(--gray)">รายการหัก</span><span style="font-weight:600;color:var(--red)">-฿'+fmt(totalDeduct)+'</span></div>':'')
+      +(moCarry>0?'<div class="exprow"><span style="color:var(--gray)">ยกมาเดือนก่อน <span style="font-size:10px;color:#94A3B8">(อัตโนมัติ)</span></span><span style="font-weight:600;color:var(--red)">-฿'+fmt(moCarry)+'</span></div>':'')
+      +'<div class="exprow"><span style="color:var(--gray)">รวมเบิก '+moLabel(curMo)+'</span><span style="font-weight:600;color:var(--blue)">-฿'+fmt(tot)+'</span></div>'
+      +'<div class="exprow last"><span style="font-weight:600">ยอดสุทธิที่ได้รับ</span><span style="font-weight:700;color:'+(pos?'var(--green)':'var(--red)')+'">'+(pos?'+':'')+'฿'+fmt(net)+'</span></div>'
+    +'</div>'
+    +'<div class="sum2" style="margin-top:0">'
+      +'<div class="sbox"><div class="sl">รายการ '+moLabel(curMo)+'</div><div class="sv">'+moTx.length+' รายการ'+(pendCount>0?' <span style="font-size:12px;color:#F59E0B">('+pendCount+' รอ)</span>':'')+'</div></div>'
+      +'<div class="sbox"><div class="sl">รายการรอ Approve</div><div class="sv" style="color:'+(pendCount>0?'#F59E0B':'var(--gray)')+'">'+pendCount+' รายการ</div></div>'
+    +'</div>'
+    +advSumH
+    +'<div class="stitle">📋 รายการเบิกล่วงหน้า</div>'+txH;
+}
+
+// ── EXTRAS ────────────────────────────────────────────────────────────────────
+async function saveExtras(){
+  var e=getEmp();if(!e)return;
+  // บันทึกแบบ per-month เท่านั้น — ไม่แตะ global e.extras/e.deducts
+  // เพื่อให้แต่ละเดือนเป็นอิสระจากกันอย่างสมบูรณ์
+  var newExtras={ot:fv('x_ot'),travel:fv('x_travel'),phone:fv('x_phone'),other:fv('x_other')};
+  var newDeducts={absent:fv('d_absent'),insurance:fv('d_insurance'),social:fv('d_social')};
+  setMonthData(e, curMo, {extras:newExtras, deducts:newDeducts});
+  saveLocal(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    // บันทึกเฉพาะ monthData — ไม่ overwrite global extras/deducts
+    try{await db.collection('employees').doc(e.id).set({monthData:e.monthData||{}},{merge:true});}catch(err){}
+  }
+  renderDash(); toast('✅ บันทึกรายได้/หักแล้ว ('+moLabel(curMo)+')');
+}
+async function updSalary(v){
+  var e=getEmp();if(!e)return;
+  var val=parseFloat(v)||0;
+  // บันทึกแบบ per-month
+  setMonthData(e, curMo, {salary:val});
+  e.salary=val; // global สำหรับ backward-compat
+  saveLocal(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    var fbPatch2={salary:val,monthData:e.monthData||{}};
+    try{await db.collection('employees').doc(e.id).set(fbPatch2,{merge:true});}catch(err){}
+  }
+  renderDash();
+}
+// updCarry ถูกลบออก: carry คำนวณอัตโนมัติจาก getMoCarry() แล้ว
+// initial carry (เดือนแรกก่อนมีข้อมูล) กรอกได้ใน modal แก้ไขพนักงาน
+
+// ── DELETE TX / REQUEST ───────────────────────────────────────────────────────
+async function delTxById(txId){
+  var e=getEmp();if(!e||!confirm('ลบรายการนี้?'))return;
+  e.transactions=(e.transactions||[]).filter(function(t){
+    return t.id!==txId&&!(t.ref&&t.ref===txId);
+  });
+  saveLocal(); _hasPendingChanges=true;
+  if(isOnline&&db) try{await db.collection('employees').doc(e.id).update({transactions:e.transactions});}catch(err){}
+  renderDash(); toast('🗑️ ลบรายการแล้ว');
+}
+async function delTx(i){
+  var e=getEmp();if(!e||!confirm('ลบรายการนี้?'))return;
+  var allTx=getMergedTx(e);
+  var tx=allTx[i]; if(!tx) return;
+  e.transactions=(e.transactions||[]).filter(function(t,idx){
+    return !(t.id===tx.id||(t.ref&&t.ref===tx.ref));
+  });
+  saveLocal(); _hasPendingChanges=true;
+  if(isOnline&&db) try{await db.collection('employees').doc(e.id).update({transactions:e.transactions});}catch(err){}
+  renderDash(); toast('🗑️ ลบรายการแล้ว');
+}
+async function delReq(reqId){
+  if(!confirm('ลบคำขอนี้?'))return;
+  // ลบออกจาก employee.transactions ด้วย
+  var req=requests.find(function(r){return r.id===reqId;});
+  if(req){
+    var emp=emps.find(function(e){return e.id===req.employeeId;});
+    if(emp&&emp.transactions){
+      emp.transactions=emp.transactions.filter(function(t){return t.id!==reqId&&t.ref!==req.referenceNo;});
+    }
+  }
+  requests=requests.filter(function(r){return r.id!==reqId;});
+  saveLocal(); saveLocalReqs(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    try{await db.collection('advance_requests').doc(reqId).delete();}catch(err){}
+  }
+  renderDash(); toast('🗑️ ลบแล้ว');
+}
+
+// ── APPROVE / REJECT ──────────────────────────────────────────────────────────
+async function approveReq(reqId){
+  if(!confirm('อนุมัติคำขอนี้?'))return;
+  await setReqStatus(reqId,'approved');
+  // สร้าง ledger entry เมื่ออนุมัติ
+  var req=requests.find(function(r){return r.id===reqId;});
+  if(req) await writeLedgerEntry(req);
+  toast('✅ อนุมัติแล้ว');
+}
+async function rejectReq(reqId){
+  if(!confirm('ปฏิเสธคำขอนี้?'))return;
+  await setReqStatus(reqId,'rejected');
+  toast('❌ ปฏิเสธแล้ว');
+}
+async function setReqStatus(reqId,status){
+  var idx=requests.findIndex(function(r){return r.id===reqId;});
+  if(idx<0)return;
+  requests[idx].status=status;
+  requests[idx].approvedAt=new Date().toISOString();
+  saveLocalReqs(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    try{await db.collection('advance_requests').doc(reqId).update({status:status,approvedAt:requests[idx].approvedAt,syncStatus:'linked'});}
+    catch(err){}
+  }
+  renderDash();
+}
+
+async function writeLedgerEntry(req){
+  var entry={
+    id:'led_'+req.id,
+    requestId:req.id,
+    employeeId:req.employeeId||'',
+    employeeName:req.employeeName||'',
+    amount:Number(req.amount)||0,
+    date:req.date||'-',
+    type:req.category||'เบิกล่วงหน้าเงินเดือน',
+    status:'approved',
+    syncStatus:'linked',
+    approvedAt:new Date().toISOString()
+  };
+  // อัปเดต local แทนซ้ำ
+  var li=ledger.findIndex(function(l){return l.requestId===req.id;});
+  if(li>=0) ledger[li]=entry; else ledger.unshift(entry);
+  saveLocalLedger();
+  if(isOnline&&db){
+    try{ await db.collection('advance_ledger').doc(entry.id).set(entry); }
+    catch(e){ console.warn('[ledger] write failed:',e); }
+  }
+}
+
+// ── EMPLOYEE MODAL ────────────────────────────────────────────────────────────
+function openMo(editId){
+  _editEmpId=editId||null;
+  var e=editId?emps.find(function(x){return x.id===editId;}):null;
+  document.getElementById('mo-title').textContent=e?'✏️ แก้ไขพนักงาน':'➕ เพิ่มพนักงาน';
+  document.getElementById('mn').value=e?e.name:'';
+  document.getElementById('mdept').value=e?(e.dept||''):'';
+  document.getElementById('mk').value=e?(e.bank||''):'';
+  document.getElementById('ms').value=e?(e.salary||''):'';
+  document.getElementById('mc').value=e?(e.carry||''):'';
+  // แสดงปุ่มลบเฉพาะตอนแก้ไข
+  document.getElementById('mo-del-btn').style.display=editId?'block':'none';
+  document.getElementById('mo').classList.add('on');
+  document.getElementById('mn').focus();
+}
+function closeMo(){ document.getElementById('mo').classList.remove('on'); }
+
+async function deleteEmpModal(){
+  var emp=emps.find(function(e){return e.id===_editEmpId;});
+  if(!emp)return;
+  // เช็คว่ามีรายการเบิกหรือไม่
+  var hasReqs=requests.some(function(r){return r.employeeId===emp.id;});
+  var hasLegacy=(emp.transactions||[]).length>0;
+  if(hasReqs||hasLegacy){
+    toast('⚠️ มีรายการเบิกอยู่ — ต้องลบพนักงานผ่าน Finance App เท่านั้น');
+    return;
+  }
+  if(!confirm('ลบพนักงาน "'+emp.name+'"?\nการลบไม่สามารถย้อนกลับได้'))return;
+  var delId=_editEmpId;
+  emps=emps.filter(function(e){return e.id!==delId;});
+  if(curId===delId) curId=emps.length?emps[0].id:null;
+  saveLocal(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    try{await db.collection('employees').doc(delId).delete();}catch(err){console.warn('delete emp:',err);}
+  }
+  closeMo(); refSel(); renderDash();
+  toast('🗑️ ลบพนักงาน "'+emp.name+'" แล้ว');
+}
+
+async function saveEmp(){
+  var name=(document.getElementById('mn').value||'').trim();
+  if(!name){toast('กรุณากรอกชื่อพนักงาน');return;}
+  // เช็คชื่อซ้ำ (ยกเว้นตัวเองตอนแก้ไข)
+  var dup=emps.some(function(e){return e.name.trim()===name&&e.id!==(_editEmpId||'');});
+  if(dup){toast('⚠️ มีพนักงานชื่อ "'+name+'" อยู่แล้ว');return;}
+  var data={
+    name:name,
+    dept:(document.getElementById('mdept').value||'').trim(),
+    bank:(document.getElementById('mk').value||'').trim(),
+    salary:parseFloat(document.getElementById('ms').value)||0,
+    carry:parseFloat(document.getElementById('mc').value)||0,
+    active:true
+  };
+  if(_editEmpId){
+    var idx=emps.findIndex(function(e){return e.id===_editEmpId;});
+    if(idx>=0) emps[idx]=Object.assign({},emps[idx],data);
+    saveLocal(); _hasPendingChanges=true;
+    if(isOnline&&db) try{await db.collection('employees').doc(_editEmpId).set(data,{merge:true});}catch(err){}
+    toast('✅ แก้ไขพนักงานแล้ว');
+  } else {
+    var newEmp=Object.assign({id:'local_'+uid(),transactions:[],extras:{},deducts:{}},data);
+    if(isOnline&&db){
+      try{
+        var ref=await db.collection('employees').add(Object.assign({transactions:[],extras:{},deducts:{}},data));
+        newEmp.id=ref.id;
+      }catch(err){}
+    }
+    emps.push(newEmp); curId=newEmp.id;
+    saveLocal(); _hasPendingChanges=true;
+    toast('✅ เพิ่มพนักงาน "'+name+'" แล้ว');
+  }
+  ['mn','mdept','mk','ms','mc'].forEach(function(id){document.getElementById(id).value='';});
+  closeMo(); refSel(); renderDash();
+}
+
+// ── UPLOAD & OCR ──────────────────────────────────────────────────────────────
+function dzEv(e,id,on){e.preventDefault();document.getElementById(id).classList.toggle('over',on);}
+function dzDrop(e){e.preventDefault();document.getElementById('dz').classList.remove('over');if(e.dataTransfer.files[0])processFile(e.dataTransfer.files[0]);}
+function onFile(inp){if(inp.files[0])processFile(inp.files[0]);}
+
+function processFile(file){
+  var r=new FileReader();
+  r.onload=function(e){
+    imgB64=e.target.result.split(',')[1];
+    imgMime=file.type||'image/jpeg';
+    if(file.type.startsWith('image/')){
+      document.getElementById('pimg').src=e.target.result;
+      document.getElementById('prev').style.display='block';
+    }
+    document.getElementById('rc').style.display='none';
+    analyzeSlip();
+  };
+  r.readAsDataURL(file);
+}
+
+async function analyzeSlip(){
+  var apiKey=getApiKey();
+  document.getElementById('ls').style.display='block';
+  document.getElementById('rc').style.display='none';
+  document.getElementById('match-hint').style.display='none';
+  if(!apiKey){
+    document.getElementById('ls').style.display='none';
+    document.getElementById('rc').style.display='block';
+    toast('⚠️ ไม่มี API Key — กรอกข้อมูลเองได้ หรือไปที่ ⚙️ ตั้งค่า');
+    return;
+  }
+  try{
+    var contentBlock=imgMime==='application/pdf'
+      ?{type:'document',source:{type:'base64',media_type:'application/pdf',data:imgB64}}
+      :{type:'image',source:{type:'base64',media_type:imgMime,data:imgB64}};
+    var prompt='อ่านสลิปโอนเงินไทย ตอบ JSON ไม่มี markdown:\n{"date":"YYYY-MM-DD","bank":"","recipient":"","amount":0,"ref":"","note":""}';
+    var res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5',max_tokens:512,messages:[{role:'user',content:[{type:'text',text:prompt},contentBlock]}]})
+    });
+    var data=await res.json();
+    if(!res.ok||data.error) throw new Error(data.error?data.error.message:'HTTP '+res.status);
+    var txt=data.content.map(function(c){return c.text||'';}).join('').replace(/```json|```/g,'').trim();
+    var p=JSON.parse(txt);
+    document.getElementById('rd').value=p.date||'';
+    document.getElementById('rb').value=p.bank||'';
+    document.getElementById('rp').value=p.recipient||'';
+    document.getElementById('ra').value=p.amount||'';
+    document.getElementById('rr').value=p.ref||'';
+    // employee match hint
+    var eid=document.getElementById('sel2').value;
+    var emp2=emps.find(function(e){return e.id===eid;});
+    var hint=document.getElementById('match-hint');
+    if(emp2&&p.recipient){
+      var rn=(p.recipient||'').replace(/\s/g,'').toLowerCase();
+      var en=(emp2.name||'').replace(/นาย|นาง|น\.ส\.|นางสาว|คุณ|\s/g,'').toLowerCase();
+      hint.style.display='block';
+      if(rn.includes(en)||en.includes(rn)) hint.innerHTML='✅ ชื่อผู้รับตรงกับ <b>'+emp2.name+'</b>';
+      else hint.innerHTML='⚠️ ชื่อผู้รับ <b>'+p.recipient+'</b> อาจไม่ตรงกับ <b>'+emp2.name+'</b> — ตรวจสอบด้วย';
+    }
+    toast('🧾 OCR สำเร็จ!');
+  }catch(e){ toast('⚠️ อ่านไม่ได้ กรอกเอง: '+e.message); }
+  document.getElementById('ls').style.display='none';
+  document.getElementById('rc').style.display='block';
+}
+
+async function saveTx(){
+  var eid=document.getElementById('sel2').value;
+  var emp=emps.find(function(e){return e.id===eid;});
+  if(!emp){toast('กรุณาเลือกพนักงานก่อน');return;}
+  var amt=parseFloat(document.getElementById('ra').value);
+  if(!amt||amt<=0){toast('กรุณากรอกจำนวนเงิน');return;}
+  var refNo=(document.getElementById('rr').value||'').trim();
+  var txId=uid();
+  var tx={
+    id:txId,
+    date:document.getElementById('rd').value||'-',
+    bank:document.getElementById('rb').value||'-',
+    recipient:document.getElementById('rp').value||'',
+    amount:amt,
+    ref:refNo,
+    imgUrl:document.getElementById('rl').value||'',
+    savedAt:new Date().toISOString()
+  };
+  // dup check
+  var existing=getMergedTx(emp);
+  if(refNo&&existing.some(function(t){return t.ref===refNo;})){
+    if(!confirm('พบรายการที่มี Ref เดียวกัน ('+refNo+') — บันทึกซ้ำ?'))return;
+  }
+  // 1. บันทึกใน employees.transactions[]
+  if(!emp.transactions) emp.transactions=[];
+  emp.transactions.push(tx);
+  saveLocal(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    try{await db.collection('employees').doc(eid).update({transactions:emp.transactions});}catch(err){}
+  }
+  // 2. บันทึกใน advance_requests (สำหรับ finance_app)
+  var req={
+    id:txId,
+    requestId:txId,
+    employeeId:eid,
+    employeeName:emp.name,
+    amount:amt,
+    date:tx.date,
+    category:document.getElementById('rcat').value||'เบิกล่วงหน้าเงินเดือน',
+    referenceNo:refNo,
+    bankName:tx.bank,
+    receiverName:tx.recipient,
+    slipUrl:tx.imgUrl,
+    note:'',
+    status:'pending_approval',
+    syncStatus:'pending',
+    createdAt:new Date().toISOString(),
+    createdBy:'advance_tracker',
+    _localOnly:true
+  };
+  requests.unshift(req);
+  saveLocalReqs(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    try{
+      var d=Object.assign({},req); delete d._localOnly;
+      await db.collection('advance_requests').doc(txId).set(d);
+      requests[0]._localOnly=false;
+    }catch(err){}
+  }
+  resetUp(); curId=eid; refSel(); renderDash();
+  toast(isOnline?'✅ บันทึกสำเร็จ (ออนไลน์)':'✅ บันทึกในเครื่องแล้ว');
+  goTab('dashboard',document.querySelectorAll('.tb')[0]);
+}
+
+function resetUp(){
+  imgB64=null;
+  document.getElementById('fi').value='';
+  ['rl','rp','rd','rb','ra','rr'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('prev').style.display='none';
+  document.getElementById('rc').style.display='none';
+  document.getElementById('ls').style.display='none';
+  document.getElementById('match-hint').style.display='none';
+}
+
+// ── EXPORT / PAYROLL ──────────────────────────────────────────────────────────
+function renderExp(){
+  var eid=document.getElementById('sel3').value;
+  var emp=emps.find(function(e){return e.id===eid;});
+  var c=document.getElementById('expbox');
+  if(!emp){c.innerHTML='<p style="color:var(--gray);font-size:13px">เลือกพนักงานเพื่อส่งออกข้อมูล</p>';return;}
+  var allTx=getMergedTx(emp);
+  var moTxExp=allTx.filter(function(t){return (t.date||'').startsWith(curMo);});
+  var approvedTx=moTxExp.filter(function(t){return !t._fromReq||(t._fromReq&&t.status==='approved');});
+  var tot=approvedTx.reduce(function(s,t){return s+Number(t.amount);},0);
+  var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
+  var moSalary=getMoSalary(emp,curMo);var moCarry=getMoCarry(emp,curMo);
+  var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
+  var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
+  var net=moSalary+totalExtra-totalDeduct-moCarry-tot;
+  var pendCount=moTxExp.filter(function(t){return t._fromReq&&t.status==='pending_approval';}).length;
+  c.innerHTML=
+    '<div class="stitle">📊 '+emp.name+(emp.dept?' · '+emp.dept:'')+'</div>'
+    +(pendCount>0?'<div style="background:#FEF3C7;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400E;margin-bottom:10px">⏳ มี '+pendCount+' รายการรออนุมัติ — ยังไม่นับในยอดสุทธิ</div>':'')
+    +'<div class="expbox">'
+      +'<div class="exprow"><span style="color:var(--gray)">เงินเดือน</span><span style="font-weight:600">฿'+fmt(moSalary)+'</span></div>'
+      +'<div class="exprow"><span style="color:var(--gray)">รายได้เพิ่มเติม</span><span style="font-weight:600;color:var(--green)">+฿'+fmt(totalExtra)+'</span></div>'
+      +'<div class="exprow"><span style="color:var(--gray)">รายการหัก</span><span style="font-weight:600;color:var(--red)">-฿'+fmt(totalDeduct)+'</span></div>'
+      +'<div class="exprow"><span style="color:var(--gray)">ยกมาเดือนก่อน</span><span style="font-weight:600">฿'+fmt(moCarry)+'</span></div>'
+      +'<div class="exprow"><span style="color:var(--gray)">รวมเบิก (อนุมัติ)</span><span style="font-weight:600;color:var(--blue)">฿'+fmt(tot)+'</span></div>'
+      +'<div class="exprow last"><span style="font-weight:600">ยอดสุทธิ</span><span style="font-weight:700;color:'+(net>=0?'var(--green)':'var(--red)')+';">'+(net>=0?'+':'')+'฿'+fmt(net)+'</span></div>'
+    +'</div>'
+    +'<button class="btn btn-b" onclick="expCSV(\''+eid+'\')">📥 ดาวน์โหลด CSV</button>'
+    +'<button class="btn btn-o" onclick="cpTxt(\''+eid+'\')" style="margin-top:8px">📋 คัดลอกข้อความ</button>';
+}
+
+function printSlipForEmp(eid){ printSlip(eid); }
+function printSlip(eidOverride){
+  var eid=eidOverride||document.getElementById('sel3').value;
+  var emp=emps.find(function(e){return e.id===eid;});
+  if(!emp){toast('กรุณาเลือกพนักงานก่อน');return;}
+  var allTx=getMergedTx(emp);
+  var moTxSlip=allTx.filter(function(t){return (t.date||'').startsWith(curMo);});
+  var approvedTx=moTxSlip.filter(function(t){return !t._fromReq||(t._fromReq&&t.status==='approved');});
+  var tot=approvedTx.reduce(function(s,t){return s+Number(t.amount);},0);
+  var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
+  var moSalary=getMoSalary(emp,curMo);var moCarry=getMoCarry(emp,curMo);
+  var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
+  var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
+  var net=moSalary+totalExtra-totalDeduct-moCarry-tot;
+  var today=new Date();
+  var dateStr=today.getDate()+'/'+('0'+(today.getMonth()+1)).slice(-2)+'/'+(today.getFullYear()+543);
+  var txRows=approvedTx.map(function(t,i){
+    return'<tr><td>'+(i+1)+'</td><td>'+t.date+'</td><td>'+(t.category||t.bank||'-')+'</td><td>'+(t.recipient||'-')+'</td><td style="text-align:right">฿'+fmt(t.amount)+'</td></tr>';
+  }).join('');
+  var html='<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>สลิปเงินเดือน - '+emp.name+'</title><style>';
+  html+='*{margin:0;padding:0;box-sizing:border-box}body{font-family:sans-serif;padding:28px;color:#1a1a1a;max-width:640px;margin:0 auto}';
+  html+='.hd{text-align:center;border-bottom:3px solid #0D1B2A;padding-bottom:14px;margin-bottom:18px}.hd h1{font-size:20px;color:#0D1B2A}.hd p{font-size:12px;color:#666;margin-top:4px}';
+  html+='.sec{background:#f5f5f5;border-radius:8px;padding:12px;margin-bottom:14px}.sec h3{font-size:11px;color:#888;margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}';
+  html+='.two-col{display:grid;grid-template-columns:1fr 1fr;gap:0}';
+  html+='.row2{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid #eee}.row2:last-child{border-bottom:none}.lbl{color:#555}.val{font-weight:600}';
+  html+='.row2.plus .val{color:#16A34A}.row2.minus .val{color:#DC2626}';
+  html+='table{width:100%;border-collapse:collapse;font-size:12px}th{background:#0D1B2A;color:#fff;padding:7px 8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #eee}';
+  html+='.summary{border:2px solid #0D1B2A;border-radius:8px;padding:14px;margin-bottom:14px}';
+  html+='.srow{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid #eee}.srow:last-child{border-bottom:none;font-size:16px;font-weight:700;padding-top:10px;margin-top:4px}';
+  html+='.pos{color:#16A34A}.neg{color:#DC2626}.footer{text-align:center;font-size:11px;color:#aaa;margin-top:16px}@media print{body{padding:10px}}</style></head><body>';
+  html+='<div class="hd"><h1>💼 สลิปเงินเดือน</h1><p>วันที่ออกสลิป: '+dateStr+' · '+BUILD_LABEL+'</p></div>';
+  html+='<div class="sec"><h3>ข้อมูลพนักงาน</h3>';
+  html+='<div class="row2"><span class="lbl">ชื่อ-นามสกุล</span><span class="val">'+emp.name+'</span></div>';
+  if(emp.dept)html+='<div class="row2"><span class="lbl">แผนก</span><span class="val">'+emp.dept+'</span></div>';
+  if(emp.bank)html+='<div class="row2"><span class="lbl">ธนาคาร / บัญชี</span><span class="val">'+emp.bank+'</span></div>';
+  html+='</div><div class="two-col">';
+  html+='<div class="sec" style="margin-right:6px"><h3>รายได้</h3>';
+  html+='<div class="row2"><span class="lbl">เงินเดือน</span><span class="val">฿'+fmt(moSalary)+'</span></div>';
+  if(ex.ot)html+='<div class="row2 plus"><span class="lbl">ค่าล่วงเวลา</span><span class="val">+฿'+fmt(ex.ot)+'</span></div>';
+  if(ex.travel)html+='<div class="row2 plus"><span class="lbl">ค่าเดินทาง</span><span class="val">+฿'+fmt(ex.travel)+'</span></div>';
+  if(ex.phone)html+='<div class="row2 plus"><span class="lbl">ค่าโทร</span><span class="val">+฿'+fmt(ex.phone)+'</span></div>';
+  if(ex.other)html+='<div class="row2 plus"><span class="lbl">รายรับอื่นๆ</span><span class="val">+฿'+fmt(ex.other)+'</span></div>';
+  html+='<div class="row2"><span class="lbl" style="font-weight:600">รวมรายได้</span><span class="val">฿'+fmt(moSalary+totalExtra)+'</span></div></div>';
+  html+='<div class="sec" style="margin-left:6px"><h3>รายการหัก</h3>';
+  if(de.absent)html+='<div class="row2 minus"><span class="lbl">ขาด/ลา/มาสาย</span><span class="val">-฿'+fmt(de.absent)+'</span></div>';
+  if(de.insurance)html+='<div class="row2 minus"><span class="lbl">หักเงินประกัน</span><span class="val">-฿'+fmt(de.insurance)+'</span></div>';
+  if(de.social)html+='<div class="row2 minus"><span class="lbl">ประกันสังคม</span><span class="val">-฿'+fmt(de.social)+'</span></div>';
+  if(moCarry)html+='<div class="row2 minus"><span class="lbl">ยกมาเดือนก่อน</span><span class="val">-฿'+fmt(moCarry)+'</span></div>';
+  if(tot)html+='<div class="row2 minus"><span class="lbl">เบิกล่วงหน้า</span><span class="val">-฿'+fmt(tot)+'</span></div>';
+  html+='<div class="row2"><span class="lbl" style="font-weight:600">รวมหัก</span><span class="val neg">-฿'+fmt(totalDeduct+moCarry+tot)+'</span></div></div></div>';
+  if(approvedTx.length>0){
+    html+='<div class="sec"><h3>รายการเบิกล่วงหน้า (อนุมัติแล้ว)</h3>';
+    html+='<table><tr><th>#</th><th>วันที่</th><th>หมวดหมู่/ธนาคาร</th><th>ผู้รับ</th><th style="text-align:right">จำนวนเงิน</th></tr>'+txRows+'</table></div>';
+  }
+  html+='<div class="summary">';
+  html+='<div class="srow"><span>รายได้รวม</span><span>฿'+fmt(moSalary+totalExtra)+'</span></div>';
+  html+='<div class="srow"><span>รายการหักรวม</span><span class="neg">-฿'+fmt(totalDeduct+moCarry+tot)+'</span></div>';
+  html+='<div class="srow"><span>ยอดสุทธิที่ได้รับ</span><span class="'+(net>=0?'pos':'neg')+'">'+(net>=0?'+':'')+'฿'+fmt(net)+'</span></div></div>';
+  html+='<div class="footer"><p>เอกสารนี้ออกโดยระบบเบิกล่วงหน้า · '+BUILD_LABEL+'</p></div>';
+  html+='<script>window.onload=function(){window.print();}<\/script></body></html>';
+  var w=window.open('','_blank');
+  if(w){w.document.write(html);w.document.close();}
+  else toast('⚠️ กรุณาอนุญาต Popup ในเบราว์เซอร์');
+}
+
+function expCSV(eid){
+  var emp=emps.find(function(e){return e.id===eid;});if(!emp)return;
+  var allTx=getMergedTx(emp);
+  var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
+  var rows=[['#','วันที่โอน','ธนาคาร/หมวด','ผู้รับโอน','จำนวนเงิน','เลขอ้างอิง','สถานะ','ลิงก์สลิป']].concat(
+    allTx.map(function(t,i){return[i+1,t.date,t.category||t.bank,t.recipient||'',t.amount,t.ref,t._fromReq?(t.status||'pending_approval'):'legacy',t.imgUrl||''];}));
+  rows.push([]);
+  rows.push(['เงินเดือน',getMoSalary(emp,curMo),'','','รายได้เพิ่ม',((ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0))]);
+  var csv=rows.map(function(r){return r.map(function(c){return'"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
+  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));a.download='เบิกล่วงหน้า_'+emp.name+'.csv';a.click();
+}
+
+function cpTxt(eid){
+  var emp=emps.find(function(e){return e.id===eid;});if(!emp)return;
+  var allTx=getMergedTx(emp);
+  var moTxTxt=allTx.filter(function(t){return (t.date||'').startsWith(curMo);});
+  var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
+  var moSalary=getMoSalary(emp,curMo);var moCarry=getMoCarry(emp,curMo);
+  var tot=moTxTxt.reduce(function(s,t){return s+Number(t.amount);},0);
+  var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
+  var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
+  var net=moSalary+totalExtra-totalDeduct-moCarry-tot;
+  var t='รายการเบิกล่วงหน้า — '+emp.name+' ('+moLabel(curMo)+')\n'+'='.repeat(36)+'\n';
+  moTxTxt.forEach(function(x,i){t+=(i+1)+'. '+x.date+' | '+(x.category||x.bank)+' | ผู้รับ: '+(x.recipient||'-')+' | ฿'+Number(x.amount).toLocaleString('th-TH')+(x._fromReq?' ['+x.status+']':'')+'\n';});
+  t+='='.repeat(36)+'\nเงินเดือน: ฿'+moSalary.toLocaleString('th-TH')+'\n';
+  if(totalExtra)t+='รายได้เพิ่ม: +฿'+totalExtra.toLocaleString('th-TH')+'\n';
+  if(totalDeduct)t+='รายการหัก: -฿'+totalDeduct.toLocaleString('th-TH')+'\n';
+  t+='รวมเบิก: ฿'+tot.toLocaleString('th-TH')+'\nยอดสุทธิ: '+(net>=0?'+':'')+'฿'+net.toLocaleString('th-TH')+'\n';
+  navigator.clipboard.writeText(t).then(function(){toast('📋 คัดลอกแล้ว');});
+}
+
+// ── SETTINGS PAGE ─────────────────────────────────────────────────────────────
+function renderSettings(){
+  var k=getApiKey();
+  var el=document.getElementById('apiKeyStatus');
+  if(el){
+    if(k){el.textContent='✅ ตั้งค่าแล้ว ('+k.slice(0,10)+'…'+k.slice(-4)+')';el.style.color='var(--green)';}
+    else{el.textContent='ยังไม่ได้ตั้งค่า — OCR ใช้งานไม่ได้';el.style.color='var(--red)';}
+    var ki=document.getElementById('apiKeyInput');if(ki&&k)ki.value=k;
+  }
+  var vd=document.getElementById('ver-detail');
+  if(vd) vd.innerHTML='เวอร์ชัน: <b>'+BUILD_LABEL+'</b><br>Build: '+BUILD_TIME+'<br>Firebase: advance-tracker-cadf5<br>Collections: employees · advance_requests · advance_ledger · advance_records · advance_monthly<br>Requests: '+requests.length+' · Records: '+advanceRecords.length+' · Ledger: '+ledger.length;
+}
+function saveApiKey(){
+  var v=(document.getElementById('apiKeyInput').value||'').trim();
+  if(!v){toast('⚠️ กรุณาใส่ API Key');return;}
+  if(!v.startsWith('sk-ant-')){toast('❌ ต้องขึ้นต้นด้วย sk-ant-');return;}
+  localStorage.setItem('anthropic_api_key',v);
+  renderSettings(); toast('✅ บันทึก API Key แล้ว');
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+var _toastTm;
+function toast(msg){
+  var old=document.querySelector('.toast');if(old)old.remove();
+  var t=document.createElement('div');t.className='toast';t.textContent=msg;
+  document.body.appendChild(t);
+  clearTimeout(_toastTm);_toastTm=setTimeout(function(){t.remove();},2800);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.onload=function(){
+  var vb=document.getElementById('verBadge');
+  if(vb){vb.textContent=BUILD_LABEL;vb.title='Advance Tracker '+BUILD_LABEL+'\nBuild: '+BUILD_TIME+'\nFirebase: advance-tracker-cadf5';}
+};
+</script>
+</body>
+</html>

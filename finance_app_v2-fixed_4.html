@@ -1,0 +1,2958 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>บัญชีรายรับรายจ่ายบริษัท</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script>
+// โหลด Firebase SDK แบบ dynamic เพื่อให้แน่ใจว่าโหลดเสร็จก่อน init
+var db = null;
+var isOnline = false;
+var _fbReady = false;
+
+function _loadScript(src, cb){
+  var s = document.createElement('script');
+  s.src = src;
+  s.onload = cb;
+  s.onerror = function(){ console.warn('Firebase SDK load failed:', src); cb(); };
+  document.head.appendChild(s);
+}
+
+function _initFirebase(){
+  try{
+    firebase.initializeApp({
+      apiKey:"AIzaSyDgjfoPXa9hWIypcUKsGq7-2EP5FvGB3iM",
+      authDomain:"advance-tracker-cadf5.firebaseapp.com",
+      projectId:"advance-tracker-cadf5",
+      storageBucket:"advance-tracker-cadf5.firebasestorage.app",
+      messagingSenderId:"186461314782",
+      appId:"1:186461314782:web:552ad245c22d36a53cac4f"
+    });
+    db = firebase.firestore();
+    _fbReady = true;
+  } catch(e){ console.warn('Firebase init error:', e); }
+}
+
+// โหลด app-compat ก่อน แล้วโหลด firestore-compat ตาม แล้วค่อย init
+_loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js', function(){
+  _loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js', function(){
+    _initFirebase();
+  });
+});
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans Thai','Sarabun',sans-serif;font-size:14px;background:#f0f2f5;display:flex;height:100vh;overflow:hidden;color:#111827}
+input,select,textarea,button{font-family:inherit;font-size:13px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#2563eb!important}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── SIDEBAR ── */
+#sidebar{width:210px;min-width:210px;background:#1e2d3d;display:flex;flex-direction:column;height:100vh;flex-shrink:0}
+.sb-brand{padding:18px 16px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+.sb-brand .co{font-size:13px;font-weight:700;color:#fff}
+.sb-brand .sub{font-size:10.5px;color:rgba(255,255,255,.38);margin-top:2px}
+.sb-nav{flex:1;padding:6px 0}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;color:rgba(255,255,255,.6);font-size:13.5px;border-left:3px solid transparent;transition:all .15s;user-select:none}
+.nav-item:hover{color:#fff;background:rgba(255,255,255,.05)}
+.nav-item.active{color:#fff;background:rgba(59,130,246,.2);border-left-color:#3b82f6;font-weight:600}
+.nav-item .ni{font-size:15px;width:20px;text-align:center}
+.nav-item .nb{margin-left:auto;background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px}
+
+/* ── MAIN ── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* ── TOPBAR ── */
+#topbar{background:#fff;border-bottom:1px solid #e5e7eb;padding:0 24px;height:54px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.tb-title{flex:1;font-size:16px;font-weight:700;color:#111827}
+.tb-title .mo{color:#2563eb}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;border:none;white-space:nowrap;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-teal{background:#0d9488;color:#fff}
+.btn-blue{background:#2563eb;color:#fff}
+.btn-purple{background:#7c3aed;color:#fff}
+.btn-green{background:#16a34a;color:#fff}
+.btn-red{background:#dc2626;color:#fff}
+.btn-gray{background:#f3f4f6;color:#374151;border:1px solid #e5e7eb}
+.btn-sm{padding:4px 10px;font-size:11.5px;border-radius:6px}
+.mo-nav{display:flex;align-items:center;gap:4px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;padding:3px 8px}
+.mo-nav button{background:none;border:none;cursor:pointer;font-size:13px;padding:0 3px;color:#374151}
+.mo-nav span{font-size:13px;font-weight:500;min-width:110px;text-align:center}
+
+/* ── PAGE BODY ── */
+#body{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px}
+
+/* ── SUMMARY CARDS ── */
+.sum-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex-shrink:0}
+.sum-card{background:#fff;border-radius:8px;padding:16px 18px;border:1px solid #e9ecef;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.sum-card .lbl{font-size:12px;color:#6b7280;margin-bottom:6px}
+.sum-card .val{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.sum-card .sub{font-size:11.5px;color:#9ca3af;margin-top:4px}
+
+/* ── CONTENT AREA ── */
+.content-area{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+
+/* ── TABLE PANEL ── */
+.table-panel{background:#fff;border-radius:8px;border:1px solid #e9ecef;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden}
+.tp-head{padding:12px 16px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;gap:10px}
+.tp-head .ttl{font-size:15px;font-weight:700;flex:1}
+.filter-grp{display:flex;background:#f3f4f6;border-radius:8px;padding:3px;gap:2px}
+.ftab{padding:4px 11px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;background:transparent;color:#6b7280;font-family:inherit;transition:all .15s}
+.ftab.active{background:#fff;color:#111827;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead th{padding:9px 14px;font-size:11.5px;font-weight:600;color:#6b7280;background:#fafafa;border-bottom:1px solid #e9ecef;text-align:left;white-space:nowrap}
+th.r,td.r{text-align:right}
+tbody tr{border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background .1s}
+tbody tr:hover{background:#f8fafc}
+tbody tr.sel{background:#eff6ff}
+tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
+.tbl-footer{padding:8px 16px;border-top:1px solid #e9ecef;background:#fafafa;display:flex;gap:18px;font-size:11.5px;color:#6b7280;align-items:center}
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.b-in{background:#dcfce7;color:#16a34a}
+.b-ex{background:#fee2e2;color:#dc2626}
+.b-py{background:#fef3c7;color:#d97706}
+.b-ok{background:#dcfce7;color:#16a34a}
+.b-pend{background:#f3e8ff;color:#7c3aed}
+.b-ea{background:#fef9c3;color:#a16207}
+.b-er{background:#ccfbf1;color:#0f766e}
+.b-te{background:#ede9fe;color:#7c3aed}
+.sync-dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sync-pending .sync-dot{background:#d97706}
+.sync-linked .sync-dot{background:#16a34a}
+.sync-error .sync-dot{background:#dc2626}
+.sync-label{font-size:10px;font-weight:600}
+.sync-pending .sync-label{color:#d97706}
+.sync-linked .sync-label{color:#16a34a}
+.sync-error .sync-label{color:#dc2626}
+.c-in{color:#16a34a;font-weight:700}
+.c-ex{color:#dc2626;font-weight:700}
+.c-py{color:#d97706;font-weight:700}
+.empty-state{padding:36px;text-align:center;color:#9ca3af}
+.empty-state .ei{font-size:32px;margin-bottom:8px}
+
+/* ── RIGHT COLUMN ── */
+.right-col{display:flex;flex-direction:column;gap:14px}
+
+/* upload box */
+.upload-box{background:#fff;border-radius:8px;border:1px solid #e9ecef;box-shadow:0 1px 3px rgba(0,0,0,.05);padding:16px}
+.ub-title{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.ocr-chip{font-size:10px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:20px;font-weight:600}
+.drop-zone{border:2px dashed #d1d5db;border-radius:10px;padding:22px 16px;text-align:center;background:#f9fafb;cursor:pointer;transition:all .2s}
+.drop-zone:hover,.drop-zone.over{border-color:#2563eb;background:#eff6ff}
+.dz-icon{font-size:26px;margin-bottom:8px}
+.dz-title{font-size:14px;font-weight:700;margin-bottom:4px}
+.dz-sub{font-size:11.5px;color:#6b7280;margin-bottom:14px}
+.dz-btns{display:flex;gap:8px;justify-content:center}
+.ocr-hints{margin-top:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px}
+.ocr-hint{font-size:11.5px;color:#0369a1;display:flex;gap:6px;margin-bottom:3px}
+.ocr-hint::before{content:"✓";color:#0891b2;font-weight:700;flex-shrink:0}
+
+/* OCR form box */
+.ocr-form-box{background:#fff;border-radius:8px;border:1px solid #e9ecef;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden}
+.ofb-head{padding:12px 16px;background:linear-gradient(135deg,#1e3a5f,#2563eb);display:flex;align-items:center;justify-content:space-between}
+.ofb-head .ht{font-size:13.5px;font-weight:700;color:#fff}
+.ofb-head .hs{font-size:11px;color:rgba(255,255,255,.65);margin-top:2px}
+.ofb-tag{font-size:10px;background:rgba(255,255,255,.2);color:#fff;padding:2px 8px;border-radius:20px;font-weight:600;flex-shrink:0}
+.ofb-body{padding:14px 16px;display:flex;flex-direction:column;gap:9px}
+.frow{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:8px}
+.frow.top{align-items:start}
+.flbl{font-size:12px;font-weight:600;color:#6b7280}
+.fi{width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:7px;color:#111827;background:#f9fafb;font-family:inherit;font-size:13px}
+.fi:focus{background:#fff}
+.fi.filled{background:#f0fdf4;border-color:#86efac;color:#15803d}
+.ofb-actions{display:flex;gap:7px;padding-top:2px}
+
+/* spinner */
+.spin-wrap{padding:32px;text-align:center}
+.spinner{width:34px;height:34px;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px}
+
+/* ── MODAL ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:none;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.mbox{background:#fff;border-radius:12px;width:490px;max-width:95vw;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden}
+.mhead{padding:15px 20px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.mhead .mt{font-size:15px;font-weight:700;flex:1}
+.xbtn{background:#f3f4f6;border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:14px}
+.mbody{padding:20px;overflow-y:auto;flex:1}
+.mfoot{padding:12px 20px;border-top:1px solid #e9ecef;display:flex;gap:8px;justify-content:flex-end;flex-shrink:0}
+.type-btns{display:flex;gap:5px}
+.type-btn{flex:1;padding:6px 4px;border:2px solid #e5e7eb;border-radius:7px;background:#fff;color:#6b7280;font-weight:600;font-size:11.5px;cursor:pointer;font-family:inherit;transition:all .15s}
+
+/* ── PAGES ── */
+.pg{display:none;flex-direction:column;gap:16px;flex:1}
+.pg.show{display:flex}
+
+/* approve */
+.ap-item{background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:14px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:10px}
+.ap-item .ai{flex:1}
+.ap-item .at{display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap}
+.ap-item .ab{font-size:12px;color:#6b7280}
+
+/* report */
+.rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.rp-card{background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:14px 16px}
+.rp-card .rt{font-size:13.5px;font-weight:700;margin-bottom:12px}
+.bar-row{margin-bottom:7px}
+.bar-info{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
+.bar-track{height:5px;background:#f3f4f6;border-radius:3px}
+.bar-fill{height:100%;border-radius:3px;transition:width .5s}
+.chart-area{display:flex;gap:6px;align-items:flex-end;height:120px}
+.cc{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.cb{width:100%;display:flex;gap:2px;align-items:flex-end;height:96px}
+.cb-bar{flex:1;border-radius:3px 3px 0 0}
+.cl{font-size:10px;color:#9ca3af;font-weight:600}
+.chart-legend{display:flex;flex-direction:column;justify-content:flex-end;gap:4px;padding-bottom:18px;padding-left:8px;flex-shrink:0}
+.cl-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#6b7280}
+.cl-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+
+/* toast */
+#toast{position:fixed;bottom:22px;right:22px;color:#fff;padding:11px 18px;border-radius:9px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:400;display:none;animation:fadeIn .25s ease}
+
+/* ── DUP SLIP CONFIRM POPUP ── */
+#dupOverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:none;align-items:center;justify-content:center;isolation:isolate}
+#dupOverlay.open{display:flex}
+#dupBox{background:#fff;border-radius:14px;width:380px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;animation:fadeIn .2s ease}
+#dupBox .dup-head{background:linear-gradient(135deg,#dc2626,#b91c1c);padding:18px 20px;display:flex;align-items:center;gap:10px}
+#dupBox .dup-head .dh-icon{font-size:24px}
+#dupBox .dup-head .dh-text{color:#fff}
+#dupBox .dup-head .dh-title{font-size:15px;font-weight:700}
+#dupBox .dup-head .dh-sub{font-size:11.5px;opacity:.8;margin-top:2px}
+#dupBox .dup-body{padding:18px 20px}
+#dupBox .dup-info{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#7f1d1d;line-height:1.7}
+#dupBox .dup-info b{color:#dc2626}
+#dupBox .dup-question{font-size:13.5px;font-weight:600;color:#111827;margin-bottom:14px;text-align:center}
+#dupBox .dup-btns{display:flex;gap:8px}
+#dupBox .dup-btns button{flex:1;padding:10px 6px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s}
+#dupBox .dup-btns button:hover{opacity:.85}
+#dupBox .dup-cancel{background:#f3f4f6;color:#374151;border:1px solid #e5e7eb!important}
+#dupBox .dup-confirm{background:#dc2626;color:#fff}
+
+/* ── ALL PAGE ── */
+.pg-hd{font-size:17px;font-weight:700}
+.pg-sub{font-size:13px;color:#6b7280}
+.all-bar{background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.srch{flex:1;min-width:180px;padding:7px 12px;border:1px solid #e5e7eb;border-radius:7px;font-size:13px;font-family:inherit;color:#111827;background:#f9fafb}
+.srch:focus{outline:none;border-color:#2563eb!important;background:#fff}
+.all-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.pager{display:flex;gap:6px;align-items:center;justify-content:center;padding:12px;border-top:1px solid #e9ecef}
+.pager button:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── CATS PAGE ── */
+.cats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}
+
+/* ── EMPLOYEE PAGE ── */
+.emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.emp-card{background:#fff;border-radius:10px;border:1px solid #e9ecef;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden;transition:box-shadow .15s}
+.emp-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.emp-card-head{padding:14px 16px 10px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f3f4f6}
+.emp-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0}
+.emp-name{font-size:13.5px;font-weight:700;color:#111827}
+.emp-dept{font-size:11.5px;color:#6b7280;margin-top:1px}
+.emp-card-body{padding:10px 16px 14px;display:flex;flex-direction:column;gap:6px}
+.emp-stat{display:flex;justify-content:space-between;font-size:12px}
+.emp-stat .el{color:#6b7280}
+.emp-stat .ev{font-weight:600;color:#111827}
+.emp-card-foot{padding:8px 12px;border-top:1px solid #f3f4f6;display:flex;gap:6px;justify-content:flex-end;background:#fafafa}
+.emp-type-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.et-advance{background:#fef3c7;color:#d97706}
+.et-expense{background:#fee2e2;color:#dc2626}
+.et-both{background:#f3e8ff;color:#7c3aed}
+
+/* payroll type pill */
+.pty-badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.pty-advance{background:#fef9c3;color:#a16207}
+.pty-expense{background:#fce7f3;color:#be185d}
+.pty-salary{background:#dbeafe;color:#1d4ed8}
+.cat-panel{background:#fff;border-radius:8px;border:1px solid #e9ecef;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden}
+.cat-ph{padding:12px 16px;display:flex;align-items:center;gap:8px}
+.cat-ph .cpt{font-size:14px;font-weight:700;flex:1}
+.cat-list{padding:4px 0}
+.cat-item{display:flex;align-items:center;gap:8px;padding:9px 16px;border-bottom:1px solid #f3f4f6;transition:background .1s}
+.cat-item:last-child{border-bottom:none}
+.cat-item:hover{background:#f8fafc}
+.cat-item .cn{flex:1;font-size:13px;font-weight:500;color:#111827}
+.cat-item .cs{font-size:11px;color:#9ca3af;white-space:nowrap}
+.cat-add{padding:10px 16px;border-top:1px solid #e9ecef;background:#fafafa}
+.cat-inp{flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:7px;font-size:13px;font-family:inherit;min-width:0}
+.cat-inp:focus{outline:none;border-color:#2563eb}
+
+/* ── MOBILE BOTTOM NAV ── */
+#mob-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:#1e2d3d;border-top:1px solid rgba(255,255,255,.1);z-index:200;padding:0;height:58px}
+.mob-nav-inner{display:flex;height:100%}
+.mob-nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:rgba(255,255,255,.55);border:none;background:none;font-family:inherit;padding:4px 0;transition:all .15s;-webkit-tap-highlight-color:transparent}
+.mob-nav-btn.active{color:#3b82f6}
+.mob-nav-btn .mni{font-size:18px;line-height:1}
+.mob-nav-btn .mnl{font-size:9.5px;font-weight:600}
+.mob-nav-btn .mnb{position:absolute;top:6px;right:calc(50% - 18px);background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:20px;min-width:15px;text-align:center}
+.mob-drawer-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:12px 4px;cursor:pointer;color:rgba(255,255,255,.75);border:none;background:none;font-family:inherit;font-size:10px;font-weight:600;transition:all .15s;-webkit-tap-highlight-color:transparent;border-right:1px solid rgba(255,255,255,.07)}
+.mob-drawer-btn:hover,.mob-drawer-btn.active{color:#fff;background:rgba(59,130,246,.2)}
+
+/* ── FAB ── */
+#fab{display:none;position:fixed;bottom:70px;right:16px;width:52px;height:52px;border-radius:50%;background:#7c3aed;color:#fff;font-size:24px;border:none;box-shadow:0 4px 16px rgba(124,58,237,.4);cursor:pointer;z-index:199;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  body{overflow:auto;height:auto;flex-direction:column}
+  #sidebar{display:none}
+  #mob-nav{display:block}
+  #fab{display:flex}
+  #main{min-height:100vh}
+  #topbar{padding:0 14px;height:50px;gap:8px}
+  .tb-title{font-size:13px}
+  .tb-title .mo{display:block;font-size:12px;color:#2563eb}
+  .btn-teal{display:none}
+  .mo-nav span{min-width:80px;font-size:12px}
+  .btn-purple{display:none}
+  #body{padding:12px 14px;padding-bottom:70px;gap:12px}
+
+  /* cards 2x2 on mobile */
+  .sum-row{grid-template-columns:repeat(2,1fr);gap:10px}
+  .sum-card{padding:12px 14px}
+  .sum-card .val{font-size:17px}
+  .sum-card .lbl{font-size:11px}
+  .sum-card .sub{font-size:10.5px}
+
+  /* content area stack */
+  .content-area{grid-template-columns:1fr;gap:12px}
+  .right-col{display:none}
+
+  /* table compact */
+  .tp-head{flex-wrap:wrap;gap:8px;padding:10px 12px}
+  .tp-head .ttl{font-size:13.5px}
+  .filter-grp{width:100%}
+  .ftab{flex:1;text-align:center;font-size:11px;padding:4px 6px}
+  thead th{padding:8px 10px;font-size:11px}
+  tbody td{padding:9px 10px;font-size:12.5px}
+  .tbl-footer{flex-wrap:wrap;gap:8px;font-size:11px;padding:8px 12px}
+
+  /* modal full screen on mobile */
+  .mbox{width:100%;max-width:100%;border-radius:16px 16px 0 0;position:fixed;bottom:0;left:0;right:0;max-height:92vh}
+  .overlay{align-items:flex-end}
+
+  /* approve items */
+  .ap-item{flex-direction:column;align-items:flex-start;gap:8px}
+  .ap-item>div:last-child{width:100%;display:flex;gap:6px}
+  .ap-item>div:last-child .btn{flex:1;justify-content:center}
+
+  /* report */
+  .rp-grid{grid-template-columns:1fr}
+
+  /* cats */
+  .cats-grid{grid-template-columns:1fr}
+
+  /* all page */
+  .all-bar{flex-direction:column;align-items:stretch}
+  .srch{min-width:0;width:100%}
+  .all-sum{grid-template-columns:repeat(3,1fr);gap:8px}
+
+  /* pages header */
+  .pg-hd{font-size:15px}
+  .pg-sub{font-size:12px}
+
+  /* ocr form box in modal */
+  .frow{grid-template-columns:80px 1fr}
+}
+
+@media(max-width:380px){
+  .sum-row{grid-template-columns:repeat(2,1fr);gap:8px}
+  .sum-card .val{font-size:15px}
+  .all-sum{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div class="sb-brand">
+    <div class="co">🏢 บริษัท XYZ จำกัด</div>
+    <div class="sub">ระบบบัญชีรายรับ-รายจ่าย</div>
+  </div>
+  <nav class="sb-nav">
+    <div class="nav-item active" data-pg="dashboard"><span class="ni">📊</span>ภาพรวมรายเดือน</div>
+    <div class="nav-item" data-pg="all"><span class="ni">📋</span>รายการทั้งหมด</div>
+    <div class="nav-item" data-pg="upload"><span class="ni">📎</span>อัปโหลดสลิป</div>
+    <div class="nav-item" data-pg="approve"><span class="ni">✅</span>อนุมัติ &amp; ตรวจสอบ<span class="nb" id="nbadge" style="display:none">0</span></div>
+    <div class="nav-item" data-pg="cats"><span class="ni">🗂️</span>หมวดหมู่ค่าใช้จ่าย</div>
+    <div class="nav-item" data-pg="employees"><span class="ni">👥</span>ทะเบียนพนักงาน</div>
+    <div class="nav-item" data-pg="report"><span class="ni">📈</span>รายงาน &amp; สรุป</div>
+    <div class="nav-item" data-pg="settings"><span class="ni">⚙️</span>ตั้งค่า</div>
+  </nav>
+</aside>
+
+<!-- MOBILE BOTTOM NAV -->
+<nav id="mob-nav">
+  <div class="mob-nav-inner">
+    <button class="mob-nav-btn active" data-pg="dashboard" onclick="mobNav('dashboard',this)">
+      <span class="mni">📊</span><span class="mnl">ภาพรวม</span>
+    </button>
+    <button class="mob-nav-btn" data-pg="all" onclick="mobNav('all',this)">
+      <span class="mni">📋</span><span class="mnl">รายการ</span>
+    </button>
+    <button class="mob-nav-btn" style="position:relative" data-pg="approve" onclick="mobNav('approve',this)">
+      <span class="mni">✅</span><span class="mnl">อนุมัติ</span>
+      <span class="mnb" id="mnbadge" style="display:none">0</span>
+    </button>
+    <button class="mob-nav-btn" data-pg="employees" onclick="mobNav('employees',this)">
+      <span class="mni">👥</span><span class="mnl">พนักงาน</span>
+    </button>
+    <button class="mob-nav-btn" id="mob-more-btn" onclick="toggleMobMore()">
+      <span class="mni">☰</span><span class="mnl">เพิ่มเติม</span>
+    </button>
+  </div>
+</nav>
+
+<!-- FAB: ปุ่มลัดอัปโหลดสลิป OCR บนมือถือ -->
+<button id="fab" title="อัปโหลดสลิป OCR" onclick="mobNav('upload',document.querySelector('.mob-nav-btn'))">📎</button>
+
+<!-- MOBILE MORE DRAWER -->
+<div id="mob-more-drawer" style="display:none;position:fixed;bottom:58px;left:0;right:0;background:#1e2d3d;border-top:1px solid rgba(255,255,255,.15);z-index:199;padding:6px 0">
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0">
+    <button class="mob-drawer-btn" data-pg="upload" onclick="mobNavDrawer('upload')"><span style="font-size:20px">📎</span><span>สลิป</span></button>
+    <button class="mob-drawer-btn" data-pg="cats" onclick="mobNavDrawer('cats')"><span style="font-size:20px">🗂️</span><span>หมวดหมู่</span></button>
+    <button class="mob-drawer-btn" data-pg="report" onclick="mobNavDrawer('report')"><span style="font-size:20px">📈</span><span>รายงาน</span></button>
+    <button class="mob-drawer-btn" data-pg="settings" onclick="mobNavDrawer('settings')"><span style="font-size:20px">⚙️</span><span>ตั้งค่า</span></button>
+    <button class="mob-drawer-btn" onclick="openAdd();document.getElementById('mob-more-drawer').style.display='none'"><span style="font-size:20px">➕</span><span>เพิ่มรายการ</span></button>
+    <button class="mob-drawer-btn" onclick="document.getElementById('mob-more-drawer').style.display='none'"><span style="font-size:20px">✕</span><span>ปิด</span></button>
+  </div>
+</div>
+
+
+
+<!-- MAIN -->
+<div id="main">
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <div class="tb-title">บัญชีรายรับรายจ่ายบริษัท &nbsp;—&nbsp; <span class="mo" id="topMo"></span><span id="versionBadge" style="font-size:10px;font-weight:600;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle;letter-spacing:.02em;cursor:help" title="คลิกเพื่อดูรายละเอียด">v2.4</span></div>
+    <span id="fb-status" style="font-size:11px;font-weight:600;color:#6b7280;white-space:nowrap">⏳ กำลังโหลด...</span>
+    <button class="btn btn-gray btn-sm" onclick="pullFromFirebase()" title="โหลดข้อมูลล่าสุดจาก Firebase มาบันทึกในเครื่อง" style="font-size:11px;padding:4px 10px">🔄 โหลดจาก Firebase</button>
+    <button class="btn btn-teal" onclick="toast_('✅ พร้อมตรวจแก้แล้ว','#0d9488')">✓ พร้อมตรวจแก้</button>
+    <div class="mo-nav">
+      <button onclick="navMo(-1)">◀</button>
+      <span id="moPicker"></span>
+      <button onclick="navMo(1)">▶</button>
+    </div>
+    <button class="btn btn-purple" onclick="openAdd()">➕ เพิ่มรายการ</button>
+  </div>
+
+  <div id="body">
+
+    <!-- DASHBOARD -->
+    <div class="pg show" id="pg-dashboard">
+      <!-- Summary Cards -->
+      <div class="sum-row">
+        <div class="sum-card">
+          <div class="lbl">รายรับรวมเดือนนี้</div>
+          <div class="val c-in" id="c-in">฿0.00</div>
+          <div class="sub" id="c-in-sub">จากลูกค้า 0 รายการ</div>
+        </div>
+        <div class="sum-card">
+          <div class="lbl">รายจ่ายรวมเดือนนี้</div>
+          <div class="val c-ex" id="c-ex">฿0.00</div>
+          <div class="sub">ค่าใช้จ่าย + เบิกพนักงาน</div>
+        </div>
+        <div class="sum-card">
+          <div class="lbl">กำไรสุทธิประมาณ</div>
+          <div class="val" id="c-net" style="color:#2563eb">฿0.00</div>
+          <div class="sub">คำนวณแบบเรียลไทม์</div>
+        </div>
+        <div class="sum-card">
+          <div class="lbl">รอตรวจสอบ</div>
+          <div class="val" id="c-pend" style="color:#7c3aed;font-size:26px">0 รายการ</div>
+          <div class="sub">ยังไม่ยืนยันข้อมูล</div>
+        </div>
+      </div>
+
+      <!-- Content: Table + Right -->
+      <div class="content-area">
+
+        <!-- TABLE -->
+        <div class="table-panel">
+          <div class="tp-head">
+            <div class="ttl">ตารางรายการประจำเดือน</div>
+            <div class="filter-grp">
+              <button class="ftab active" data-f="all">ทั้งหมด</button>
+              <button class="ftab" data-f="income">รายรับ</button>
+              <button class="ftab" data-f="expense">รายจ่าย</button>
+              <button class="ftab" data-f="payroll">● เบิก</button>
+              <button class="ftab" data-f="employee_advance">⏩ ล่วงหน้า</button>
+              <button class="ftab" data-f="travel_expense">✈ เดินทาง</button>
+            </div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>วันที่</th><th>ประเภท</th><th>คู่ค้า / พนักงาน</th>
+                  <th>หมวดหมู่</th><th class="r">จำนวนเงิน</th><th>สถานะ</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="txBody"></tbody>
+            </table>
+          </div>
+          <div class="tbl-footer" id="txFooter" style="display:none"></div>
+          <div class="empty-state" id="txEmpty" style="display:none">
+            <div class="ei">📭</div>
+            <div>ไม่มีรายการในเดือนนี้</div>
+            <div style="font-size:12px;margin-top:4px">กด "เพิ่มรายการ" หรืออัปโหลดสลิป</div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div class="right-col">
+
+          <!-- Upload Box -->
+          <div class="upload-box">
+            <div class="ub-title">กล่องอัปโหลดสลิป <span class="ocr-chip">OCR Auto</span></div>
+            <div class="drop-zone" id="dz"
+              ondragover="dzEv(event,'dz',true)" ondragleave="dzEv(event,'dz',false)" ondrop="dzDrop(event)">
+              <div class="dz-icon">🧾</div>
+              <div class="dz-title">ลากไฟล์สลิปมาวาง</div>
+              <div class="dz-sub">รองรับ JPG · PNG · PDF · หลายไฟล์พร้อมกัน</div>
+              <div class="dz-btns">
+                <button class="btn btn-blue" onclick="document.getElementById('fi1').click()">📁 เลือกไฟล์</button>
+                <input type="file" id="fi1" accept="image/*,.pdf" multiple style="display:none" onchange="handleFiles(this.files)">
+                <button class="btn btn-gray" onclick="document.getElementById('fi1-cam').click()">📷 เปิดกล้อง</button>
+                <input type="file" id="fi1-cam" accept="image/*" capture="environment" style="display:none" onchange="handleFiles(this.files)">
+              </div>
+            </div>
+            <div class="ocr-hints">
+              <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:5px">OCR จะดึงข้อมูลอัตโนมัติ:</div>
+              <div class="ocr-hint">วันที่ เวลา จำนวนเงิน ธนาคาร ผู้โอน/ผู้รับ</div>
+              <div class="ocr-hint">ตีความประเภทรายการ: รายรับ / รายจ่าย / เบิกพนักงาน</div>
+              <div class="ocr-hint">แก้ไขได้ด้วยมือก่อนกดยืนยัน</div>
+              <div class="ocr-hint">บันทึกลงบัญชีประจำเดือนอัตโนมัติ</div>
+            </div>
+          </div>
+
+          <!-- OCR Confirm Form -->
+          <div class="ocr-form-box">
+            <div class="ofb-head">
+              <div>
+                <div class="ht">ฟอร์มยืนยันข้อมูลจากสลิป</div>
+                <div class="hs" id="ocrStatus">คลิกรายการหรืออัปโหลดสลิปเพื่อเติมข้อมูล</div>
+              </div>
+              <span class="ofb-tag">✦ OCR</span>
+            </div>
+            <div class="ofb-body" id="ocrFormBody"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- UPLOAD PAGE -->
+    <div class="pg" id="pg-upload">
+      <div style="font-size:17px;font-weight:700">📎 อัปโหลดสลิป</div>
+      <div style="font-size:13px;color:#6b7280">AI จะอ่านสลิปและกรอกข้อมูลให้อัตโนมัติ</div>
+      <div style="max-width:560px">
+        <div class="upload-box">
+          <div class="drop-zone" style="padding:40px 20px" id="dz2"
+            ondragover="dzEv(event,'dz2',true)" ondragleave="dzEv(event,'dz2',false)" ondrop="dzDrop(event)">
+            <div class="dz-icon" style="font-size:40px">🧾</div>
+            <div class="dz-title" style="font-size:16px">ลากไฟล์สลิปมาวาง</div>
+            <div class="dz-sub">รองรับ JPG · PNG · PDF · หลายไฟล์พร้อมกัน</div>
+            <div class="dz-btns">
+              <button class="btn btn-blue" onclick="document.getElementById('fi2').click()">📁 เลือกไฟล์</button>
+              <input type="file" id="fi2" accept="image/*,.pdf" multiple style="display:none" onchange="handleFiles(this.files)">
+              <button class="btn btn-gray" onclick="document.getElementById('fi2-cam').click()">📷 เปิดกล้อง</button>
+              <input type="file" id="fi2-cam" accept="image/*" capture="environment" style="display:none" onchange="handleFiles(this.files)">
+            </div>
+          </div>
+          <div class="ocr-hints" style="margin-top:14px">
+            <div style="font-size:12.5px;font-weight:700;color:#0369a1;margin-bottom:6px">OCR จะดึงข้อมูลอัตโนมัติ:</div>
+            <div class="ocr-hint">วันที่ เวลา จำนวนเงิน ธนาคาร ผู้โอน/ผู้รับ</div>
+            <div class="ocr-hint">ตีความประเภทรายการ: รายรับ / รายจ่าย / เบิกพนักงาน</div>
+            <div class="ocr-hint">แก้ไขได้ด้วยมือก่อนกดยืนยัน</div>
+            <div class="ocr-hint">บันทึกลงบัญชีประจำเดือนอัตโนมัติ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- APPROVE PAGE -->
+    <div class="pg" id="pg-approve">
+      <div style="font-size:17px;font-weight:700">✅ อนุมัติ &amp; ตรวจสอบ</div>
+      <div id="apList"></div>
+    </div>
+
+    <!-- REPORT PAGE -->
+    <div class="pg" id="pg-report">
+      <div style="font-size:17px;font-weight:700" id="rpTitle">📈 รายงาน &amp; สรุป</div>
+      <div class="rp-grid" id="rpGrid"></div>
+      <div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:16px">
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:12px">แนวโน้ม 6 เดือนล่าสุด</div>
+        <div class="chart-area" id="chartArea"></div>
+      </div>
+      <div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:16px;margin-top:14px">
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:12px">📋 รายการทั้งหมด (เรียงวันที่น้อย → มาก)</div>
+        <div id="rpTxList"></div>
+      </div>
+    </div>
+
+    <!-- ALL TRANSACTIONS PAGE -->
+    <div class="pg" id="pg-all"></div>
+
+    <!-- CATEGORIES PAGE -->
+    <div class="pg" id="pg-cats"></div>
+    <!-- EMPLOYEES PAGE -->
+    <div class="pg" id="pg-employees"></div>
+    <div class="pg" id="pg-settings">
+      <div class="pg-hd">⚙️ ตั้งค่าระบบ</div>
+      <div class="pg-sub">กำหนดค่า API และการตั้งค่าทั่วไป</div>
+      <div style="max-width:540px;display:flex;flex-direction:column;gap:14px;margin-top:4px">
+        <div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05)">
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px">🔑 Anthropic API Key <span class="ocr-chip">OCR</span></div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:14px">ใส่ API Key จาก <a href="https://console.anthropic.com" target="_blank" style="color:#2563eb">console.anthropic.com</a> เพื่อเปิดใช้งานอ่านสลิปอัตโนมัติ</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="apiKeyInput" class="fi" style="flex:1" placeholder="sk-ant-api03-…" oninput="apiKeyChanged()">
+            <button class="btn btn-blue" onclick="saveApiKey()">💾 บันทึก</button>
+          </div>
+          <div id="apiKeyStatus" style="font-size:12px;margin-top:8px;color:#9ca3af">ยังไม่ได้ตั้งค่า API Key</div>
+          <div style="margin-top:12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:10px 13px">
+            <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:4px">⚠️ ข้อควรระวัง</div>
+            <div style="font-size:11.5px;color:#78350f;line-height:1.6">API Key จะถูกเก็บใน localStorage ของเบราว์เซอร์นี้เท่านั้น ไม่ส่งไปที่อื่น แนะนำใช้ Key ที่มี usage limit และไม่แชร์ไฟล์นี้กับผู้อื่น</div>
+          </div>
+        </div>
+        <div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05)">
+          <div style="font-size:14px;font-weight:700;margin-bottom:12px">🧪 ทดสอบ OCR</div>
+          <div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">ลองอัปโหลดสลิปเพื่อตรวจสอบว่า API Key ใช้งานได้</div>
+          <label class="btn btn-teal" style="cursor:pointer">📎 เลือกไฟล์ทดสอบ
+            <input type="file" accept="image/*,.pdf" style="display:none" onchange="testOCR(this.files[0])">
+          </label>
+          <div id="testResult" style="margin-top:10px;font-size:12.5px;color:#6b7280"></div>
+        </div>
+
+        <!-- Google Drive API Key -->
+        <div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05)">
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px">🗂️ Google Drive API Key <span style="font-size:10px;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:20px;font-weight:600">Drive Import</span></div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:14px">ใส่ API Key จาก Google Cloud Console เพื่อ scan โฟลเดอร์สลิป (ใช้ API Key โดยไม่ต้อง OAuth เพราะรันบน localhost)</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="driveApiKeyInput" class="fi" style="flex:1" placeholder="AIzaSy…">
+            <button class="btn btn-blue" onclick="saveDriveApiKey()">💾 บันทึก</button>
+          </div>
+          <div id="driveApiKeyStatus" style="font-size:12px;margin-top:8px;color:#9ca3af">ยังไม่ได้ตั้งค่า Drive API Key</div>
+        </div>
+
+        <!-- Google Drive Folder Scanner -->
+        <div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05)">
+          <div style="font-size:14px;font-weight:700;margin-bottom:12px">📁 Google Drive Folder Import</div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:10px">ใส่ Folder ID แล้ว scan — ระบบจะอ่านสลิปทุกไฟล์ (jpg/png/pdf) แบบ Batch OCR พร้อมเช็ค duplicate อัตโนมัติ</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+            <input id="driveFolderInput" class="fi" style="flex:1" placeholder="Folder ID: 1BxiMVs0XRA…">
+            <button class="btn btn-teal" onclick="scanDriveFolder()">🔍 Scan โฟลเดอร์</button>
+          </div>
+          <div style="font-size:11.5px;color:#6b7280;margin-bottom:8px">Batch size: 3 ไฟล์ · delay: 1 วินาที · เช็ค dup: referenceNo / slipFileId / amount+date+receiver</div>
+          <div id="driveScanLog" style="font-size:12px;color:#374151;background:#f8fafc;border-radius:6px;padding:8px 12px;min-height:32px;border:1px solid #e9ecef"></div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="modal" onclick="modalOut(event)">
+  <div class="mbox">
+    <div class="mhead">
+      <div class="mt" id="mTitle">➕ เพิ่มรายการใหม่</div>
+      <span id="mOcrTag" style="display:none;font-size:10.5px;background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:20px;font-weight:600">✦ OCR</span>
+      <button class="xbtn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="mbody" id="mBody"></div>
+    <div class="mfoot" id="mFoot">
+      <button class="btn btn-gray" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-green" id="mSave" onclick="saveForm()">✓ ยืนยันลงบัญชี</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const BUILD_TIME="2026-05-02 18:00";
+const BUILD_LABEL="v2.9 · 2 พ.ค. 2569";
+const MONTHS_TH=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const CATS={
+  income:["รับชำระลูกค้า","มัดจำโครงการ","รับเงินสด/โอน","ดอกเบี้ยรับ","รายได้อื่น"],
+  expense:["อุปกรณ์สำนักงาน","ค่าสาธารณูปโภค","ค่าเช่า","ค่าโฆษณา","ค่าซ่อมบำรุง","ภาษี","ค่าอื่นๆ"],
+  payroll:["ค่าน้ำมัน","ค่าเดินทาง","ค่าอาหาร/เลี้ยงรับรอง","ค่าที่พัก","ค่าล่วงเวลา","เบิกอื่นๆ"],
+  employee_advance:["เบิกล่วงหน้าเงินเดือน","เบิกค่าโปรเจ็กต์","เบิกด่วน","เบิกอื่นๆ"],
+  employee_reimbursement:["คืนค่าใช้จ่าย","คืนค่าน้ำมัน","คืนค่าอาหาร","คืนค่าเดินทาง","คืนอื่นๆ"],
+  travel_expense:["ค่าน้ำมัน","ค่าทางด่วน","ค่าที่พัก","ค่าตั๋วเครื่องบิน","ค่าเดินทางอื่นๆ"]
+};
+const TL={
+  income:"▲ รายรับ",expense:"▼ รายจ่าย",payroll:"● เบิกพนักงาน",
+  employee_advance:"⏩ เบิกล่วงหน้า",employee_reimbursement:"↩ เบิกคืน",travel_expense:"✈ ค่าเดินทาง"
+};
+const TC={
+  income:"#16a34a",expense:"#dc2626",payroll:"#d97706",
+  employee_advance:"#a16207",employee_reimbursement:"#0f766e",travel_expense:"#7c3aed"
+};
+const TB={
+  income:"b-in",expense:"b-ex",payroll:"b-py",
+  employee_advance:"b-ea",employee_reimbursement:"b-er",travel_expense:"b-te"
+};
+
+// ─── PAYROLL TYPES ────────────────────────────────────────────────────────────
+const DEFAULT_PAYROLL_TYPES=[
+  {id:"advance",label:"เบิกล่วงหน้า",color:"#a16207",bg:"#fef9c3",icon:"⏩"},
+  {id:"expense",label:"เบิกค่าใช้จ่าย",color:"#be185d",bg:"#fce7f3",icon:"🧾"},
+  {id:"salary",label:"เบิกเงินเดือน",color:"#1d4ed8",bg:"#dbeafe",icon:"💰"},
+  {id:"ot",label:"ค่าล่วงเวลา (OT)",color:"#6d28d9",bg:"#ede9fe",icon:"⏰"},
+  {id:"welfare",label:"สวัสดิการ",color:"#0f766e",bg:"#ccfbf1",icon:"🎁"},
+  {id:"other",label:"เบิกอื่นๆ",color:"#374151",bg:"#f3f4f6",icon:"📋"},
+];
+
+// ─── EMPLOYEE DEFAULT DATA ────────────────────────────────────────────────────
+const DEFAULT_EMPLOYEES=[
+  {id:"emp1",name:"สมชาย ใจดี",dept:"ฝ่ายขาย",limit:5000,payrollTypes:["advance","expense"],active:true,note:""},
+  {id:"emp2",name:"แอน วิไล",dept:"ฝ่ายบัญชี",limit:3000,payrollTypes:["expense","welfare"],active:true,note:""},
+  {id:"emp3",name:"วิชัย รักดี",dept:"ฝ่ายปฏิบัติการ",limit:8000,payrollTypes:["advance","expense","ot"],active:true,note:""},
+];
+
+let txs=[],curMo=getCurMo(),curFilter="all",selId=null,curPg="dashboard";
+let rForm={},rOcrFilled=false,rOcrPrev=null;
+let mForm={},mOcrFilled=false,mOcrPrev=null;
+let allSearch="",allTypeF="all",allPg=1,allShowAllMonths=false;
+const ALL_PER=25;
+let dynCats=null;
+let employees=[],payrollTypes=[];
+
+// ─── FIREBASE STATUS UI ───────────────────────────────────────────────────────
+function setFbStatus(mode){
+  const el=document.getElementById("fb-status");
+  if(!el)return;
+  if(mode==="online"){el.textContent="🟢 Firebase";el.style.color="#16a34a";}
+  else if(mode==="offline"){el.textContent="🟡 Offline";el.style.color="#d97706";}
+  else{el.textContent="⏳ กำลังโหลด...";el.style.color="#6b7280";}
+}
+
+// ─── FIREBASE LOAD HELPERS ────────────────────────────────────────────────────
+async function loadFromFirebase(){
+  // รอ Firebase SDK โหลดเสร็จ (max 5 วินาที)
+  let waited = 0;
+  while(!_fbReady && waited < 50){
+    await new Promise(r=>setTimeout(r,100));
+    waited++;
+  }
+  if(!_fbReady || !db){
+    console.warn("Firebase not ready, using localStorage only");
+    setFbStatus("offline");
+    return;
+  }
+  try{
+    // 1. flush รายการที่บันทึกตอน offline ก่อน (local → Firebase)
+    await flushPendingToFirebase();
+
+    // 2. โหลด transactions จาก Firebase แล้ว merge กับ local
+    const txSnap=await db.collection("fin_transactions").get();
+    if(!txSnap.empty){
+      const fbTxs=txSnap.docs.map(d=>{
+        const tx={...d.data(),id:d.id};
+        // normalize Firestore Timestamp → YYYY-MM-DD string
+        if(tx.date&&typeof tx.date==="object"&&tx.date.seconds)
+          tx.date=new Date(tx.date.seconds*1000).toISOString().split("T")[0];
+        else if(tx.date&&typeof tx.date==="object"&&typeof tx.date.toDate==="function")
+          tx.date=tx.date.toDate().toISOString().split("T")[0];
+        return tx;
+      });
+      // merge: ถ้า local มีรายการที่ Firebase ไม่มี (สร้างตอน offline) ให้เก็บไว้
+      const fbIds=new Set(fbTxs.map(t=>t.id));
+      const localOnly=(txs||[]).filter(t=>!fbIds.has(t.id));
+      txs=[...fbTxs,...localOnly];
+      localStorage.setItem("fin_txs",JSON.stringify(txs));
+    } else {
+      // ถ้า Firestore ว่าง → ใช้ข้อมูล localStorage หรือ seed
+      const r=localStorage.getItem("fin_txs");
+      txs=r?JSON.parse(r):seed();
+    }
+    // โหลด employees (ใช้ collection เดิมของ advance-tracker)
+    const empSnap=await db.collection("employees").get();
+    if(!empSnap.empty){
+      employees=empSnap.docs.map(d=>{
+        const d2=d.data();
+        // แปลง format advance-tracker → finance-app
+        return{
+          id:d.id,
+          name:d2.name||"",
+          dept:d2.dept||d2.position||"",
+          limit:d2.salary||d2.limit||0,
+          payrollTypes:d2.payrollTypes||["expense"],
+          active:d2.active!==false,
+          note:d2.note||""
+        };
+      });
+      localStorage.setItem("fin_employees",JSON.stringify(employees));
+      // ถ้าอยู่หน้า report ให้ re-render เพื่อแสดงชื่อพนักงานที่ถูกต้อง
+      render(); // re-render ทุกหน้าหลัง employees โหลดครบ เพื่อให้ชื่อพนักงานแสดงถูกต้อง
+    } else {
+      const e=localStorage.getItem("fin_employees");
+      employees=e?JSON.parse(e):JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));
+    }
+    // โหลด payrollTypes
+    const ptSnap=await db.collection("fin_payroll_types").get();
+    if(!ptSnap.empty){
+      payrollTypes=ptSnap.docs.map(d=>({...d.data(),id:d.id}));
+      localStorage.setItem("fin_ptypes",JSON.stringify(payrollTypes));
+    } else {
+      const p=localStorage.getItem("fin_ptypes");
+      payrollTypes=p?JSON.parse(p):JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));
+    }
+    // โหลด categories
+    const catDoc=await db.collection("fin_settings").doc("cats").get();
+    if(catDoc.exists){
+      dynCats=catDoc.data();
+      Object.assign(CATS,dynCats);
+      localStorage.setItem("fin_cats",JSON.stringify(dynCats));
+    } else {
+      const c=localStorage.getItem("fin_cats");
+      if(c){dynCats=JSON.parse(c);Object.assign(CATS,dynCats);}
+    }
+    isOnline=true;
+    setFbStatus("online");
+    // ล้างรายการ _v2sync ที่ผิดพลาดออกจาก Firestore (one-time cleanup)
+    await cleanupV2SyncTxs();
+    // map party name → empId สำหรับ payroll เก่าที่ยังไม่มี empId
+    await migratePayrollEmpIds();
+  } catch(err){
+    console.warn("Firebase offline, using localStorage",err);
+    isOnline=false;
+    setFbStatus("offline");
+    // fallback localStorage
+    try{const r=localStorage.getItem("fin_txs");txs=r?JSON.parse(r):seed();}catch{txs=seed();}
+    try{const c=localStorage.getItem("fin_cats");if(c){dynCats=JSON.parse(c);Object.assign(CATS,dynCats);}}catch{}
+    try{const e=localStorage.getItem("fin_employees");employees=e?JSON.parse(e):JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));}catch{employees=JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));}
+    try{const p=localStorage.getItem("fin_ptypes");payrollTypes=p?JSON.parse(p):JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));}catch{payrollTypes=JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));}
+  }
+}
+
+function getCurMo(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
+function nowISO(){return new Date().toISOString().split("T")[0];}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function fmtMoney(n){if(!n&&n!==0)return"—";return"฿"+Number(n).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});}
+// parseThaiDate: แปลงวันที่รูปแบบ DD/MM/YYYY (ไทย) → YYYY-MM-DD เสมอ
+// ห้ามใช้ new Date(string) กับ DD/MM/YYYY เพราะ JS ตีความเป็น MM/DD/YYYY (อเมริกัน)
+function parseThaiDate(input){
+  if(!input)return"";
+  if(input instanceof Date) return input.toISOString().slice(0,10);
+  const s=String(input).trim();
+  // ISO YYYY-MM-DD อยู่แล้ว
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  // DD/MM/YYYY หรือ DD-MM-YYYY (รูปแบบไทย วัน/เดือน/ปี)
+  const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if(m){
+    let day=Number(m[1]),month=Number(m[2]),year=Number(m[3]);
+    if(year<100) year+=2500;
+    if(year>2400) year-=543;
+    return`${year}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  }
+  return"";
+}
+function normalizeDate(d){
+  if(!d)return"";
+  // Firestore Timestamp object (has .seconds)
+  if(typeof d==="object"&&d.seconds) return new Date(d.seconds*1000).toISOString().split("T")[0];
+  // Firestore Timestamp with toDate()
+  if(typeof d==="object"&&typeof d.toDate==="function") return d.toDate().toISOString().split("T")[0];
+  // Already a Date object
+  if(d instanceof Date) return d.toISOString().split("T")[0];
+  // String — ใช้ parseThaiDate เสมอ ห้าม new Date(string) เพราะตีความ DD/MM ผิด
+  const s=String(d).trim();
+  return parseThaiDate(s);
+}
+function fmtDate(d){
+  const s=normalizeDate(d);
+  if(!s)return"—";
+  // ใช้ constructor แยก y/m/d ตรงๆ ไม่ผ่าน new Date(string) เพื่อหลีกเลี่ยง timezone shift
+  const[y,m,day]=s.split("-");
+  const dt=new Date(Number(y),Number(m)-1,Number(day));
+  if(isNaN(dt))return s;
+  return dt.toLocaleDateString("th-TH",{day:"2-digit",month:"short",year:"2-digit"});
+}
+function moLabel(m){const[y,mo]=m.split("-").map(Number);return`${MONTHS_TH[mo-1]} ${y+543}`;}
+function ef(o={}){return{
+  id:"",date:nowISO(),type:"income",party:"",category:"",amount:"",
+  method:"โอนธนาคาร",status:"pending",note:"",slipUrl:"",
+  empId:"",payrollType:"",slipTime:"",
+  // finance_transactions extended fields
+  employeeId:"",employeeName:"",transferDate:"",transferTime:"",
+  bankName:"",receiverName:"",referenceNo:"",
+  slipFileId:"",ocrText:"",ocrConfidence:0,syncStatus:"pending",monthKey:"",
+  ...o
+};}
+
+// types ที่ต้องเลือก employee
+function isEmpType(t){return["payroll","employee_advance","employee_reimbursement","travel_expense"].includes(t);}
+
+// ─── ADVANCE SYNC GUARD ───────────────────────────────────────────────────────
+function shouldSyncAdvance(tx){
+  // ส่งไป Advance Tracker เฉพาะ employee_advance เท่านั้น
+  // รองรับข้อมูลเก่า: payroll + category "เบิกล่วงหน้าเงินเดือน"
+  // ห้ามส่ง: payroll ทั่วไป, travel_expense, employee_reimbursement
+  return tx.type==="employee_advance"
+    ||(tx.type==="payroll"&&tx.category==="เบิกล่วงหน้าเงินเดือน");
+}
+
+// ดึง YYYY-MM จาก transaction สำหรับใช้เป็น doc key ของ advance_monthly
+function getMonthKey(tx){
+  return(tx.transferDate||tx.date||"").slice(0,7);
+}
+
+// ─── DATE HELPERS — ใช้ transferDate เป็น source of truth ───────────────────
+// ได้วันที่จริงของ transaction (slip date > entry date)
+function getTxDate(tx){
+  return normalizeDate(tx.transferDate||tx.date||tx.createdAt||"");
+}
+function getTxMonth(tx){
+  const d=getTxDate(tx);
+  return d?d.slice(0,7):"";
+}
+function isTxInCurrentMonth(tx){
+  return getTxMonth(tx)===curMo;
+}
+function getCurrentMonthTxs(){
+  return txs.filter(isTxInCurrentMonth);
+}
+
+// types ที่นับเป็น "รายจ่าย" (ลบออกจาก net)
+function isExpenseType(t){return t!=="income";}
+
+function seed(){
+  const[y,mo]=curMo.split("-");const d=n=>`${y}-${mo}-${String(n).padStart(2,"0")}`;
+  return[
+    {id:uid(),date:d(2),type:"income",party:"ABC Corporation",category:"รับชำระลูกค้า",amount:350000,method:"โอนธนาคาร",status:"confirmed",note:"Invoice #001",slipUrl:""},
+    {id:uid(),date:d(5),type:"expense",party:"ซัพพลายเออร์ไทย",category:"อุปกรณ์สำนักงาน",amount:45000,method:"โอนธนาคาร",status:"confirmed",note:"",slipUrl:""},
+    {id:uid(),date:d(8),type:"payroll",party:"คุณสมชาย ใจดี",category:"ค่าน้ำมัน",amount:3500,method:"โอนธนาคาร",status:"pending",note:"เบิกค่าน้ำมันประจำเดือน",slipUrl:""},
+    {id:uid(),date:d(10),type:"income",party:"XYZ Company",category:"มัดจำโครงการ",amount:200000,method:"พร้อมเพย์",status:"confirmed",note:"",slipUrl:""},
+    {id:uid(),date:d(12),type:"expense",party:"การไฟฟ้านครหลวง",category:"ค่าสาธารณูปโภค",amount:12000,method:"โอนธนาคาร",status:"confirmed",note:"",slipUrl:""},
+    {id:uid(),date:d(15),type:"payroll",party:"คุณแอน วิไล",category:"ค่าเดินทาง",amount:1800,method:"เงินสด",status:"pending",note:"ค่าเดินทางไปประชุม",slipUrl:""},
+    {id:uid(),date:d(18),type:"income",party:"ลูกค้า DEF-22",category:"รับเงินสด/โอน",amount:85000,method:"โอนธนาคาร",status:"confirmed",note:"",slipUrl:""},
+  ];
+}
+
+window.onload=async()=>{
+  setFbStatus("loading");
+  // โหลด localStorage ก่อนเพื่อให้แสดงผลเร็ว (ไม่รอ Firebase)
+  try{const r=localStorage.getItem("fin_txs");txs=r?JSON.parse(r):seed();}catch{txs=seed();}
+  // แจ้งผู้ใช้ถ้ามีข้อมูล offline รอ sync
+  const _pending=JSON.parse(localStorage.getItem("fin_pending_ids")||"[]");
+  if(_pending.length>0) setTimeout(()=>toast_(`⏳ มี ${_pending.length} รายการรอ sync ขึ้น Firebase`,"#d97706"),800);
+  try{const c=localStorage.getItem("fin_cats");if(c){dynCats=JSON.parse(c);Object.assign(CATS,dynCats);}}catch{}
+  try{const e=localStorage.getItem("fin_employees");employees=e?JSON.parse(e):JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));}catch{employees=JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));}
+  try{const p=localStorage.getItem("fin_ptypes");payrollTypes=p?JSON.parse(p):JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));}catch{payrollTypes=JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));}
+  document.querySelectorAll(".nav-item[data-pg]").forEach(el=>el.addEventListener("click",()=>showPg(el.dataset.pg)));
+  document.querySelectorAll(".ftab").forEach(el=>el.addEventListener("click",()=>{
+    curFilter=el.dataset.f;
+    document.querySelectorAll(".ftab").forEach(t=>t.classList.remove("active"));
+    el.classList.add("active"); render();
+  }));
+  rForm=ef(); renderRightForm();
+  render();
+  refreshApiKeyStatus();
+  // version badge
+  const vb=document.getElementById("versionBadge");
+  if(vb){vb.textContent=BUILD_LABEL;vb.title=`Finance App ${BUILD_LABEL}\nBuild: ${BUILD_TIME}\nFirebase: advance-tracker-cadf5`;}
+  document.addEventListener('click', e=>{
+    const drawer=document.getElementById('mob-more-drawer');
+    const moreBtn=document.getElementById('mob-more-btn');
+    if(drawer && !drawer.contains(e.target) && !moreBtn.contains(e.target)){
+      drawer.style.display='none';
+    }
+  });
+  // โหลด Firebase ใน background แล้ว re-render
+  await loadFromFirebase();
+  rForm=ef(); renderRightForm();
+  render();
+};
+
+// auto-save ก่อนปิด — localStorage ทุกครั้ง, Firebase ถ้าออนไลน์
+window.addEventListener('beforeunload', function(){
+  try{localStorage.setItem("fin_txs",JSON.stringify(txs));}catch(e){}
+  try{localStorage.setItem("fin_employees",JSON.stringify(employees));}catch(e){}
+});
+
+function saveTxs(){
+  localStorage.setItem("fin_txs",JSON.stringify(txs));
+  if(!isOnline || !db){
+    const ids=new Set(txs.map(t=>t.id));
+    let dirty=JSON.parse(localStorage.getItem("fin_pending_ids")||"[]");
+    txs.forEach(t=>{ if(!dirty.includes(t.id)) dirty.push(t.id); });
+    localStorage.setItem("fin_pending_ids",JSON.stringify(dirty));
+    setFbStatus("offline");
+    return;
+  }
+  const batch=db.batch();
+  txs.forEach(tx=>{
+    const ref=db.collection("fin_transactions").doc(tx.id);
+    batch.set(ref,tx);
+  });
+  batch.commit()
+    .then(()=>{
+      localStorage.removeItem("fin_pending_ids");
+      // sync เฉพาะ employee-related types ไปยัง finance_transactions
+      txs.filter(t=>isEmpType(t.type)).forEach(t=>saveFinanceTransaction(t));
+    })
+    .catch(e=>console.warn("saveTxs Firebase error",e));
+}
+
+// ─── EMPLOYEE MATCHING ────────────────────────────────────────────────────────
+function normName(s){return(s||"").replace(/นาย|นาง|น\.ส\.|นางสาว|คุณ|\s/g,"").toLowerCase();}
+
+function matchEmployee(name){
+  if(!name) return {status:"pending_review",candidates:[]};
+  const needle=normName(name);
+  // ตรงชื่อ 100%
+  const exact=employees.find(e=>normName(e.name)===needle);
+  if(exact) return {status:"matched",emp:exact};
+  // คล้าย (fuzzy: ชื่อมีอยู่ใน needle หรือ needle มีอยู่ใน ชื่อ)
+  const candidates=employees.filter(e=>{
+    const en=normName(e.name);
+    return en.length>=2&&(en.includes(needle)||needle.includes(en));
+  });
+  if(candidates.length===1) return {status:"suggest",emp:candidates[0],candidates};
+  if(candidates.length>1) return {status:"suggest_multi",candidates};
+  return {status:"pending_review",candidates:[]};
+}
+
+// flush รายการที่บันทึกตอน offline ขึ้น Firebase
+async function flushPendingToFirebase(){
+  const pendingIds=JSON.parse(localStorage.getItem("fin_pending_ids")||"[]");
+  if(!pendingIds.length)return;
+  try{
+    const pendingTxs=txs.filter(t=>pendingIds.includes(t.id));
+    if(!pendingTxs.length){ localStorage.removeItem("fin_pending_ids"); return; }
+    const batch=db.batch();
+    pendingTxs.forEach(tx=>{
+      batch.set(db.collection("fin_transactions").doc(tx.id), tx);
+    });
+    await batch.commit();
+    localStorage.removeItem("fin_pending_ids");
+    toast_(`☁️ sync ${pendingTxs.length} รายการ (offline) ขึ้น Firebase แล้ว`,"#0d9488");
+    console.log(`[Sync] flushed ${pendingTxs.length} pending tx(s) to Firebase`);
+  }catch(e){
+    console.warn("[Sync] flush pending failed:",e);
+  }
+}
+
+// ─── FINANCE_TRANSACTIONS COLLECTION ─────────────────────────────────────────
+// finance_app เป็นตัวเดียวที่ write collection นี้
+async function saveFinanceTransaction(tx){
+  if(!isOnline||!db) return;
+  const doc={
+    ...tx,
+    amount:Number(tx.amount)||0,
+    savedAt:tx.savedAt||new Date().toISOString(),
+    updatedAt:new Date().toISOString(),
+  };
+  try{
+    await db.collection("finance_transactions").doc(tx.id).set(doc);
+    // sync ไป advance_requests เฉพาะรายการเบิกล่วงหน้าพนักงานเท่านั้น
+    if(shouldSyncAdvance(tx)) await createAdvanceRequest(tx);
+  }catch(e){
+    console.warn("[finance_transactions] save failed:",e);
+  }
+}
+
+async function createAdvanceRequest(tx){
+  if(!isOnline||!db) return;
+  // guard: ห้าม sync รายการที่ไม่ใช่เบิกล่วงหน้าพนักงาน
+  if(!shouldSyncAdvance(tx)){
+    console.log("[advance_requests] Skip sync: not employee advance",tx.id,tx.type);
+    return;
+  }
+  const empId=tx.employeeId||tx.empId||"";
+  const emp=employees.find(e=>e.id===empId);
+  const now=new Date().toISOString();
+  const req={
+    id:tx.id,
+    requestId:tx.id,
+    employeeId:empId,
+    employeeName:emp?emp.name:(tx.employeeName||tx.party||""),
+    amount:Number(tx.amount)||0,
+    date:tx.date||nowISO(),
+    transferDate:tx.transferDate||tx.date||nowISO(),
+    transferTime:tx.transferTime||tx.slipTime||"",
+    category:tx.category||"",
+    payrollType:tx.payrollType||"",
+    bankName:tx.bankName||tx.method||"",
+    receiverName:tx.receiverName||"",
+    referenceNo:tx.referenceNo||"",
+    slipFileId:tx.slipFileId||"",
+    slipUrl:tx.slipUrl||"",
+    note:tx.note||"",
+    ocrText:tx.ocrText||"",
+    ocrConfidence:tx.ocrConfidence||0,
+    status:"pending_approval",
+    syncStatus:"linked",
+    createdAt:tx.createdAt||now,
+    updatedAt:now,
+    createdBy:"finance_app",
+  };
+  try{
+    await db.collection("advance_requests").doc(tx.id).set(req);
+    console.log("[advance_requests] created:",tx.id);
+    // sync ไป advance_monthly ด้วย (collection ใหม่ รายเดือน)
+    await syncAdvance(tx);
+    // update syncStatus กลับที่ finance_transactions
+    await db.collection("finance_transactions").doc(tx.id).set({
+      syncStatus:"linked",
+      syncedAt:now,
+      updatedAt:now,
+    },{merge:true});
+    // update local txs array
+    txs=txs.map(t=>t.id===tx.id?{...t,syncStatus:"linked",syncedAt:now}:t);
+    try{localStorage.setItem("fin_txs",JSON.stringify(txs));}catch(_){}
+  }catch(e){
+    console.warn("[advance_requests] create failed:",e);
+    // บันทึก error status กลับ
+    try{
+      await db.collection("finance_transactions").doc(tx.id).set({
+        syncStatus:"error",
+        syncError:e.message,
+        updatedAt:new Date().toISOString(),
+      },{merge:true});
+      txs=txs.map(t=>t.id===tx.id?{...t,syncStatus:"error",syncError:e.message}:t);
+      try{localStorage.setItem("fin_txs",JSON.stringify(txs));}catch(_){}
+    }catch(_){}
+  }
+}
+
+// ─── SYNC → advance_monthly/{YYYY-MM}/records/{id} ───────────────────────────
+// collection ใหม่สำหรับ query รายเดือนเร็ว ไม่ลบ advance_requests เดิม
+async function syncAdvance(tx){
+  if(!isOnline||!db) return;
+  if(!shouldSyncAdvance(tx)){
+    console.log("[advance_monthly] Skip: not advance",tx.id,tx.type);
+    return;
+  }
+  const monthKey=getMonthKey(tx);
+  if(!monthKey){ console.warn("[advance_monthly] no monthKey",tx.id); return; }
+  const empId=tx.employeeId||tx.empId||"";
+  const emp=employees.find(e=>e.id===empId);
+  const now=new Date().toISOString();
+  const data={
+    id:tx.id,
+    monthKey,
+    transferDate:tx.transferDate||tx.date||"",
+    transferTime:tx.transferTime||tx.slipTime||"",
+    amount:Number(tx.amount)||0,
+    employeeId:empId,
+    employeeName:emp?emp.name:(tx.employeeName||tx.party||""),
+    category:tx.category||"",
+    payrollType:tx.payrollType||"",
+    note:tx.note||"",
+    bankName:tx.bankName||tx.method||"",
+    receiverName:tx.receiverName||"",
+    referenceNo:tx.referenceNo||"",
+    slipFileId:tx.slipFileId||"",
+    slipUrl:tx.slipUrl||"",
+    ocrText:tx.ocrText||"",
+    ocrConfidence:tx.ocrConfidence||0,
+    syncStatus:"linked",
+    createdAt:tx.createdAt||now,
+    updatedAt:now,
+  };
+  const ref=db.collection("advance_monthly").doc(monthKey).collection("records").doc(tx.id);
+  try{
+    await ref.set(data,{merge:true});
+    console.log("[advance_monthly] synced:",tx.id,"month:",monthKey);
+  }catch(e){
+    console.warn("[advance_monthly] sync failed:",tx.id,e);
+  }
+}
+
+// ─── MIGRATE ข้อมูลเก่าทั้งหมดไป advance_monthly ────────────────────────────
+async function migrateOldData(){
+  if(!isOnline||!db){toast_("⚠️ ต้องออนไลน์ก่อน Migrate","#b45309");return;}
+  if(!confirm("Migrate รายการเบิกล่วงหน้าทั้งหมดจาก finance_transactions → advance_monthly?\n(ใช้เวลาสักครู่)")) return;
+  toast_("🔄 กำลัง migrate...","#0d9488");
+  let count=0,errors=0;
+  try{
+    const snap=await db.collection("finance_transactions").get();
+    for(const doc of snap.docs){
+      const tx=doc.data();
+      if(shouldSyncAdvance(tx)){
+        try{ await syncAdvance(tx); count++; }
+        catch(e){ errors++; console.warn("[migrate]",doc.id,e); }
+      } else {
+        console.log("[migrate] skipped non-advance:",doc.id,tx.type,tx.category);
+      }
+    }
+    toast_(`✅ Migrate เสร็จ: ${count} รายการ${errors?" · ผิดพลาด "+errors:""}`, "#16a34a",6000);
+  }catch(e){
+    toast_(`❌ Migrate ล้มเหลว: ${e.message}`,"#dc2626");
+  }
+}
+
+// ─── SYNC EMPLOYEE_ADVANCE → ADVANCE_REQUESTS (per employee) ──────────────────
+// ใช้สำหรับ record เก่าที่ยังไม่มีใน advance_requests
+// เรียกได้ทั้งรายคน (empId) และทุกคน (empId = null)
+async function syncAdvanceReqsForEmp(empId){
+  if(!isOnline||!db){toast_("⚠️ ต้องออนไลน์ก่อน Sync","#b45309");return;}
+  const emp=empId?employees.find(e=>e.id===empId):null;
+  const advTxs=txs.filter(t=>
+    t.type==="employee_advance" &&
+    (empId?t.empId===empId:!!t.empId)
+  );
+  if(!advTxs.length){
+    toast_(`ไม่มีรายการ "เบิกล่วงหน้า"${emp?" ของ "+emp.name:""}`, "#6b7280");
+    return;
+  }
+  toast_(`🔄 กำลัง sync ${advTxs.length} รายการ${emp?" ("+emp.name+")":""}...`,"#0d9488");
+  let created=0,updated=0,errors=0;
+  for(const tx of advTxs){
+    try{
+      const snap=await db.collection("advance_requests").doc(tx.id).get();
+      if(snap.exists){
+        // อัปเดต fields ทั้งหมดที่อาจขาด
+        const empId=tx.employeeId||tx.empId||"";
+        const emp2=employees.find(e=>e.id===empId);
+        const now2=new Date().toISOString();
+        await db.collection("advance_requests").doc(tx.id).set({
+          id:tx.id,
+          employeeId:empId,
+          employeeName:emp2?emp2.name:(tx.employeeName||tx.party||""),
+          amount:Number(tx.amount)||0,
+          date:tx.date||"",
+          transferDate:tx.transferDate||tx.date||"",
+          transferTime:tx.transferTime||tx.slipTime||"",
+          category:tx.category||"",
+          payrollType:tx.payrollType||"",
+          bankName:tx.bankName||tx.method||"",
+          receiverName:tx.receiverName||"",
+          referenceNo:tx.referenceNo||"",
+          slipFileId:tx.slipFileId||"",
+          slipUrl:tx.slipUrl||"",
+          note:tx.note||"",
+          ocrText:tx.ocrText||"",
+          ocrConfidence:tx.ocrConfidence||0,
+          syncStatus:"linked",
+          updatedAt:now2,
+        },{merge:true});
+        // update local
+        txs=txs.map(t=>t.id===tx.id?{...t,syncStatus:"linked"}:t);
+        updated++;
+      } else {
+        await createAdvanceRequest(tx);
+        created++;
+      }
+    }catch(e){errors++;console.warn("[syncAdvReq]",tx.id,e);}
+  }
+  toast_(
+    `✅ ${emp?emp.name:"ทุกคน"}: สร้าง ${created} · อัปเดต ${updated}${errors?` · ผิดพลาด ${errors}`:""}`,
+    "#16a34a", 5000
+  );
+  render();
+}
+
+async function logDriveImport(log){
+  if(!isOnline||!db) return;
+  try{
+    await db.collection("drive_import_logs").add({
+      ...log,
+      timestamp:new Date().toISOString(),
+    });
+  }catch(e){
+    console.warn("[drive_import_logs] log failed:",e);
+  }
+}
+
+// ─── CROSS-APP SYNC (finance_app ↔ v2 advance-tracker) ───────────────────────
+// แปลง fin_transaction (payroll) → format transactions[] ของ v2
+function finTxToV2Tx(tx){
+  return{
+    id:tx.id,                          // ใช้ id เดียวกันเพื่อ track ว่า sync แล้ว
+    date:normalizeDate(tx.date)||"-",  // normalize ก่อนส่งไป v2 เสมอ
+    bank:tx.method||"-",
+    recipient:tx.party||"",
+    amount:Number(tx.amount)||0,
+    ref:tx.category||"",
+    imgUrl:tx.slipUrl||"",
+    note:tx.note||"",
+    savedAt:tx.savedAt||new Date().toISOString(),
+    _source:"finance_app"              // mark ว่ามาจาก finance_app
+  };
+}
+
+// sync payroll transactions → employees.transactions[] ใน Firestore (finance_app → v2)
+async function syncPayrollToV2(changedEmpIds){
+  if(!isOnline||!db)return;
+  try{
+    // รวบรวม payroll txs แยกตาม empId
+    const byEmp={};
+    txs.filter(t=>t.type==="payroll"&&t.empId).forEach(t=>{
+      if(!byEmp[t.empId])byEmp[t.empId]=[];
+      byEmp[t.empId].push(finTxToV2Tx(t));
+    });
+    // อัพเดทเฉพาะ employee ที่มีการเปลี่ยนแปลง (หรือทั้งหมดถ้าไม่ระบุ)
+    const empIds=changedEmpIds||Object.keys(byEmp);
+    const batch=db.batch();
+    empIds.forEach(empId=>{
+      const ref=db.collection("employees").doc(empId);
+      const v2Txs=byEmp[empId]||[];
+      batch.update(ref,{transactions:v2Txs});
+    });
+    await batch.commit();
+    console.log(`[CrossSync] finance_app → v2: synced ${empIds.length} employee(s)`);
+  }catch(e){
+    console.warn("[CrossSync] finance_app → v2 failed:",e);
+  }
+}
+
+
+
+function showPg(pg){
+  curPg=pg;
+  document.querySelectorAll(".pg").forEach(p=>p.classList.remove("show"));
+  const t=document.getElementById("pg-"+pg);
+  if(t)t.classList.add("show");else document.getElementById("pg-dashboard").classList.add("show");
+  document.querySelectorAll(".nav-item").forEach(n=>n.classList.toggle("active",n.dataset.pg===pg));
+  document.querySelectorAll(".mob-nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.pg===pg));
+  render();
+}
+
+function navMo(dir){
+  const[y,m]=curMo.split("-").map(Number);
+  const d=new Date(y,m-1+dir,1);
+  curMo=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  render();
+}
+
+function render(){
+  const lbl=moLabel(curMo);
+  document.getElementById("topMo").textContent=lbl;
+  document.getElementById("moPicker").textContent=lbl;
+
+  const mTxs=getCurrentMonthTxs();
+  console.log("[month]",curMo,"[current month txs]",mTxs.map(t=>({id:t.id,date:t.date,transferDate:t.transferDate,month:getTxMonth(t),type:t.type,amount:t.amount})));
+  const fTxs=mTxs
+    .filter(t=>curFilter==="all"||t.type===curFilter)
+    .sort((a,b)=>getTxDate(b).localeCompare(getTxDate(a)));
+
+  const totIn=mTxs.filter(t=>t.type==="income").reduce((s,t)=>s+Number(t.amount),0);
+  const totEx=mTxs.filter(t=>t.type!=="income").reduce((s,t)=>s+Number(t.amount),0);
+  const net=totIn-totEx;
+  const pend=mTxs.filter(t=>t.status==="pending").length;
+  const pendAll=txs.filter(t=>t.status==="pending").length;
+
+  document.getElementById("c-in").textContent=fmtMoney(totIn);
+  document.getElementById("c-in-sub").textContent=`จากลูกค้า ${mTxs.filter(t=>t.type==="income").length} รายการ`;
+  document.getElementById("c-ex").textContent=fmtMoney(totEx);
+  document.getElementById("c-net").textContent=fmtMoney(net);
+  document.getElementById("c-net").style.color=net>=0?"#2563eb":"#dc2626";
+  document.getElementById("c-pend").textContent=`${pend} รายการ`;
+
+  const nb=document.getElementById("nbadge");
+  nb.style.display=pendAll?"":"none"; nb.textContent=pendAll;
+  const mnb=document.getElementById("mnbadge");
+  if(mnb){mnb.style.display=pendAll?"":"none"; mnb.textContent=pendAll;}
+
+  // table
+  const tbody=document.getElementById("txBody");
+  const footer=document.getElementById("txFooter");
+  const empty=document.getElementById("txEmpty");
+
+  if(!fTxs.length){tbody.innerHTML="";footer.style.display="none";empty.style.display="";}
+  else{
+    empty.style.display="none"; footer.style.display="flex";
+    tbody.innerHTML=fTxs.map(tx=>{
+      const ac=tx.type==="income"?"c-in":tx.type==="expense"?"c-ex":"c-py";
+      const pfx=tx.type==="income"?"+":"-";
+      const stB=tx.status==="confirmed"?`<span class="badge b-ok">✓ ยืนยันแล้ว</span>`:`<span class="badge b-pend">⏳ รอตรวจสอบ</span>`;
+      const apB=tx.status==="pending"?`<button class="btn btn-green btn-sm" onclick="event.stopPropagation();approveTx('${tx.id}')">✓</button>`:"";
+      const partyDisplay=getEmpDisplay(tx);
+      const syncB=isEmpType(tx.type)?syncStatusBadge(tx.syncStatus):"";
+      return`<tr class="${selId===tx.id?"sel":""}" onclick="selTx('${tx.id}')">
+        <td style="white-space:nowrap;color:#374151">${fmtDate(getTxDate(tx))}</td>
+        <td><span class="badge ${TB[tx.type]||"b-py"}">${TL[tx.type]||tx.type}</span></td>
+        <td style="font-weight:500;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${partyDisplay}</td>
+        <td style="color:#6b7280;white-space:nowrap">${tx.category}</td>
+        <td class="${ac} r" style="white-space:nowrap">${pfx}${fmtMoney(tx.amount)}</td>
+        <td>${stB} ${syncB}</td>
+        <td><div style="display:flex;gap:3px">${apB}<button class="btn btn-gray btn-sm" onclick="event.stopPropagation();openEdit('${tx.id}')">✏️</button><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delTx('${tx.id}')">🗑</button></div></td>
+      </tr>`;
+    }).join("");
+    const inS=fTxs.filter(t=>t.type==="income").reduce((s,t)=>s+Number(t.amount),0);
+    const exS=fTxs.filter(t=>t.type!=="income").reduce((s,t)=>s+Number(t.amount),0);
+    footer.innerHTML=`<span>รวม <b style="color:#111827">${fTxs.length}</b> รายการ</span><span>รับ <b style="color:#16a34a">${fmtMoney(inS)}</b></span><span>จ่าย <b style="color:#dc2626">${fmtMoney(exS)}</b></span><span style="margin-left:auto"><button class="btn btn-gray btn-sm" onclick="exportCSV()">📥 Export CSV</button> <button class="btn btn-gray btn-sm" onclick="manualSync()" title="Sync ข้อมูลกับ advance-tracker v2">🔄 Sync v2</button></span>`;
+  }
+
+  if(curPg==="approve") renderApprove();
+  if(curPg==="report") renderReport(mTxs);
+  if(curPg==="all") renderAll();
+  if(curPg==="cats") renderCats();
+  if(curPg==="employees") renderEmployees();
+}
+
+// ─── RIGHT PANEL FORM ─────────────────────────────────────────────────────────
+function renderRightForm(){
+  const cats=(CATS[rForm.type]||[]).map(c=>`<option value="${c}"${rForm.category===c?" selected":""}>${c}</option>`).join("");
+  const ok=rOcrFilled;
+  const fi=(f,extra="")=>`class="fi${ok&&rForm[f]?" filled":""}" ${extra}`;
+
+  // payroll/employee-specific fields for right panel
+  let payrollExtra="";
+  if(isEmpType(rForm.type)){
+    const activeEmps=employees.filter(e=>e.active);
+    const empOpts=activeEmps.map(e=>`<option value="${e.id}"${rForm.empId===e.id?" selected":""}>${e.name} · ${e.dept}</option>`).join("");
+    const selEmp=activeEmps.find(e=>e.id===rForm.empId);
+    const empInfo=selEmp?`<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 10px;font-size:11.5px;color:#92400e;margin-top:-4px">💳 วงเงิน <b>${fmtMoney(selEmp.limit)}</b>/ครั้ง</div>`:"";
+    const syncBadge=rForm.syncStatus?`<span class="sync-${rForm.syncStatus}" style="display:inline-flex;align-items:center;gap:3px;margin-left:4px"><span class="sync-dot"></span><span class="sync-label" style="font-size:10px">${{pending:"รอ",linked:"linked",pending_review:"รอตรวจ",error:"error"}[rForm.syncStatus]||""}</span></span>`:"";
+    payrollExtra=`
+    <div class="frow"><div class="flbl">พนักงาน</div>
+      <div style="display:flex;gap:5px;align-items:center">
+        <select class="fi" style="flex:1" onchange="rPayrollEmpChange(this.value)">
+          <option value="">-- เลือกพนักงาน --</option>${empOpts}
+        </select>${syncBadge}
+      </div>
+    </div>
+    ${empInfo}
+    <div class="frow"><div class="flbl">เลขอ้างอิง</div><input class="fi" value="${rForm.referenceNo||""}" placeholder="Ref No." oninput="rForm.referenceNo=this.value"></div>`;
+  }
+
+  document.getElementById("ocrFormBody").innerHTML=`
+    <div class="frow"><div class="flbl">วันที่ทำรายการ</div>
+      <input type="date" ${fi("date")} value="${rForm.date}" onchange="rForm.date=this.value">
+    </div>
+    <div class="frow"><div class="flbl">ประเภท</div>
+      <select ${fi("type")} onchange="rForm.type=this.value;rForm.category='';rForm.empId='';rForm.payrollType='';renderRightForm()">
+        <option value="">-- เลือกประเภท --</option>
+        <option value="income"${rForm.type==="income"?" selected":""}>▲ รายรับ</option>
+        <option value="expense"${rForm.type==="expense"?" selected":""}>▼ รายจ่าย</option>
+        <option value="payroll"${rForm.type==="payroll"?" selected":""}>● เบิกพนักงาน</option>
+        <option value="employee_advance"${rForm.type==="employee_advance"?" selected":""}>⏩ เบิกล่วงหน้า</option>
+        <option value="employee_reimbursement"${rForm.type==="employee_reimbursement"?" selected":""}>↩ เบิกคืน</option>
+        <option value="travel_expense"${rForm.type==="travel_expense"?" selected":""}>✈ ค่าเดินทาง</option>
+      </select>
+    </div>
+    ${payrollExtra}
+    <div class="frow"><div class="flbl">${rForm.type==="payroll"?"หมายเหตุ":"ชื่อผู้เกี่ยวข้อง"}</div>
+      <input ${fi("party")} value="${rForm.party}" placeholder="${rForm.type==="payroll"?"รายละเอียดเพิ่มเติม":"ลูกค้า / ซัพพลาย / พนักงาน"}" oninput="rForm.party=this.value">
+    </div>
+    <div class="frow"><div class="flbl">หมวดหมู่</div>
+      <select ${fi("category")} onchange="rForm.category=this.value">
+        <option value="">-- เลือกหมวดหมู่ --</option>${cats}
+      </select>
+    </div>
+    <div class="frow"><div class="flbl">จำนวนเงิน</div>
+      <input type="number" ${fi("amount")} value="${rForm.amount}" placeholder="0.00" oninput="rForm.amount=this.value">
+    </div>
+    <div class="frow"><div class="flbl">วิธีชำระ</div>
+      <select class="fi" onchange="rForm.method=this.value">
+        ${["โอนธนาคาร","เงินสด","พร้อมเพย์","เช็ค"].map(m=>`<option${rForm.method===m?" selected":""}>${m}</option>`).join("")}
+      </select>
+    </div>
+    <div class="frow top"><div class="flbl" style="padding-top:8px">หมายเหตุ</div>
+      <textarea class="fi" rows="2" placeholder="แก้ไขได้ด้วยมือ / เพิ่มหลักฐานได้" oninput="rForm.note=this.value">${rForm.note||""}</textarea>
+    </div>
+    <div class="ofb-actions">
+      <button class="btn btn-gray btn-sm" onclick="saveDraft()">💾 บันทึกร่าง</button>
+      <button class="btn btn-green" style="flex:1" onclick="saveRight()">ยืนยันลงบัญชี</button>
+      <button class="btn btn-red btn-sm" onclick="clearRight()">ยกเลิก</button>
+    </div>`;
+}
+
+function rPayrollEmpChange(empId){
+  rForm.empId=empId;
+  rForm.payrollType="";
+  rForm.employeeId=empId;
+  const emp=employees.find(e=>e.id===empId);
+  rForm.employeeName=emp?emp.name:"";
+  rForm.syncStatus=emp?"linked":"pending";
+  renderRightForm();
+}
+
+// ─── DUPLICATE SLIP CHECK ─────────────────────────────────────────────────────
+// เช็คซ้ำจาก date + slipTime (เวลาบนหัวสลิป) เป็นหลัก
+// ถ้า slipTime ว่างเปล่า (ไม่ได้อ่านมา) ให้ fallback เช็ค date + amount + party
+function isDupSlip(form, excludeId){
+  excludeId = excludeId || "";
+  // เช็ค referenceNo ก่อน (แม่นที่สุด)
+  var ref=(form.referenceNo||"").trim();
+  if(ref && txs.some(function(t){ return t.id!==excludeId && (t.referenceNo||"").trim()===ref; }))
+    return true;
+  var hasTime = form.slipTime && form.slipTime.trim() !== "";
+  return txs.some(function(t){
+    if(t.id === excludeId) return false;
+    if(!t.date || t.date !== form.date) return false;
+    if(hasTime){
+      // มีเวลา → เช็คเฉพาะ date + slipTime
+      return (t.slipTime || "").trim() === form.slipTime.trim();
+    } else {
+      // ไม่มีเวลา → fallback เช็ค date + amount + party
+      return String(Number(t.amount)) === String(Number(form.amount))
+        && (t.party || "").trim() === (form.party || "").trim();
+    }
+  });
+}
+
+function saveRight(){
+  if(isEmpType(rForm.type)&&!rForm.empId){toast_("⚠️ กรุณาเลือกพนักงาน","#b45309");return;}
+  if(!rForm.amount||!rForm.category){toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309");return;}
+  if(!rForm.party&&!isEmpType(rForm.type)){ toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309"); return; }
+  const emp=rForm.empId?employees.find(e=>e.id===rForm.empId):null;
+  if(emp&&!rForm.party) rForm.party=emp.name;
+  rForm.employeeId=rForm.empId||"";
+  rForm.employeeName=emp?emp.name:"";
+  if(!rForm.syncStatus) rForm.syncStatus=emp?"linked":"pending";
+
+  if(rForm.id){
+    txs=txs.map(t=>t.id===rForm.id?{...rForm,amount:Number(rForm.amount)}:t);
+    toast_("✏️ แก้ไขแล้ว","#2563eb");
+    saveTxs(); clearRight(); render();
+    if(isEmpType(rForm.type)&&rForm.empId) syncPayrollToV2([rForm.empId]);
+  } else {
+    if(isDupSlip(rForm)){
+      showDupPopup(rForm, ()=>{
+        const newTx={...rForm,id:uid(),amount:Number(rForm.amount),savedAt:new Date().toISOString(),monthKey:getMonthKey(rForm)};
+        txs=[...txs,newTx];
+        toast_("✅ บันทึกลงบัญชีแล้ว (บันทึกซ้ำ)","#16a34a");
+        saveTxs(); clearRight(); render();
+        if(isEmpType(newTx.type)&&newTx.empId) syncPayrollToV2([newTx.empId]);
+        if(shouldSyncAdvance(newTx)) saveFinanceTransaction(newTx);
+      });
+      return;
+    }
+    const newTx={...rForm,id:uid(),amount:Number(rForm.amount),savedAt:new Date().toISOString(),monthKey:getMonthKey(rForm)};
+    txs=[...txs,newTx];
+    toast_("✅ บันทึกลงบัญชีแล้ว","#16a34a");
+    saveTxs(); clearRight(); render();
+    if(isEmpType(newTx.type)&&newTx.empId) syncPayrollToV2([newTx.empId]);
+    if(shouldSyncAdvance(newTx)) saveFinanceTransaction(newTx);
+  }
+}
+
+function clearRight(){
+  rForm=ef(); rOcrFilled=false; rOcrPrev=null; selId=null;
+  document.getElementById("ocrStatus").textContent="คลิกรายการหรืออัปโหลดสลิปเพื่อเติมข้อมูล";
+  renderRightForm(); render();
+}
+
+function saveDraft(){
+  // บันทึกร่าง: เก็บ rForm ปัจจุบันลง localStorage โดยยังไม่ส่ง Firebase
+  if(!rForm.amount&&!rForm.category&&!rForm.party){toast_("⚠️ ไม่มีข้อมูลสำหรับบันทึกร่าง","#b45309");return;}
+  const draft={...rForm,_isDraft:true,_draftSavedAt:new Date().toISOString()};
+  localStorage.setItem("fin_draft_right",JSON.stringify(draft));
+  toast_("💾 บันทึกร่างแล้ว — กลับมาแก้ไขได้ภายหลัง","#2563eb");
+}
+
+function selTx(id){
+  if(selId===id){clearRight();return;}
+  selId=id;
+  const tx=txs.find(t=>t.id===id); if(!tx)return;
+  rForm={...tx,amount:String(tx.amount)};
+  rOcrFilled=false;
+  document.getElementById("ocrStatus").textContent=`${fmtDate(tx.date)} · ${TL[tx.type]}`;
+  renderRightForm(); render();
+}
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+function approveTx(id){
+  const tx=txs.find(t=>t.id===id);
+  txs=txs.map(t=>t.id===id?{...t,status:"confirmed"}:t);
+  saveTxs(); toast_("✅ อนุมัติแล้ว","#16a34a"); render();
+  if(tx&&tx.type==="payroll"&&tx.empId) syncPayrollToV2([tx.empId]);
+  // sync สถานะไปยัง advance_requests เฉพาะเบิกล่วงหน้าพนักงาน
+  if(tx&&shouldSyncAdvance(tx)&&isOnline&&db){
+    db.collection("advance_requests").doc(id).set({
+      status:"approved",
+      approvedAt:new Date().toISOString(),
+      syncStatus:"linked"
+    },{merge:true}).catch(e=>console.warn("[approveTx] advance_requests sync failed:",e));
+  }
+}
+function delTx(id){
+  if(!confirm("ลบรายการนี้?"))return;
+  const tx=txs.find(t=>t.id===id);
+  txs=txs.filter(t=>t.id!==id);
+  if(selId===id)clearRight();
+  saveTxs(); toast_("🗑 ลบแล้ว","#dc2626"); render();
+  if(tx&&tx.type==="payroll"&&tx.empId) syncPayrollToV2([tx.empId]);
+}
+
+// ─── APPROVE PAGE ─────────────────────────────────────────────────────────────
+
+// ─── EMPLOYEE DISPLAY HELPER ─────────────────────────────────────────────────
+// ใช้ empId เป็น source of truth สำหรับ payroll เสมอ
+// income/expense ใช้ party (คู่ค้า) ตามปกติ
+function getEmpDisplay(tx, showDept=true){
+  if(isEmpType(tx.type)){
+    const emp = tx.empId ? employees.find(e=>e.id===tx.empId) : null;
+    if(emp) return showDept
+      ? `<span style="font-weight:600">${emp.name}</span><span style="font-size:11px;color:#9ca3af;margin-left:4px">${emp.dept}</span>`
+      : emp.name;
+    if(tx.empId) return `<span style="color:#9ca3af">กำลังโหลด...</span>`;
+    if(tx.party) return tx.party;
+    return "—";
+  }
+  return tx.party || "—";
+}
+function getEmpDisplayPlain(tx){
+  if(isEmpType(tx.type)){
+    const emp = tx.empId ? employees.find(e=>e.id===tx.empId) : null;
+    return emp ? emp.name : (tx.empId ? "..." : tx.party||"—");
+  }
+  return tx.party || "—";
+}
+function syncStatusBadge(syncStatus){
+  if(!syncStatus||syncStatus==="pending") return `<span class="sync-pending" style="display:inline-flex;align-items:center;gap:3px"><span class="sync-dot"></span><span class="sync-label">รอ</span></span>`;
+  if(syncStatus==="linked") return `<span class="sync-linked" style="display:inline-flex;align-items:center;gap:3px"><span class="sync-dot"></span><span class="sync-label">linked</span></span>`;
+  if(syncStatus==="pending_review") return `<span class="sync-pending" style="display:inline-flex;align-items:center;gap:3px"><span class="sync-dot"></span><span class="sync-label">รอตรวจ</span></span>`;
+  if(syncStatus==="error") return `<span class="sync-error" style="display:inline-flex;align-items:center;gap:3px"><span class="sync-dot"></span><span class="sync-label">error</span></span>`;
+  return "";
+}
+function renderApprove(){
+  const pend=txs.filter(t=>t.status==="pending").sort((a,b)=>a.date.localeCompare(b.date));
+  const list=document.getElementById("apList");
+  if(!pend.length){list.innerHTML=`<div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:36px;text-align:center;color:#9ca3af"><div style="font-size:28px;margin-bottom:8px">🎉</div>ไม่มีรายการรออนุมัติ</div>`;return;}
+  list.innerHTML=pend.map(tx=>{
+    const displayName=getEmpDisplay(tx);
+    const emp=tx.empId?employees.find(e=>e.id===tx.empId):null;
+    const syncB=isEmpType(tx.type)?syncStatusBadge(tx.syncStatus):"";
+    return`<div class="ap-item">
+      <div class="ai">
+        <div class="at"><span class="badge ${TB[tx.type]||"b-py"}">${TL[tx.type]||tx.type}</span>${syncB}<b>${displayName}</b><span style="font-size:11.5px;color:#9ca3af">• ${tx.category}</span></div>
+        <div class="ab">${fmtDate(tx.date)} · <b style="color:${TC[tx.type]||"#374151"}">${fmtMoney(tx.amount)}</b>${tx.note?" · "+tx.note:""}</div>
+        ${emp&&emp.limit>0?`<div style="font-size:11px;color:#6b7280;margin-top:3px">วงเงิน: ${fmtMoney(emp.limit)}/ครั้ง</div>`:""}
+        ${tx.referenceNo?`<div style="font-size:10.5px;color:#9ca3af;margin-top:2px">Ref: ${tx.referenceNo}</div>`:""}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-green btn-sm" onclick="approveTx('${tx.id}')">✓ อนุมัติ</button>
+        <button class="btn btn-gray btn-sm" onclick="openEdit('${tx.id}')">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="delTx('${tx.id}')">🗑</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ─── REPORT PAGE ──────────────────────────────────────────────────────────────
+function renderReport(mTxs){
+  mTxs=[...mTxs].sort((a,b)=>(normalizeDate(a.date)||"").localeCompare(normalizeDate(b.date)||""));
+  document.getElementById("rpTitle").textContent=`📈 รายงาน & สรุป — ${moLabel(curMo)}`;
+  const secs=[["รายรับแยกตามหมวด","income","#16a34a"],["รายจ่ายแยกตามหมวด",["expense","payroll"],"#dc2626"]];
+  document.getElementById("rpGrid").innerHTML=secs.map(([title,types,color])=>{
+    const f=mTxs.filter(t=>Array.isArray(types)?types.includes(t.type):t.type===types);
+    const m={};f.forEach(t=>{m[t.category]=(m[t.category]||0)+Number(t.amount);});
+    const entries=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+    const total=entries.reduce((s,[,v])=>s+v,0);
+    const bars=entries.length
+      ?entries.map(([cat,val])=>`<div class="bar-row"><div class="bar-info"><span style="color:#374151;font-weight:500">${cat}</span><span style="font-weight:700;color:${color}">${fmtMoney(val)}</span></div><div class="bar-track"><div class="bar-fill" style="background:${color};width:${total?(val/total)*100:0}%"></div></div></div>`).join("")
+        +`<div style="border-top:1px solid #e9ecef;padding-top:7px;display:flex;justify-content:space-between;font-size:12.5px;font-weight:700"><span>รวม</span><span style="color:${color}">${fmtMoney(total)}</span></div>`
+      :`<div style="font-size:12.5px;color:#9ca3af;text-align:center;padding:12px 0">ไม่มีข้อมูล</div>`;
+    return`<div class="rp-card"><div class="rt">${title}</div>${bars}</div>`;
+  }).join("");
+
+  const months=[];
+  const[cy,cm]=curMo.split("-").map(Number);
+  for(let i=5;i>=0;i--){const d=new Date(cy,cm-1-i,1);months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);}
+  const data=months.map(m=>({
+    label:MONTHS_TH[parseInt(m.split("-")[1])-1].slice(0,3),
+    income:txs.filter(t=>(normalizeDate(t.date)||t.date||"").startsWith(m)&&t.type==="income").reduce((s,t)=>s+Number(t.amount),0),
+    expense:txs.filter(t=>(normalizeDate(t.date)||t.date||"").startsWith(m)&&t.type!=="income").reduce((s,t)=>s+Number(t.amount),0),
+  }));
+  const max=Math.max(...data.flatMap(d=>[d.income,d.expense]),1);
+  document.getElementById("chartArea").innerHTML=
+    data.map(d=>`<div class="cc"><div class="cb"><div class="cb-bar" title="รายรับ: ${fmtMoney(d.income)}" style="background:#86efac;height:${Math.max((d.income/max)*96,d.income?3:0)}px"></div><div class="cb-bar" title="รายจ่าย: ${fmtMoney(d.expense)}" style="background:#fca5a5;height:${Math.max((d.expense/max)*96,d.expense?3:0)}px"></div></div><div class="cl">${d.label}</div></div>`).join("")
+    +`<div class="chart-legend"><div class="cl-item"><div class="cl-dot" style="background:#86efac"></div>รายรับ</div><div class="cl-item"><div class="cl-dot" style="background:#fca5a5"></div>รายจ่าย</div></div>`;
+
+  // รายการเรียงจากน้อยไปมาก (date asc, ถ้าวันเดียวกัน savedAt asc)
+  const sortedTxs=[...mTxs].sort((a,b)=>{
+    const da=normalizeDate(a.date)||"";
+    const db2=normalizeDate(b.date)||"";
+    const dc=da.localeCompare(db2);
+    if(dc!==0)return dc;
+    return(a.savedAt||"").localeCompare(b.savedAt||"");
+  });
+  const typeColor={income:"#16a34a",expense:"#dc2626",payroll:"#d97706"};
+  const typeLabel={income:"▲ รายรับ",expense:"▼ รายจ่าย",payroll:"● เบิก"};
+  const listEl=document.getElementById("rpTxList");
+  if(!listEl)return;
+  if(!sortedTxs.length){
+    listEl.innerHTML=`<div style="font-size:12.5px;color:#9ca3af;text-align:center;padding:16px">ไม่มีรายการในเดือนนี้</div>`;
+    return;
+  }
+  listEl.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <thead><tr style="border-bottom:2px solid #e9ecef;color:#6b7280;font-weight:600">
+      <th style="text-align:left;padding:6px 8px">#</th>
+      <th style="text-align:left;padding:6px 8px">วันที่</th>
+      <th style="text-align:left;padding:6px 8px">ประเภท</th>
+      <th style="text-align:left;padding:6px 8px">หมวด</th>
+      <th style="text-align:left;padding:6px 8px">คู่ค้า/พนักงาน</th>
+      <th style="text-align:right;padding:6px 8px">จำนวนเงิน</th>
+    </tr></thead>
+    <tbody>${sortedTxs.map((t,i)=>{
+      const c=typeColor[t.type]||"#374151";
+      const lbl=typeLabel[t.type]||t.type;
+      const party=getEmpDisplayPlain(t);
+      return`<tr style="border-bottom:1px solid #f3f4f6${i%2===1?";background:#fafafa":""}">
+        <td style="padding:6px 8px;color:#9ca3af">${i+1}</td>
+        <td style="padding:6px 8px">${fmtDate(t.date)}</td>
+        <td style="padding:6px 8px"><span style="font-size:11px;font-weight:600;color:${c}">${lbl}</span></td>
+        <td style="padding:6px 8px">${t.category||"—"}</td>
+        <td style="padding:6px 8px;color:#374151">${party}</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:700;color:${c}">${fmtMoney(t.amount)}</td>
+      </tr>`;
+    }).join("")}</tbody>
+    <tfoot><tr style="border-top:2px solid #e9ecef;font-weight:700">
+      <td colspan="5" style="padding:8px 8px;font-size:13px">รวมทั้งหมด ${sortedTxs.length} รายการ</td>
+      <td style="padding:8px 8px;text-align:right;font-size:13px">${fmtMoney(sortedTxs.reduce((s,t)=>s+(t.type==="income"?Number(t.amount):-Number(t.amount)),0))}</td>
+    </tr></tfoot>
+  </table>`;
+}
+
+// ─── MODAL ────────────────────────────────────────────────────────────────────
+function openAdd(){mForm=ef();mOcrFilled=false;mOcrPrev=null;showModal(false);}
+function openEdit(id){const tx=txs.find(t=>t.id===id);if(!tx)return;mForm={...tx,amount:String(tx.amount)};mOcrFilled=false;mOcrPrev=null;showModal(true);}
+
+function showModal(isEdit){
+  document.getElementById("mTitle").textContent=isEdit?"✏️ แก้ไขรายการ":"➕ เพิ่มรายการใหม่";
+  document.getElementById("mOcrTag").style.display="none";
+  document.getElementById("mSave").textContent=isEdit?"💾 บันทึก":"✓ ยืนยันลงบัญชี";
+  document.getElementById("mFoot").style.display="flex";
+  renderMBody(false);
+  document.getElementById("modal").classList.add("open");
+}
+
+function renderMBody(loading){
+  const body=document.getElementById("mBody");
+  if(loading){
+    body.innerHTML=`<div class="spin-wrap"><div class="spinner"></div><div style="font-size:13.5px;color:#6b7280;font-weight:500">กำลังอ่านสลิปด้วย AI…</div></div>`;
+    document.getElementById("mFoot").style.display="none"; return;
+  }
+  document.getElementById("mFoot").style.display="flex";
+  const cats=(CATS[mForm.type]||[]).map(c=>`<option${mForm.category===c?" selected":""}>${c}</option>`).join("");
+  const ok=mOcrFilled;
+  const fi=f=>`class="fi${ok&&mForm[f]?" filled":""}"`;
+  const prevH=mOcrPrev?`<div style="width:110px;flex-shrink:0"><div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px">สลิป</div><img src="${mOcrPrev}" style="width:100%;border-radius:7px;border:1px solid #e9ecef;object-fit:cover;max-height:150px"></div>`:"";
+  const tBtns=["income","expense","payroll","employee_advance","employee_reimbursement","travel_expense"].map(v=>{
+    const lbs={income:"▲ รายรับ",expense:"▼ รายจ่าย",payroll:"● เบิก",employee_advance:"⏩ เบิกล่วงหน้า",employee_reimbursement:"↩ เบิกคืน",travel_expense:"✈ ค่าเดินทาง"};
+    const colors={income:"#16a34a",expense:"#dc2626",payroll:"#d97706",employee_advance:"#a16207",employee_reimbursement:"#0f766e",travel_expense:"#7c3aed"};
+    const bgs={income:"#dcfce7",expense:"#fee2e2",payroll:"#fef3c7",employee_advance:"#fef9c3",employee_reimbursement:"#ccfbf1",travel_expense:"#ede9fe"};
+    const a=mForm.type===v;
+    return`<button class="type-btn" onclick="setMType('${v}')" style="font-size:11px;${a?`border-color:${colors[v]};background:${bgs[v]};color:${colors[v]}`:""}">${lbs[v]}</button>`;
+  }).join("");
+
+  // payroll/employee-specific fields
+  let payrollFields="";
+  if(isEmpType(mForm.type)){
+    const activeEmps=employees.filter(e=>e.active);
+    const empOpts=activeEmps.map(e=>`<option value="${e.id}"${mForm.empId===e.id?" selected":""}>${e.name} · ${e.dept}</option>`).join("");
+    const selEmp=activeEmps.find(e=>e.id===mForm.empId);
+    const empInfo=selEmp?`<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:8px 12px;font-size:12px;display:flex;gap:16px;flex-wrap:wrap">
+      <span>🏢 ${selEmp.dept}</span>
+      <span>💳 วงเงิน: <b style="color:#d97706">${fmtMoney(selEmp.limit)}/ครั้ง</b></span>
+      ${selEmp.note?`<span>📝 ${selEmp.note}</span>`:""}
+    </div>`:"";
+    const syncBadge=mForm.syncStatus?`<span class="sync-${mForm.syncStatus}" style="display:inline-flex;align-items:center;gap:4px"><span class="sync-dot"></span><span class="sync-label">${{pending:"รอ sync",linked:"linked",pending_review:"รอตรวจสอบ",error:"error"}[mForm.syncStatus]||mForm.syncStatus}</span></span>`:"";
+    payrollFields=`
+      <div class="frow"><div class="flbl">พนักงาน</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select class="fi" style="flex:1" onchange="mPayrollEmpChange(this.value)">
+            <option value="">-- เลือกพนักงาน --</option>${empOpts}
+          </select>
+          ${syncBadge}
+        </div>
+      </div>
+      ${empInfo?`<div class="frow"><div class="flbl"></div>${empInfo}</div>`:""}
+      <div class="frow"><div class="flbl">เลขอ้างอิง</div><input class="fi" value="${mForm.referenceNo||""}" placeholder="Reference No." oninput="mForm.referenceNo=this.value"></div>
+`;
+  }
+
+  const partyLabel=isEmpType(mForm.type)?"หมายเหตุ/ชื่อ":"คู่ค้า/พนักงาน";
+  const partyPlaceholder=isEmpType(mForm.type)?"ระบุรายละเอียดเพิ่มเติม (ถ้ามี)":"ชื่อลูกค้า / ซัพพลาย / พนักงาน";
+
+  body.innerHTML=`<div style="display:flex;gap:14px">
+    ${prevH}
+    <div style="flex:1;display:flex;flex-direction:column;gap:9px">
+      <div class="frow"><div class="flbl">ประเภท</div><div class="type-btns">${tBtns}</div></div>
+      <div class="frow"><div class="flbl">วันที่</div><input type="date" ${fi("date")} value="${mForm.date}" onchange="mForm.date=this.value"></div>
+      ${payrollFields}
+      <div class="frow"><div class="flbl">${partyLabel}</div><input ${fi("party")} value="${mForm.party}" placeholder="${partyPlaceholder}" oninput="mForm.party=this.value"></div>
+      <div class="frow"><div class="flbl">หมวดหมู่</div><select ${fi("category")} onchange="mForm.category=this.value"><option value="">-- เลือก --</option>${cats}</select></div>
+      <div class="frow"><div class="flbl">จำนวนเงิน (฿)</div><input type="number" ${fi("amount")} value="${mForm.amount}" placeholder="0.00" oninput="mForm.amount=this.value"></div>
+      <div class="frow"><div class="flbl">วิธีจ่าย</div><select class="fi" onchange="mForm.method=this.value">${["โอนธนาคาร","เงินสด","พร้อมเพย์","เช็ค"].map(m=>`<option${mForm.method===m?" selected":""}>${m}</option>`).join("")}</select></div>
+      <div class="frow top"><div class="flbl" style="padding-top:8px">หมายเหตุ</div><textarea class="fi" rows="2" oninput="mForm.note=this.value">${mForm.note||""}</textarea></div>
+    </div></div>`;
+}
+
+function mPayrollEmpChange(empId){
+  mForm.empId=empId;
+  mForm.payrollType="";
+  mForm.employeeId=empId;
+  const emp=employees.find(e=>e.id===empId);
+  mForm.employeeName=emp?emp.name:"";
+  mForm.syncStatus=emp?"linked":"pending";
+  renderMBody(false);
+}
+
+function setMType(v){mForm.type=v;mForm.category="";mForm.empId="";mForm.payrollType="";mForm.syncStatus="pending";renderMBody(false);}
+
+function saveForm(){
+  if(isEmpType(mForm.type)&&!mForm.empId){toast_("⚠️ กรุณาเลือกพนักงาน","#b45309");return;}
+  if(!mForm.amount||!mForm.category){toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309");return;}
+  const emp=mForm.empId?employees.find(e=>e.id===mForm.empId):null;
+  if(isEmpType(mForm.type)&&!mForm.party){
+    if(emp) mForm.party=emp.name;
+  }
+  if(!mForm.party){toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309");return;}
+  mForm.employeeId=mForm.empId||"";
+  mForm.employeeName=emp?emp.name:"";
+  if(!mForm.syncStatus) mForm.syncStatus=emp?"linked":"pending";
+
+  if(mForm.id){
+    txs=txs.map(t=>t.id===mForm.id?{...mForm,amount:Number(mForm.amount)}:t);
+    toast_("✏️ แก้ไขแล้ว","#2563eb");saveTxs(); closeModal(); render();
+    if(isEmpType(mForm.type)&&mForm.empId) syncPayrollToV2([mForm.empId]);
+    if(shouldSyncAdvance(mForm)) saveFinanceTransaction(mForm);
+  }else{
+    if(isDupSlip(mForm)){
+      showDupPopup(mForm, ()=>{
+        const newTx={...mForm,id:uid(),amount:Number(mForm.amount),savedAt:new Date().toISOString(),monthKey:getMonthKey(mForm)};
+        txs=[...txs,newTx];
+        toast_("✅ เพิ่มรายการแล้ว (บันทึกซ้ำ)","#16a34a");
+        saveTxs(); closeModal(); render();
+        if(isEmpType(newTx.type)&&newTx.empId) syncPayrollToV2([newTx.empId]);
+        if(shouldSyncAdvance(newTx)) saveFinanceTransaction(newTx);
+      });
+      return;
+    }
+    const newTx={...mForm,id:uid(),amount:Number(mForm.amount),savedAt:new Date().toISOString(),monthKey:getMonthKey(mForm)};
+    txs=[...txs,newTx];toast_("✅ เพิ่มรายการแล้ว","#16a34a");
+    saveTxs(); closeModal(); render();
+    if(isEmpType(newTx.type)&&newTx.empId) syncPayrollToV2([newTx.empId]);
+    if(shouldSyncAdvance(newTx)) saveFinanceTransaction(newTx);
+  }
+}
+function closeModal(){
+  document.getElementById("modal").classList.remove("open");
+  document.getElementById("mSave").onclick=saveForm;
+}
+function modalOut(e){if(e.target===document.getElementById("modal"))closeModal();}
+
+// ─── API KEY ──────────────────────────────────────────────────────────────────
+function getApiKey(){return localStorage.getItem("fin_api_key")||"";}
+function getDriveApiKey(){return localStorage.getItem("fin_drive_api_key")||"";}
+function saveDriveApiKey(){
+  const v=document.getElementById("driveApiKeyInput")?.value.trim();
+  if(!v){toast_("⚠️ กรุณาใส่ Drive API Key","#b45309");return;}
+  localStorage.setItem("fin_drive_api_key",v);
+  refreshDriveKeyStatus();
+  toast_("✅ บันทึก Drive API Key แล้ว","#16a34a");
+}
+function refreshDriveKeyStatus(){
+  const el=document.getElementById("driveApiKeyStatus"); if(!el)return;
+  const k=getDriveApiKey();
+  if(k){el.textContent=`✅ ตั้งค่าแล้ว (${k.slice(0,8)}…${k.slice(-4)})`;el.style.color="#16a34a";}
+  else{el.textContent="ยังไม่ได้ตั้งค่า Drive API Key";el.style.color="#9ca3af";}
+}
+
+// ─── GOOGLE DRIVE SCAN ───────────────────────────────────────────────────────
+const DRIVE_BATCH=3, DRIVE_DELAY=1000;
+let _driveScanRunning=false;
+
+async function scanDriveFolder(){
+  const folderId=document.getElementById("driveFolderInput")?.value.trim();
+  const apiKey=getDriveApiKey();
+  if(!folderId){toast_("⚠️ กรุณาใส่ Folder ID","#b45309");return;}
+  if(!apiKey){toast_("⚠️ กรุณาตั้งค่า Drive API Key ก่อน","#b45309");return;}
+  if(_driveScanRunning){toast_("⏳ กำลัง scan อยู่แล้ว","#d97706");return;}
+  _driveScanRunning=true;
+  const logEl=document.getElementById("driveScanLog");
+  if(logEl) logEl.innerHTML=`<div style="color:#2563eb">⏳ กำลัง scan โฟลเดอร์…</div>`;
+
+  try{
+    const files=await listDriveFiles(folderId,apiKey);
+    const imgFiles=files.filter(f=>/\.(jpg|jpeg|png|pdf)$/i.test(f.name));
+    if(logEl) logEl.innerHTML=`<div>พบ ${imgFiles.length} ไฟล์ในโฟลเดอร์ (jpg/png/pdf)</div>`;
+
+    const ocr=getApiKey();
+    if(!ocr){toast_("⚠️ กรุณาตั้งค่า Anthropic API Key ก่อน","#b45309");_driveScanRunning=false;return;}
+
+    let done=0,skip=0,errors=0;
+    for(let i=0;i<imgFiles.length;i+=DRIVE_BATCH){
+      const batch=imgFiles.slice(i,i+DRIVE_BATCH);
+      await Promise.all(batch.map(async f=>{
+        try{
+          // check duplicate by slipFileId
+          if(txs.some(t=>t.slipFileId===f.id)){skip++;return;}
+          const imgB64=await fetchDriveFileB64(f.id,apiKey);
+          await runOCRDrive(imgB64,f,ocr);
+          done++;
+        }catch(e){
+          errors++;
+          console.warn("[Drive scan] file error:",f.name,e);
+          await logDriveImport({folderId,fileId:f.id,fileName:f.name,status:"error",error:e.message});
+        }
+      }));
+      if(i+DRIVE_BATCH<imgFiles.length){
+        if(logEl) logEl.innerHTML+=`<div style="color:#6b7280">ประมวลผลแล้ว ${Math.min(i+DRIVE_BATCH,imgFiles.length)}/${imgFiles.length} ไฟล์…</div>`;
+        await new Promise(r=>setTimeout(r,DRIVE_DELAY));
+      }
+    }
+    if(logEl) logEl.innerHTML+=`<div style="color:#16a34a;font-weight:600">✅ เสร็จสิ้น: สำเร็จ ${done} · ข้าม ${skip} (ซ้ำ) · ผิดพลาด ${errors}</div>`;
+    await logDriveImport({folderId,totalFiles:imgFiles.length,done,skip,errors,status:"completed"});
+    render();
+  }catch(e){
+    if(logEl) logEl.innerHTML=`<div style="color:#dc2626">❌ ${e.message}</div>`;
+    toast_("❌ Scan ล้มเหลว: "+e.message,"#dc2626");
+  }finally{
+    _driveScanRunning=false;
+  }
+}
+
+async function listDriveFiles(folderId,apiKey){
+  const url=`https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size)&pageSize=200&key=${encodeURIComponent(apiKey)}`;
+  const res=await fetch(url);
+  if(!res.ok) throw new Error(`Drive API ${res.status}: ${(await res.json())?.error?.message||res.statusText}`);
+  const data=await res.json();
+  return data.files||[];
+}
+
+async function fetchDriveFileB64(fileId,apiKey){
+  const url=`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${encodeURIComponent(apiKey)}`;
+  const res=await fetch(url);
+  if(!res.ok) throw new Error(`Drive file fetch ${res.status}`);
+  const blob=await res.blob();
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve({b64:r.result.split(",")[1],mimeType:blob.type||"image/jpeg"});
+    r.onerror=reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+async function runOCRDrive(imgData,driveFile,apiKey){
+  const mimeType=imgData.mimeType;
+  const contentBlock=mimeType==="application/pdf"
+    ?{type:"document",source:{type:"base64",media_type:"application/pdf",data:imgData.b64}}
+    :{type:"image",source:{type:"base64",media_type:mimeType,data:imgData.b64}};
+
+  const prompt=`คุณคือระบบ OCR อ่านสลิปโอนเงิน/ใบเสร็จไทย ตอบเฉพาะ JSON ไม่มีข้อความอื่น ไม่มี markdown
+{"date":"YYYY-MM-DD","dateRaw":"ข้อความวันที่จากสลิปตามที่เห็น","slipTime":"HH:MM หรือ empty string","amount":0,"type":"income หรือ expense หรือ employee_advance หรือ travel_expense","party":"ผู้โอน/ผู้รับ","receiverName":"ชื่อผู้รับ","bankName":"ชื่อธนาคาร","referenceNo":"เลขอ้างอิงหรือ empty","category":"หมวดหมู่","method":"โอนธนาคาร หรือ เงินสด หรือ พร้อมเพย์","note":"รายละเอียด","confidence":0.0-1.0}`;
+
+  const res=await callOcrApi(apiKey,[{type:"text",text:prompt},contentBlock]);
+  const data=await res.json();
+  if(!res.ok) throw new Error(data.error?.message||`HTTP ${res.status}`);
+  const txt=(data.content||[]).map(b=>b.text||"").join("").trim();
+  const p=JSON.parse(txt.replace(/```json|```/gi,"").trim());
+
+  const resolvedDate=parseDateRaw(p.dateRaw)||parseDateRaw(p.date)||p.date||nowISO();
+  const validCats=CATS[p.type]||CATS.expense;
+  const cat=validCats.includes(p.category)?p.category:(validCats[0]||"");
+
+  // employee matching
+  const match=matchEmployee(p.party||"");
+  const empId=match.emp?match.emp.id:"";
+  const syncStatus=match.status==="matched"?"linked":match.status==="suggest"?"pending":"pending_review";
+
+  const newTx={
+    ...ef(),
+    id:uid(),date:resolvedDate,type:p.type||"expense",
+    party:p.party||"",category:cat,amount:Number(p.amount)||0,
+    method:p.method||"โอนธนาคาร",slipTime:p.slipTime||"",note:p.note||"",
+    status:"pending",slipUrl:"",
+    // fields ใหม่
+    receiverName:p.receiverName||"",bankName:p.bankName||"",
+    referenceNo:p.referenceNo||"",
+    transferDate:resolvedDate,
+    transferTime:p.slipTime||"",
+    slipFileId:driveFile.id,
+    ocrText:txt,ocrConfidence:p.confidence||0,
+    empId,employeeId:empId,
+    employeeName:match.emp?match.emp.name:"",
+    syncStatus,
+    monthKey:resolvedDate.slice(0,7),
+    savedAt:new Date().toISOString(),
+  };
+
+  // check dup by referenceNo
+  if(p.referenceNo&&txs.some(t=>t.referenceNo===p.referenceNo)){
+    await logDriveImport({fileId:driveFile.id,fileName:driveFile.name,status:"skip_dup_ref",referenceNo:p.referenceNo});
+    return;
+  }
+  // check dup by amount+date+receiver
+  if(txs.some(t=>t.date===resolvedDate&&String(Number(t.amount))===String(Number(p.amount))&&(t.receiverName||t.party)===(p.receiverName||p.party))){
+    await logDriveImport({fileId:driveFile.id,fileName:driveFile.name,status:"skip_dup_amount_date"});
+    return;
+  }
+
+  txs=[...txs,newTx];
+  localStorage.setItem("fin_txs",JSON.stringify(txs));
+  await saveFinanceTransaction(newTx);
+  await logDriveImport({fileId:driveFile.id,fileName:driveFile.name,status:"imported",txId:newTx.id,syncStatus});
+}
+
+function saveApiKey(){
+  const v=document.getElementById("apiKeyInput").value.trim();
+  if(!v){toast_("⚠️ กรุณาใส่ API Key","#b45309");return;}
+  if(!v.startsWith("sk-ant-")){toast_("⚠️ API Key ไม่ถูกต้อง (ต้องขึ้นต้นด้วย sk-ant-)","#b45309");return;}
+  localStorage.setItem("fin_api_key",v);
+  refreshApiKeyStatus();
+  toast_("✅ บันทึก API Key แล้ว","#16a34a");
+}
+function apiKeyChanged(){} // placeholder for input event
+function refreshApiKeyStatus(){
+  const el=document.getElementById("apiKeyStatus"); if(!el)return;
+  const k=getApiKey();
+  if(k){
+    el.textContent=`✅ ตั้งค่าแล้ว (${k.slice(0,10)}…${k.slice(-4)})`;
+    el.style.color="#16a34a";
+    document.getElementById("apiKeyInput").value=k;
+  } else {
+    el.textContent="ยังไม่ได้ตั้งค่า API Key";
+    el.style.color="#9ca3af";
+  }
+  refreshDriveKeyStatus();
+  const dk=getDriveApiKey();
+  if(dk) document.getElementById("driveApiKeyInput").value=dk;
+}
+
+// ─── OCR DATE PARSER (JS-side, ไม่พึ่ง AI แปลงเดือน) ─────────────────────────
+function parseDateRaw(raw){
+  if(!raw||typeof raw!=="string") return null;
+  // ถ้าเป็น YYYY-MM-DD อยู่แล้ว ให้ตรวจว่าปีสมเหตุสมผล
+  const isoMatch=raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(isoMatch){
+    let yr=parseInt(isoMatch[1]);
+    if(yr>=2500) yr=yr-543;
+    return `${yr}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+  const MONTH={
+    "ม.ค.":1,"มกราคม":1,
+    "ก.พ.":2,"กุมภาพันธ์":2,
+    "มี.ค.":3,"มีนาคม":3,
+    "เม.ย.":4,"เมษายน":4,
+    "พ.ค.":5,"พฤษภาคม":5,
+    "มิ.ย.":6,"มิถุนายน":6,
+    "ก.ค.":7,"กรกฎาคม":7,
+    "ส.ค.":8,"สิงหาคม":8,
+    "ก.ย.":9,"กันยายน":9,
+    "ต.ค.":10,"ตุลาคม":10,
+    "พ.ย.":11,"พฤศจิกายน":11,
+    "ธ.ค.":12,"ธันวาคม":12
+  };
+  // รูปแบบ "03 เม.ย. 2026" / "03 เม.ย. 2026, 21:33" / "05 เม.ย. 69"
+  const thaiMonthKeys=Object.keys(MONTH).sort((a,b)=>b.length-a.length);
+  for(const mk of thaiMonthKeys){
+    const idx=raw.indexOf(mk);
+    if(idx===-1) continue;
+    const before=raw.slice(0,idx).trim();
+    const after=raw.slice(idx+mk.length).trim();
+    // หาวันจาก before (เลขสุดท้ายก่อนชื่อเดือน)
+    const dayMatch=before.match(/(\d{1,2})\s*$/);
+    const day=dayMatch?parseInt(dayMatch[1]):1;
+    const mm=MONTH[mk];
+    // หาปีจาก after (ตัวเลข 2 หรือ 4 หลักแรก ก่อน , หรือ space)
+    const yearMatch=after.match(/(\d{2,4})/);
+    if(!yearMatch) continue;
+    let yr=parseInt(yearMatch[1]);
+    if(yr<100) yr=yr+2500;
+    if(yr>=2500) yr=yr-543;
+    if(yr<2000||yr>2100) continue; // ค่าปีไม่สมเหตุสมผล
+    return `${yr}-${String(mm).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  }
+  // รูปแบบ "เดือน N" เช่น "03 เดือน 4 2026"
+  const mNum=raw.match(/เดือน\s*(\d{1,2})/);
+  if(mNum){
+    const mm=parseInt(mNum[1]);
+    const dayMatch=raw.match(/(\d{1,2})\s*เดือน/);
+    const day=dayMatch?parseInt(dayMatch[1]):1;
+    const yearMatch=raw.match(/(\d{4})/);
+    let yr=yearMatch?parseInt(yearMatch[1]):new Date().getFullYear()+543;
+    if(yr>=2500) yr=yr-543;
+    return `${yr}-${String(mm).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+  }
+  return null;
+}
+
+async function testOCR(file){
+  const el=document.getElementById("testResult"); if(!el)return;
+  if(!file)return;
+  const k=getApiKey();
+  if(!k){el.innerHTML=`<span style="color:#dc2626">⚠️ กรุณาบันทึก API Key ก่อน</span>`;return;}
+  el.innerHTML=`<span style="color:#6b7280">⏳ กำลังทดสอบ…</span>`;
+  try{
+    const b64=await toB64(file);
+    // ตรวจ media_type จาก magic bytes จริง ไม่เชื่อ file.type ของ browser
+    const trueTypeTest=file.type==="application/pdf"?"application/pdf":await detectImageType(file);
+    const contentBlock=trueTypeTest==="application/pdf"
+      ?{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}}
+      :{type:"image",source:{type:"base64",media_type:trueTypeTest,data:b64}};
+    // ส่ง text ก่อน image/doc
+    const res=await callOcrApi(k,[{type:"text",text:"อ่านสลิปนี้แล้วตอบ JSON เท่านั้น: {\"date\":\"YYYY-MM-DD\",\"amount\":0}"},contentBlock]);
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error?.message||`HTTP ${res.status}`);
+    el.innerHTML=`<span style="color:#16a34a">✅ API Key ใช้งานได้! OCR พร้อมใช้งาน</span>`;
+  }catch(e){
+    el.innerHTML=`<span style="color:#dc2626">❌ ${e.message}</span>`;
+  }
+}
+
+function callOcrApi(apiKey,contentBlocks){
+  return fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-api-key":apiKey,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body:JSON.stringify({
+      model:"claude-haiku-4-5",
+      max_tokens:1024,
+      messages:[{role:"user",content:contentBlocks}]
+    })
+  });
+}
+
+function toB64(file){
+  return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});
+}
+
+// ตรวจสอบ media_type จริงจาก magic bytes แทนการเชื่อ file.type ของ browser
+async function detectImageType(file){
+  const buf=await file.slice(0,12).arrayBuffer();
+  const b=new Uint8Array(buf);
+  // PNG: 89 50 4E 47
+  if(b[0]===0x89&&b[1]===0x50&&b[2]===0x4E&&b[3]===0x47) return "image/png";
+  // JPEG: FF D8 FF
+  if(b[0]===0xFF&&b[1]===0xD8&&b[2]===0xFF) return "image/jpeg";
+  // GIF: 47 49 46
+  if(b[0]===0x47&&b[1]===0x49&&b[2]===0x46) return "image/gif";
+  // WEBP: 52 49 46 46 ... 57 45 42 50
+  if(b[0]===0x52&&b[1]===0x49&&b[2]===0x46&&b[3]===0x46&&b[8]===0x57&&b[9]===0x45&&b[10]===0x42&&b[11]===0x50) return "image/webp";
+  // fallback ใช้ file.type หรือ jpeg
+  const SUPPORTED=["image/jpeg","image/png","image/gif","image/webp"];
+  return SUPPORTED.includes(file.type)?file.type:"image/jpeg";
+}
+
+// ─── OCR ──────────────────────────────────────────────────────────────────────
+function dzEv(e,id,on){e.preventDefault();document.getElementById(id)?.classList.toggle("over",on);}
+function dzDrop(e){e.preventDefault();["dz","dz2"].forEach(id=>document.getElementById(id)?.classList.remove("over"));handleFiles(e.dataTransfer.files);}
+function handleFiles(files){
+  const f=files[0]; if(!f)return;
+  const k=getApiKey();
+  if(!k){
+    toast_("⚠️ กรุณาตั้งค่า API Key ก่อน (เมนู ตั้งค่า ⚙️)","#b45309");
+    showPg("settings"); return;
+  }
+  if(f.type.startsWith("image/")||f.type==="application/pdf") runOCR(f,k);
+  else toast_("⚠️ รองรับเฉพาะ JPG, PNG, PDF","#b45309");
+}
+
+async function runOCR(file,apiKey){
+  if(mOcrPrev){try{URL.revokeObjectURL(mOcrPrev);}catch(e){} mOcrPrev=null;}
+  mForm=ef(); mOcrFilled=false;
+  mOcrPrev=file.type.startsWith("image/")?URL.createObjectURL(file):null;
+  document.getElementById("mTitle").textContent="📎 กำลังอ่านสลิป…";
+  document.getElementById("mOcrTag").style.display="none";
+  document.getElementById("modal").classList.add("open");
+  renderMBody(true);
+
+  const prompt=`คุณคือระบบ OCR อ่านสลิปโอนเงิน/ใบเสร็จไทย ตอบเฉพาะ JSON ไม่มีข้อความอื่นใด ไม่มี markdown
+
+กฎสำคัญสำหรับ "date":
+- ให้อ่านวันที่จากสลิปตามที่เห็น แล้วแปลงเป็น YYYY-MM-DD (ค.ศ.) เสมอ
+- ถ้าปีเป็น 4 หลักช่วง 2500–2600 คือ พ.ศ. → ลบ 543 (เช่น 2568→2025, 2569→2026)
+- ถ้าปีเป็น 4 หลักช่วง 2000–2100 คือ ค.ศ. → ใช้ตรงๆ ห้ามลบ 543
+- ถ้าปีเป็น 2 หลัก (เช่น 69) คือ พ.ศ.ย่อ → บวก 2500 แล้วลบ 543 (69→2569→2026)
+- สลิป ttb: อ่านวันที่จากบรรทัด "วันที่สั่งโอนเงิน:" เป็นหลัก
+- นอกจาก "date" แล้ว ให้ส่ง "dateRaw" ด้วย โดยใส่ข้อความวันที่จากสลิปตามที่เห็นจริงๆ เลย เช่น "03 เม.ย. 2026" หรือ "05 เม.ย. 69" (ระบบจะแปลงเดือนเองอีกครั้งเพื่อความแม่นยำ)
+
+กฎสำคัญสำหรับ "party" (ชื่อบุคคลหรือบริษัท):
+- มองหาคำนำหน้าเหล่านี้แล้วอ่านชื่อที่ตามมา: "ผู้โอน" "จาก" "โอนโดย" "ชื่อผู้โอน" "sender" → ใช้เป็น party สำหรับรายรับ
+- มองหาคำนำหน้าเหล่านี้แล้วอ่านชื่อที่ตามมา: "ผู้รับ" "ถึง" "ไปที่" "ไปยัง" "โอนให้" "ชื่อผู้รับ" "receiver" "beneficiary" → ใช้เป็น party สำหรับรายจ่าย
+- สลิปกรุงเทพ: "จาก" = ผู้โอน, "ไปที่" = ผู้รับ — วิธีชำระ (พร้อมเพย์/โอนธนาคาร) ใต้ชื่อผู้รับให้ดึงใส่ method
+- สลิป ttb: บล็อกบน (โลโก้ ttb) = ผู้โอน, บล็อกล่าง (ไอคอนมือถือ) = ผู้รับ
+- ถ้าเป็นรายรับให้เลือกชื่อผู้โอน ถ้าเป็นรายจ่ายให้เลือกชื่อผู้รับ
+- ชื่อคนไทยมีคำนำหน้า เช่น นาย นาง นางสาว น.ส. ให้อ่านเต็มชื่อ-นามสกุล
+- ชื่อบริษัทมี บจก. บมจ. หจก. Co.,Ltd. ให้อ่านเต็ม
+- ถ้าสลิปบังชื่อด้วย X หรือ * ให้ใส่เท่าที่อ่านได้ อย่าเติมเอง
+
+{"date":"YYYY-MM-DD","dateRaw":"ข้อความวันที่จากสลิปตามที่เห็นจริง","slipTime":"HH:MM (ถ้าไม่มีใส่ empty string)","amount":ตัวเลข,"type":"income หรือ expense หรือ payroll หรือ employee_advance หรือ employee_reimbursement หรือ travel_expense","party":"ชื่อผู้โอน/ผู้รับ","receiverName":"ชื่อผู้รับ (ถ้าต่างจาก party)","bankName":"ชื่อธนาคาร","referenceNo":"เลขที่อ้างอิง/เลขธุรกรรม (ถ้าไม่มีใส่ empty string)","category":"หมวดหมู่","method":"โอนธนาคาร หรือ เงินสด หรือ พร้อมเพย์ หรือ เช็ค","note":"รายละเอียดเพิ่มเติม","confidence":0.0-1.0}`;
+
+  try{
+    const b64=await toB64(file);
+    // ตรวจ media_type จาก magic bytes จริง ไม่เชื่อ file.type ของ browser
+    const trueType=file.type==="application/pdf"?"application/pdf":await detectImageType(file);
+    const contentBlock=trueType==="application/pdf"
+      ?{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}}
+      :{type:"image",source:{type:"base64",media_type:trueType,data:b64}};
+
+    // ส่ง text prompt ก่อน แล้วตามด้วย content block (image/doc)
+    const res=await callOcrApi(apiKey,[{type:"text",text:prompt},contentBlock]);
+    const data=await res.json();
+
+    if(!res.ok){
+      const msg=data.error?.message||`HTTP ${res.status}`;
+      throw new Error(res.status===401?"API Key ไม่ถูกต้องหรือหมดอายุ":res.status===429?"เกิน rate limit กรุณารอสักครู่":msg);
+    }
+
+    const txt=(data.content||[]).map(b=>b.text||"").join("").trim();
+    const clean=txt.replace(/```json|```/gi,"").trim();
+    const p=JSON.parse(clean);
+
+    // DEBUG: แสดงค่าจริงจาก AI
+    console.log("[OCR raw JSON]", clean);
+    toast_(`🔍 dateRaw="${p.dateRaw}" date="${p.date}"`, "#1e40af", 8000);
+
+    // แปลง dateRaw ด้วย JS เพื่อความแม่นยำ 100% ไม่พึ่ง AI แปลงเดือน
+    const resolvedDate = parseDateRaw(p.dateRaw) || parseDateRaw(p.date) || p.date || nowISO();
+    console.log("[OCR] dateRaw:", p.dateRaw, "| date:", p.date, "| resolved:", resolvedDate);
+
+    // validate category exists, fallback to first in list
+    const validCats=CATS[p.type]||[];
+    const cat=validCats.includes(p.category)?p.category:(validCats[0]||"");
+
+    // employee matching
+    const _match=matchEmployee(p.party||"");
+    const _empId=_match.emp?_match.emp.id:"";
+    const _syncStatus=_match.status==="matched"?"linked":_match.status==="suggest"?"pending":"pending_review";
+    mForm={
+      ...ef(),
+      id:"",date:resolvedDate,type:p.type||"expense",party:p.party||"",
+      category:cat,amount:p.amount?String(p.amount):"",
+      method:p.method||"โอนธนาคาร",slipTime:p.slipTime||"",note:p.note||"",
+      status:"pending",slipUrl:mOcrPrev||"",
+      receiverName:p.receiverName||"",bankName:p.bankName||"",
+      referenceNo:p.referenceNo||"",
+      transferDate:resolvedDate,
+      transferTime:p.slipTime||"",
+      ocrText:"",ocrConfidence:p.confidence||0,
+      empId:_empId,employeeId:_empId,
+      employeeName:_match.emp?_match.emp.name:"",
+      syncStatus:_syncStatus,
+    };
+    if(_match.status==="suggest"&&_match.emp) toast_(`🔗 แนะนำพนักงาน: ${_match.emp.name} (กรุณาตรวจสอบ)`,"#d97706",5000);
+    if(_match.status==="suggest_multi") toast_(`⚠️ ชื่อตรงหลายคน (${_match.candidates.length}) — กรุณาเลือกพนักงานเอง`,"#d97706",6000);
+    mOcrFilled=true;
+    document.getElementById("mTitle").textContent="✅ ตรวจสอบข้อมูลจากสลิป";
+    document.getElementById("mOcrTag").style.display="inline";
+    renderMBody(false);
+    toast_(`🧾 OCR สำเร็จ! (${Math.round((p.confidence||.85)*100)}%)`,"#16a34a");
+  }catch(e){
+    if(mOcrPrev){try{URL.revokeObjectURL(mOcrPrev);}catch(_){} mOcrPrev=null;}
+    document.getElementById("mTitle").textContent="➕ เพิ่มรายการใหม่";
+    renderMBody(false);
+    toast_(`⚠️ OCR ล้มเหลว: ${e.message}`,"#b45309");
+  }
+}
+
+// ─── ALL PAGE ─────────────────────────────────────────────────────────────────
+function getFilteredAll(){
+  const q=allSearch.toLowerCase();
+  const base=allShowAllMonths?txs:getCurrentMonthTxs();
+  return base.filter(t=>{
+    const mt=allTypeF==="all"||t.type===allTypeF;
+    const txDate=getTxDate(t);
+    const mq=!q
+      ||(t.party||"").toLowerCase().includes(q)
+      ||(t.category||"").toLowerCase().includes(q)
+      ||(t.note||"").toLowerCase().includes(q)
+      ||txDate.includes(q);
+    return mt&&mq;
+  }).sort((a,b)=>getTxDate(a).localeCompare(getTxDate(b)));
+}
+
+function renderAll(){
+  const pg=document.getElementById("pg-all");
+  const filtered=getFilteredAll();
+  const totIn=filtered.filter(t=>t.type==="income").reduce((s,t)=>s+Number(t.amount),0);
+  const totEx=filtered.filter(t=>t.type!=="income").reduce((s,t)=>s+Number(t.amount),0);
+  const pend=filtered.filter(t=>t.status==="pending").length;
+  const totalPages=Math.max(1,Math.ceil(filtered.length/ALL_PER));
+  if(allPg>totalPages)allPg=totalPages;
+  const page=filtered.slice((allPg-1)*ALL_PER,allPg*ALL_PER);
+
+  const rows=page.length?page.map(tx=>{
+    const ac=tx.type==="income"?"c-in":tx.type==="expense"?"c-ex":"c-py";
+    const pfx=tx.type==="income"?"+":"-";
+    const stB=tx.status==="confirmed"?`<span class="badge b-ok">✓ ยืนยัน</span>`:`<span class="badge b-pend">⏳ รอ</span>`;
+    const apB=tx.status==="pending"?`<button class="btn btn-green btn-sm" onclick="event.stopPropagation();approveTx('${tx.id}')">✓</button>`:"";
+    return`<tr onclick="selTxAll('${tx.id}')">
+      <td style="white-space:nowrap;color:#374151">${fmtDate(getTxDate(tx))}</td>
+      <td><span class="badge ${TB[tx.type]}">${TL[tx.type]}</span></td>
+      <td style="font-weight:500;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tx.party}</td>
+      <td style="color:#6b7280;white-space:nowrap">${tx.category}</td>
+      <td class="${ac} r" style="white-space:nowrap">${pfx}${fmtMoney(tx.amount)}</td>
+      <td>${stB}</td>
+      <td><div style="display:flex;gap:3px">${apB}<button class="btn btn-gray btn-sm" onclick="event.stopPropagation();openEdit('${tx.id}')">✏️</button><button class="btn btn-red btn-sm" onclick="event.stopPropagation();delTx('${tx.id}')">🗑</button></div></td>
+    </tr>`;
+  }).join(""):`<tr><td colspan="7"><div class="empty-state"><div class="ei">📭</div><div>ไม่พบรายการที่ตรงกัน</div></div></td></tr>`;
+
+  const tabs=["all","income","expense","payroll","employee_advance","employee_reimbursement","travel_expense"];
+  const tabLabels=["ทั้งหมด","รายรับ","รายจ่าย","● เบิก","⏩ ล่วงหน้า","↩ เบิกคืน","✈ เดินทาง"];
+  const tabHtml=tabs.map((f,i)=>`<button class="ftab${allTypeF===f?" active":""}" onclick="allTypeF='${f}';allPg=1;renderAll()">${tabLabels[i]}</button>`).join("");
+
+  const pager=totalPages>1?`<div class="pager">
+    <button class="btn btn-gray btn-sm" onclick="allPg=1;renderAll()" ${allPg<=1?"disabled":""}>«</button>
+    <button class="btn btn-gray btn-sm" onclick="allPg--;renderAll()" ${allPg<=1?"disabled":""}>◀ ก่อนหน้า</button>
+    <span style="font-size:12.5px;color:#374151;padding:0 6px">หน้า ${allPg} / ${totalPages}</span>
+    <button class="btn btn-gray btn-sm" onclick="allPg++;renderAll()" ${allPg>=totalPages?"disabled":""}>ถัดไป ▶</button>
+    <button class="btn btn-gray btn-sm" onclick="allPg=${totalPages};renderAll()" ${allPg>=totalPages?"disabled":""}>»</button>
+  </div>`:"";
+
+  const moHeader=allShowAllMonths?"ทุกเดือน":moLabel(curMo);
+  const lbl1=allShowAllMonths?"รายรับรวมทุกเดือน":`รายรับ — ${moHeader}`;
+  const lbl2=allShowAllMonths?"รายจ่ายรวมทุกเดือน":`รายจ่าย — ${moHeader}`;
+  pg.innerHTML=`
+    <div class="pg-hd">📋 รายการ — ${moHeader}</div>
+    <div class="all-sum">
+      <div class="sum-card"><div class="lbl">${lbl1}</div><div class="val c-in">${fmtMoney(totIn)}</div><div class="sub">${filtered.filter(t=>t.type==="income").length} รายการ</div></div>
+      <div class="sum-card"><div class="lbl">${lbl2}</div><div class="val c-ex">${fmtMoney(totEx)}</div><div class="sub">${filtered.filter(t=>t.type!=="income").length} รายการ</div></div>
+      <div class="sum-card"><div class="lbl">รอตรวจสอบ</div><div class="val" style="color:#7c3aed;font-size:22px">${pend} รายการ</div><div class="sub">ยังไม่ยืนยัน</div></div>
+    </div>
+    <div class="all-bar">
+      <input class="srch" type="search" placeholder="🔍 ค้นหา ชื่อ / หมวดหมู่ / หมายเหตุ / วันที่…" value="${allSearch}" oninput="allSearch=this.value;allPg=1;renderAll()">
+      <div class="filter-grp">${tabHtml}</div>
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;white-space:nowrap;padding:4px 6px;border:1px solid #e5e7eb;border-radius:7px;background:${allShowAllMonths?"#eff6ff":"#f9fafb"}">
+        <input type="checkbox" ${allShowAllMonths?"checked":""} onchange="allShowAllMonths=this.checked;allPg=1;renderAll()" style="width:13px;height:13px;cursor:pointer">
+        แสดงทุกเดือน
+      </label>
+      <button class="btn btn-gray btn-sm" onclick="exportAllCSV()">📥 Export</button>
+      <button class="btn btn-purple btn-sm" onclick="openAdd()">➕ เพิ่มรายการ</button>
+    </div>
+    <div class="table-panel">
+      <div class="tp-head">
+        <div class="ttl">พบ ${filtered.length} รายการ${allSearch?` · ค้นหา "${allSearch}"`:""}${allTypeF!=="all"?` · กรอง ${TL[allTypeF]||allTypeF}`:""}${allShowAllMonths?" · ทุกเดือน":` · ${moHeader}`}</div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>วันที่</th><th>ประเภท</th><th>คู่ค้า / พนักงาน</th><th>หมวดหมู่</th><th class="r">จำนวนเงิน</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      ${pager}
+    </div>`;
+}
+
+function selTxAll(id){openEdit(id);}
+
+function exportAllCSV(){
+  const filtered=getFilteredAll();
+  const h=["วันที่","ประเภท","คู่ค้า/พนักงาน","หมวดหมู่","จำนวนเงิน","วิธีจ่าย","สถานะ","หมายเหตุ"];
+  const rows=filtered.map(t=>[t.date,TL[t.type],t.party,t.category,t.amount,t.method,t.status==="confirmed"?"ยืนยัน":"รอ",t.note||""]);
+  const csv=[h,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"}));
+  a.download=`รายการทั้งหมด.csv`; a.click();
+  toast_("📥 Export แล้ว","#2563eb");
+}
+
+// ─── EMPLOYEES PAGE ───────────────────────────────────────────────────────────
+function saveEmployees(){
+  localStorage.setItem("fin_employees",JSON.stringify(employees));
+  if(!isOnline || !db)return;
+  const batch=db.batch();
+  employees.forEach(emp=>{
+    const ref=db.collection("employees").doc(emp.id);
+    batch.set(ref,emp,{merge:true});
+  });
+  batch.commit().catch(e=>console.warn("saveEmployees Firebase error",e));
+}
+function savePayrollTypes(){
+  localStorage.setItem("fin_ptypes",JSON.stringify(payrollTypes));
+  if(!isOnline || !db)return;
+  const batch=db.batch();
+  payrollTypes.forEach(pt=>{
+    const ref=db.collection("fin_payroll_types").doc(pt.id);
+    batch.set(ref,pt);
+  });
+  batch.commit().catch(e=>console.warn("savePayrollTypes Firebase error",e));
+}
+
+function getEmpAvatarColor(name){
+  const colors=["#3b82f6","#8b5cf6","#ec4899","#f59e0b","#10b981","#ef4444","#06b6d4"];
+  let h=0;for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))%colors.length;
+  return colors[h];
+}
+
+function renderEmployees(){
+  const pg=document.getElementById("pg-employees");
+
+  const empCards=employees.map((e,i)=>{
+    const color=getEmpAvatarColor(e.name);
+    const initial=e.name.charAt(0)||"?";
+    const thisMonthTxs=txs.filter(t=>t.empId===e.id&&t.date.startsWith(curMo));
+    const thisMonthTotal=thisMonthTxs.reduce((s,t)=>s+Number(t.amount),0);
+    const allTimeTotal=txs.filter(t=>t.empId===e.id).reduce((s,t)=>s+Number(t.amount),0);
+    const pctUsed=e.limit>0?Math.min((thisMonthTotal/e.limit)*100,100):0;
+    const pTypes=payrollTypes.filter(pt=>e.payrollTypes.includes(pt.id));
+    const limitColor=pctUsed>=90?"#dc2626":pctUsed>=70?"#d97706":"#16a34a";
+    return`<div class="emp-card" style="${e.active?"":"opacity:.55"}">
+      <div class="emp-card-head">
+        <div class="emp-avatar" style="background:${color}20;color:${color}">${initial}</div>
+        <div style="flex:1;min-width:0">
+          <div class="emp-name">${e.name}${e.active?"":" <span style='font-size:10px;color:#9ca3af'>(ไม่ใช้งาน)</span>"}</div>
+          <div class="emp-dept">${e.dept}</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-gray btn-sm" onclick="openEmpModal(${i})" title="แก้ไข">✏️</button>
+          <button class="btn btn-red btn-sm" onclick="delEmp(${i})" title="ลบ">🗑</button>
+        </div>
+      </div>
+      <div class="emp-card-body">
+        <div class="emp-stat"><span class="el">วงเงินเบิก/ครั้ง</span><span class="ev" style="color:#d97706">${fmtMoney(e.limit)}</span></div>
+        <div class="emp-stat"><span class="el">เบิกเดือนนี้</span><span class="ev" style="color:${limitColor}">${fmtMoney(thisMonthTotal)}</span></div>
+        <div style="margin:2px 0 4px">
+          <div style="height:5px;background:#f3f4f6;border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${pctUsed}%;background:${limitColor};border-radius:3px;transition:width .4s"></div>
+          </div>
+          <div style="font-size:10.5px;color:#9ca3af;margin-top:2px">${pctUsed.toFixed(0)}% ของวงเงิน</div>
+        </div>
+        <div class="emp-stat"><span class="el">เบิกสะสมทั้งหมด</span><span class="ev">${fmtMoney(allTimeTotal)}</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">
+
+        </div>
+      </div>
+      <div class="emp-card-foot">
+        <button class="btn btn-gray btn-sm" onclick="quickPayroll('${e.id}')">➕ บันทึกเบิก</button>
+        <button class="btn btn-blue btn-sm" onclick="syncAdvanceReqsForEmp('${e.id}')" title="ส่งรายการเบิกล่วงหน้าของพนักงานคนนี้ไปยัง Advance Tracker">📤 Sync ล่วงหน้า</button>
+      </div>
+    </div>`;
+  }).join("")||`<div style="grid-column:1/-1;background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:36px;text-align:center;color:#9ca3af"><div style="font-size:28px;margin-bottom:8px">👥</div>ยังไม่มีพนักงาน<br><span style="font-size:12px">กด "+ เพิ่มพนักงาน" ด้านบน</span></div>`;
+
+  // payroll types section
+  const ptCards=payrollTypes.map((pt,i)=>`
+    <div style="background:#fff;border:1px solid #e9ecef;border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+      <span style="font-size:20px">${pt.icon}</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${pt.label}</div>
+        <div style="font-size:11px;color:#9ca3af">${employees.filter(e=>e.payrollTypes.includes(pt.id)).length} คนใช้งาน</div>
+      </div>
+      <button class="btn btn-gray btn-sm" onclick="editPtype(${i})">✏️</button>
+      <button class="btn btn-red btn-sm" onclick="delPtype(${i})" ${pt.id==="other"?"disabled":""}>🗑</button>
+    </div>`).join("");
+
+  pg.innerHTML=`
+    <div class="pg-hd">👥 ทะเบียนพนักงาน</div>
+    <div class="pg-sub">จัดการรายชื่อพนักงาน · กำหนดวงเงินเบิก · ประเภทการเบิกที่ได้รับสิทธิ์</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-blue" onclick="openEmpModal(-1)">➕ เพิ่มพนักงาน</button>
+      <button class="btn btn-teal" onclick="syncAdvanceReqsForEmp(null)" title="ส่งรายการเบิกล่วงหน้าของทุกพนักงานไปยัง advance_requests (Advance Tracker)">📤 Sync ล่วงหน้าทุกคน</button>
+      <button class="btn btn-gray btn-sm" onclick="migrateOldData()" title="ย้ายข้อมูลเก่าจาก finance_transactions → advance_monthly (ทำครั้งแรกครั้งเดียว)" style="margin-top:6px">🔀 Migrate → advance_monthly</button>
+      <button class="btn btn-gray" onclick="showPg('settings')" style="margin-left:auto">⚙️ ตั้งค่าประเภทเบิก</button>
+    </div>
+    <div class="emp-grid">${empCards}</div>
+    <div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:16px 18px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+        🏷️ ประเภทการเบิก
+        <button class="btn btn-gray btn-sm" onclick="openPtypeModal(-1)" style="margin-left:auto">➕ เพิ่มประเภท</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">${ptCards}</div>
+    </div>`;
+}
+
+function quickPayroll(empId){
+  mForm=ef();mForm.type="payroll";mForm.empId=empId;
+  const emp=employees.find(e=>e.id===empId);
+  if(emp) mForm.party=emp.name;
+  mOcrFilled=false;mOcrPrev=null;
+  showModal(false);
+}
+
+// ─── EMPLOYEE MODAL ───────────────────────────────────────────────────────────
+let editEmpIdx=-1;
+function openEmpModal(idx){
+  editEmpIdx=idx;
+  const e=idx>=0?employees[idx]:{id:uid(),name:"",dept:"",limit:0,payrollTypes:["expense"],active:true,note:""};
+  const ptChecks=payrollTypes.map(pt=>`
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:5px 0;cursor:pointer">
+      <input type="checkbox" value="${pt.id}" ${e.payrollTypes.includes(pt.id)?"checked":""}
+        style="width:14px;height:14px;cursor:pointer">
+      <span style="background:${pt.bg};color:${pt.color};padding:2px 7px;border-radius:20px;font-weight:600;font-size:11px">${pt.icon} ${pt.label}</span>
+    </label>`).join("");
+  document.getElementById("mTitle").textContent=idx>=0?"✏️ แก้ไขข้อมูลพนักงาน":"➕ เพิ่มพนักงานใหม่";
+  document.getElementById("mOcrTag").style.display="none";
+  document.getElementById("mSave").textContent="💾 บันทึก";
+  document.getElementById("mSave").onclick=saveEmp;
+  document.getElementById("mBody").innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="frow"><div class="flbl">ชื่อพนักงาน</div><input id="ei-name" class="fi" value="${e.name}" placeholder="ชื่อ-นามสกุล"></div>
+      <div class="frow"><div class="flbl">แผนก</div><input id="ei-dept" class="fi" value="${e.dept}" placeholder="เช่น ฝ่ายขาย, ฝ่ายบัญชี"></div>
+      <div class="frow"><div class="flbl">วงเงิน/ครั้ง (฿)</div><input id="ei-limit" type="number" class="fi" value="${e.limit}" placeholder="0"></div>
+      <div class="frow"><div class="flbl">หมายเหตุ</div><input id="ei-note" class="fi" value="${e.note||""}" placeholder="ข้อมูลเพิ่มเติม"></div>
+      <div><div class="flbl" style="margin-bottom:8px">ประเภทเบิกที่ได้รับสิทธิ์</div>
+        <div id="ei-ptypes" style="display:flex;flex-direction:column;gap:2px;padding:4px 0">${ptChecks}</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input id="ei-active" type="checkbox" ${e.active?"checked":""} style="width:15px;height:15px">
+        <span>พนักงานใช้งานอยู่ (Active)</span>
+      </label>
+    </div>`;
+  document.getElementById("mFoot").style.display="flex";
+  document.getElementById("modal").classList.add("open");
+}
+
+function saveEmp(){
+  const name=document.getElementById("ei-name").value.trim();
+  if(!name){toast_("⚠️ กรุณาใส่ชื่อพนักงาน","#b45309");return;}
+  const ptypes=[...document.querySelectorAll("#ei-ptypes input:checked")].map(cb=>cb.value);
+  const emp={
+    id:editEmpIdx>=0?employees[editEmpIdx].id:uid(),
+    name,
+    dept:document.getElementById("ei-dept").value.trim(),
+    limit:Number(document.getElementById("ei-limit").value)||0,
+    note:document.getElementById("ei-note").value.trim(),
+    payrollTypes:ptypes.length?ptypes:["other"],
+    active:document.getElementById("ei-active").checked,
+  };
+  if(editEmpIdx>=0) employees[editEmpIdx]=emp;
+  else employees.push(emp);
+  saveEmployees(); closeModal(); renderEmployees();
+  document.getElementById("mSave").onclick=saveForm; // restore default
+  toast_(`✅ ${editEmpIdx>=0?"แก้ไข":"เพิ่ม"}พนักงาน "${name}" แล้ว`,"#16a34a");
+}
+
+function delEmp(i){
+  const name=employees[i].name;
+  const empId=employees[i].id;
+  const cnt=txs.filter(t=>t.empId===empId).length;
+  const reqCnt=cnt; // รายการเบิกทั้งหมดที่อ้างอิงพนักงานนี้
+  const warnMsg=reqCnt?`\n⚠️ มีรายการเบิก ${reqCnt} รายการที่อ้างอิงพนักงานนี้\n(รายการเบิกจะยังคงอยู่ในระบบ)`:""
+  if(!confirm(`ลบพนักงาน "${name}"?${warnMsg}`))return;
+  employees.splice(i,1);
+  saveEmployees();
+  // ลบ document จาก Firestore ด้วย (advance-tracker จะ sync ตามหลัง)
+  if(isOnline&&db){
+    db.collection("employees").doc(empId).delete()
+      .then(()=>console.log(`[delEmp] deleted ${empId} from Firestore`))
+      .catch(e=>console.warn("delEmp Firebase error",e));
+  }
+  renderEmployees();
+  toast_(`🗑 ลบ "${name}" แล้ว`,"#dc2626");
+}
+
+// ─── PAYROLL TYPE MODAL ───────────────────────────────────────────────────────
+let editPtIdx=-1;
+function openPtypeModal(idx){
+  editPtIdx=idx;
+  const pt=idx>=0?payrollTypes[idx]:{id:"",label:"",icon:"📋",color:"#374151",bg:"#f3f4f6"};
+  document.getElementById("mTitle").textContent=idx>=0?"✏️ แก้ไขประเภทเบิก":"➕ เพิ่มประเภทเบิก";
+  document.getElementById("mOcrTag").style.display="none";
+  document.getElementById("mSave").textContent="💾 บันทึก";
+  document.getElementById("mSave").onclick=savePtype;
+  document.getElementById("mBody").innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="frow"><div class="flbl">ชื่อประเภท</div><input id="pti-label" class="fi" value="${pt.label}" placeholder="เช่น เบิกล่วงหน้า"></div>
+      <div class="frow"><div class="flbl">Icon (Emoji)</div><input id="pti-icon" class="fi" value="${pt.icon}" placeholder="⏩" style="width:70px"></div>
+      <div class="frow"><div class="flbl">สีตัวอักษร</div><div style="display:flex;gap:8px;align-items:center"><input id="pti-color" type="color" value="${pt.color}" style="width:40px;height:32px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer"><span id="pti-preview" style="font-size:12px;padding:3px 10px;border-radius:20px;font-weight:600;background:${pt.bg};color:${pt.color}">${pt.icon} ${pt.label||"ตัวอย่าง"}</span></div></div>
+      <div class="frow"><div class="flbl">สีพื้นหลัง</div><input id="pti-bg" type="color" value="${pt.bg}" style="width:40px;height:32px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer"></div>
+    </div>`;
+  // live preview
+  ['pti-label','pti-icon','pti-color','pti-bg'].forEach(id=>{
+    document.getElementById(id).addEventListener('input',()=>{
+      const prev=document.getElementById("pti-preview");
+      if(prev){prev.textContent=`${document.getElementById("pti-icon").value} ${document.getElementById("pti-label").value||"ตัวอย่าง"}`;prev.style.color=document.getElementById("pti-color").value;prev.style.background=document.getElementById("pti-bg").value;}
+    });
+  });
+  document.getElementById("mFoot").style.display="flex";
+  document.getElementById("modal").classList.add("open");
+}
+
+function savePtype(){
+  const label=document.getElementById("pti-label").value.trim();
+  if(!label){toast_("⚠️ กรุณาใส่ชื่อประเภทเบิก","#b45309");return;}
+  const pt={
+    id:editPtIdx>=0?payrollTypes[editPtIdx].id:("pt_"+uid()),
+    label,
+    icon:document.getElementById("pti-icon").value||"📋",
+    color:document.getElementById("pti-color").value,
+    bg:document.getElementById("pti-bg").value,
+  };
+  if(editPtIdx>=0) payrollTypes[editPtIdx]=pt;
+  else payrollTypes.push(pt);
+  savePayrollTypes(); closeModal(); renderEmployees();
+  document.getElementById("mSave").onclick=saveForm;
+  toast_(`✅ บันทึกประเภทเบิก "${label}" แล้ว`,"#16a34a");
+}
+
+function editPtype(i){openPtypeModal(i);}
+function delPtype(i){
+  if(payrollTypes[i].id==="other"){toast_("⚠️ ไม่สามารถลบประเภทนี้ได้","#b45309");return;}
+  if(!confirm(`ลบประเภทเบิก "${payrollTypes[i].label}"?`))return;
+  // remove from employees too
+  const id=payrollTypes[i].id;
+  employees=employees.map(e=>({...e,payrollTypes:e.payrollTypes.filter(p=>p!==id)}));
+  payrollTypes.splice(i,1);
+  savePayrollTypes(); saveEmployees(); renderEmployees();
+  toast_(`🗑 ลบประเภทเบิก แล้ว`,"#dc2626");
+}
+
+// ─── CATS PAGE ────────────────────────────────────────────────────────────────
+function getDynCats(){
+  if(!dynCats) dynCats=JSON.parse(JSON.stringify(CATS));
+  return dynCats;
+}
+function saveCats(){
+  dynCats=getDynCats();
+  Object.assign(CATS,dynCats);
+  localStorage.setItem("fin_cats",JSON.stringify(dynCats));
+  if(!isOnline || !db)return;
+  db.collection("fin_settings").doc("cats").set(dynCats)
+    .catch(e=>console.warn("saveCats Firebase error",e));
+}
+
+function renderCats(){
+  const pg=document.getElementById("pg-cats");
+  const dc=getDynCats();
+  const secs=[
+    {key:"income",label:"รายรับ",icon:"📥",color:"#16a34a",bg:"#f0fdf4",hbg:"#dcfce7",border:"#86efac"},
+    {key:"expense",label:"ค่าใช้จ่าย",icon:"📤",color:"#dc2626",bg:"#fff7f7",hbg:"#fee2e2",border:"#fca5a5"},
+    {key:"payroll",label:"เบิกพนักงาน",icon:"💼",color:"#d97706",bg:"#fffbeb",hbg:"#fef3c7",border:"#fcd34d"},
+    {key:"employee_advance",label:"เบิกล่วงหน้า",icon:"⏩",color:"#a16207",bg:"#fefce8",hbg:"#fef9c3",border:"#fde047"},
+    {key:"employee_reimbursement",label:"เบิกคืน",icon:"↩",color:"#0f766e",bg:"#f0fdfa",hbg:"#ccfbf1",border:"#5eead4"},
+    {key:"travel_expense",label:"ค่าเดินทาง",icon:"✈",color:"#7c3aed",bg:"#faf5ff",hbg:"#ede9fe",border:"#c4b5fd"},
+  ];
+
+  pg.innerHTML=`
+    <div class="pg-hd">🗂️ หมวดหมู่ค่าใช้จ่าย</div>
+    <div class="pg-sub">จัดการหมวดหมู่สำหรับแบ่งกลุ่มรายการ · เพิ่ม แก้ไข หรือลบได้ตามต้องการ</div>
+    <div class="cats-grid">
+      ${secs.map(s=>renderCatPanel(s,dc)).join("")}
+    </div>
+    <div style="background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:16px">
+      <div style="font-size:13.5px;font-weight:700;margin-bottom:12px">สรุปการใช้งานหมวดหมู่</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+        ${secs.map(s=>renderCatSummary(s,dc)).join("")}
+      </div>
+    </div>`;
+}
+
+function renderCatPanel({key,label,icon,color,bg,hbg,border},dc){
+  const cats=dc[key]||[];
+  const items=cats.map((c,i)=>{
+    const cnt=txs.filter(t=>t.category===c&&t.type===key).length;
+    const tot=txs.filter(t=>t.category===c&&t.type===key).reduce((s,t)=>s+Number(t.amount),0);
+    return`<div class="cat-item">
+      <div style="width:8px;height:8px;border-radius:2px;background:${color};flex-shrink:0"></div>
+      <div class="cn">${c}</div>
+      <div class="cs">${cnt?`${cnt} รายการ · ${fmtMoney(tot)}`:`ยังไม่มีรายการ`}</div>
+      <button class="btn btn-gray btn-sm" onclick="editCat('${key}',${i})" title="แก้ไข">✏️</button>
+      <button class="btn btn-red btn-sm" onclick="delCat('${key}',${i})" title="ลบ">🗑</button>
+    </div>`;
+  }).join("");
+
+  return`<div class="cat-panel">
+    <div class="cat-ph" style="background:${hbg};border-bottom:2px solid ${border}">
+      <span style="font-size:18px">${icon}</span>
+      <div class="cpt" style="color:${color}">${label}</div>
+      <span class="badge" style="background:#fff;color:${color};border:1px solid ${border}">${cats.length} หมวด</span>
+    </div>
+    <div class="cat-list">${items||`<div style="padding:20px;text-align:center;color:#9ca3af;font-size:12.5px">ยังไม่มีหมวดหมู่<br>เพิ่มด้านล่างได้เลย</div>`}</div>
+    <div class="cat-add">
+      <div style="display:flex;gap:6px">
+        <input class="cat-inp" id="catInp-${key}" placeholder="ชื่อหมวดหมู่ใหม่…" onkeydown="if(event.key==='Enter')addCat('${key}')">
+        <button class="btn btn-sm" style="background:${color};color:#fff;flex-shrink:0;white-space:nowrap" onclick="addCat('${key}')">+ เพิ่ม</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderCatSummary({key,label,color,icon},dc){
+  const cats=dc[key]||[];
+  const all=txs.filter(t=>t.type===key);
+  const total=all.reduce((s,t)=>s+Number(t.amount),0);
+  const top=[...cats].sort((a,b)=>
+    txs.filter(t=>t.category===b&&t.type===key).reduce((s,t)=>s+Number(t.amount),0)-
+    txs.filter(t=>t.category===a&&t.type===key).reduce((s,t)=>s+Number(t.amount),0)
+  ).slice(0,3);
+  return`<div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <span>${icon}</span>
+      <span style="font-size:13px;font-weight:700;color:${color}">${label}</span>
+      <span style="font-size:12px;color:#6b7280;margin-left:auto">${fmtMoney(total)}</span>
+    </div>
+    ${top.length?top.map(c=>{
+      const v=txs.filter(t=>t.category===c&&t.type===key).reduce((s,t)=>s+Number(t.amount),0);
+      const pct=total?(v/total)*100:0;
+      return`<div class="bar-row"><div class="bar-info"><span style="font-size:12px;color:#374151">${c}</span><span style="font-size:12px;font-weight:600;color:${color}">${fmtMoney(v)}</span></div><div class="bar-track"><div class="bar-fill" style="background:${color};opacity:.7;width:${pct}%"></div></div></div>`;
+    }).join(""):`<div style="font-size:12px;color:#9ca3af">ยังไม่มีข้อมูล</div>`}
+  </div>`;
+}
+
+function addCat(key){
+  const inp=document.getElementById("catInp-"+key);
+  if(!inp)return;
+  const name=inp.value.trim();
+  if(!name){toast_("⚠️ กรุณาใส่ชื่อหมวดหมู่","#b45309");return;}
+  const dc=getDynCats();
+  if((dc[key]||[]).includes(name)){toast_("⚠️ มีหมวดหมู่นี้อยู่แล้ว","#b45309");return;}
+  dc[key]=[...(dc[key]||[]),name];
+  saveCats(); toast_(`✅ เพิ่ม "${name}" แล้ว`,"#16a34a"); renderCats();
+}
+
+function delCat(key,idx){
+  const dc=getDynCats();
+  const name=dc[key][idx];
+  const cnt=txs.filter(t=>t.category===name&&t.type===key).length;
+  if(cnt>0){if(!confirm(`หมวดหมู่ "${name}" มี ${cnt} รายการอ้างอิงอยู่\nยืนยันลบ?`))return;}
+  else if(!confirm(`ลบหมวดหมู่ "${name}"?`))return;
+  dc[key].splice(idx,1);
+  saveCats(); toast_(`🗑 ลบ "${name}" แล้ว`,"#dc2626"); renderCats();
+}
+
+function editCat(key,idx){
+  const dc=getDynCats();
+  const old=dc[key][idx];
+  const newName=prompt(`แก้ไขชื่อหมวดหมู่:`,old);
+  if(!newName||!newName.trim()||newName.trim()===old)return;
+  const n=newName.trim();
+  if((dc[key]||[]).includes(n)){toast_("⚠️ มีหมวดหมู่นี้อยู่แล้ว","#b45309");return;}
+  txs=txs.map(t=>t.category===old&&t.type===key?{...t,category:n}:t);
+  dc[key][idx]=n;
+  saveCats(); saveTxs(); toast_(`✏️ เปลี่ยนเป็น "${n}" แล้ว`,"#2563eb"); renderCats();
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+function exportCSV(){
+  const mTxs=getCurrentMonthTxs();
+  const h=["วันที่","ประเภท","คู่ค้า/พนักงาน","หมวดหมู่","จำนวนเงิน","วิธีจ่าย","สถานะ","หมายเหตุ"];
+  const rows=mTxs.map(t=>[t.date,TL[t.type],t.party,t.category,t.amount,t.method,t.status==="confirmed"?"ยืนยัน":"รอ",t.note||""]);
+  const csv=[h,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}));
+  a.download=`รายการ_${moLabel(curMo)}.csv`; a.click();
+  toast_("📥 Export แล้ว","#2563eb");
+}
+
+// ─── DUPLICATE SLIP POPUP ─────────────────────────────────────────────────────
+var _dupCallback = null;
+
+function showDupPopup(form, onConfirm){
+  _dupCallback = onConfirm;
+  var hasTime = form.slipTime && form.slipTime.trim() !== "";
+  var existTx = txs.find(function(t){
+    if(!t.date || t.date !== form.date) return false;
+    if(hasTime) return (t.slipTime||"").trim() === form.slipTime.trim();
+    return String(Number(t.amount)) === String(Number(form.amount))
+      && (t.party||"").trim() === (form.party||"").trim();
+  });
+  var infoHTML = "";
+  if(existTx){
+    var dupReason = hasTime
+      ? `วันที่ <b>${existTx.date}</b> และเวลาสลิป <b>${existTx.slipTime}</b> ตรงกัน`
+      : `วันที่ <b>${existTx.date}</b> · จำนวน <b>฿${fmtMoney(existTx.amount)}</b> · คู่ค้า <b>${existTx.party||"-"}</b> ตรงกัน`;
+    infoHTML = `
+      <div style="margin-bottom:6px;font-weight:600">รายการที่มีอยู่ในระบบ:</div>
+      ${dupReason}<br>
+      ประเภท: <b>${TL[existTx.type]||existTx.type}</b> · หมวด: <b>${existTx.category||"-"}</b><br>
+      สถานะ: <b>${existTx.status==="confirmed"?"✓ ยืนยันแล้ว":"⏳ รอตรวจสอบ"}</b>`;
+  } else {
+    infoHTML = "ตรวจพบข้อมูลที่อาจซ้ำกับรายการเดิม";
+  }
+  document.getElementById("dupInfo").innerHTML = infoHTML;
+  // ย้าย overlay ไปเป็น child โดยตรงของ document.body เพื่อหลีกเลี่ยง overflow:hidden clipping
+  var ov = document.getElementById("dupOverlay");
+  document.body.appendChild(ov);
+  ov.classList.add("open");
+}
+
+function closeDupPopup(){
+  document.getElementById("dupOverlay").classList.remove("open");
+  _dupCallback = null;
+}
+
+function dupConfirmSave(){
+  document.getElementById("dupOverlay").classList.remove("open");
+  if(typeof _dupCallback === "function") _dupCallback();
+  _dupCallback = null;
+}
+
+function dupOverlayClick(e){
+  if(e.target === document.getElementById("dupOverlay")) closeDupPopup();
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────────────────
+let toastTm;
+function toast_(msg,bg="#1a2332",dur=3000){
+  const el=document.getElementById("toast");
+  el.textContent=msg; el.style.background=bg; el.style.display="block";
+  el.style.animation="none"; void el.offsetWidth; el.style.animation="fadeIn .25s ease";
+  clearTimeout(toastTm); toastTm=setTimeout(()=>el.style.display="none",dur);
+}
+
+function mobNav(pg,btn){
+  document.querySelectorAll(".mob-nav-btn").forEach(b=>b.classList.remove("active"));
+  if(btn)btn.classList.add("active");
+  document.getElementById('mob-more-drawer').style.display='none';
+  showPg(pg);
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function toggleMobMore(){
+  const d=document.getElementById('mob-more-drawer');
+  d.style.display=d.style.display==='none'?'block':'none';
+}
+
+function mobNavDrawer(pg){
+  document.getElementById('mob-more-drawer').style.display='none';
+  document.querySelectorAll(".mob-nav-btn").forEach(b=>b.classList.remove("active"));
+  document.getElementById('mob-more-btn').classList.add("active");
+  showPg(pg);
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+// ─── MANUAL CROSS-SYNC ────────────────────────────────────────────────────────
+async function manualSync(){
+  if(!isOnline||!db){toast_("⚠️ ต้องออนไลน์ก่อน Sync","#b45309");return;}
+  toast_("🔄 กำลัง Sync ไปยัง advance-tracker...","#0d9488");
+  try{
+    // finance_app → v2 (ทางเดียว)
+    const empIds=[...new Set(txs.filter(t=>t.type==="payroll"&&t.empId).map(t=>t.empId))];
+    if(empIds.length>0) await syncPayrollToV2(empIds);
+    toast_("✅ Sync payroll ไป advance-tracker เสร็จแล้ว","#16a34a");
+    render();
+  }catch(e){
+    toast_("❌ Sync ล้มเหลว: "+e.message,"#dc2626");
+  }
+}
+
+// ─── PULL FROM FIREBASE → LOCAL ───────────────────────────────────────────────
+async function pullFromFirebase(){
+  if(!db){toast_("⚠️ Firebase ยังไม่พร้อม","#b45309");return;}
+  toast_("🔄 กำลังโหลดจาก Firebase...","#0d9488");
+  try{
+    // flush pending offline ก่อน แล้วค่อย pull
+    await flushPendingToFirebase();
+    // โหลด transactions
+    const txSnap=await db.collection("fin_transactions").get();
+    if(!txSnap.empty){
+      txs=txSnap.docs.map(d=>{
+        const tx={...d.data(),id:d.id};
+        if(tx.date&&typeof tx.date==="object"&&tx.date.seconds)
+          tx.date=new Date(tx.date.seconds*1000).toISOString().split("T")[0];
+        else if(tx.date&&typeof tx.date==="object"&&typeof tx.date.toDate==="function")
+          tx.date=tx.date.toDate().toISOString().split("T")[0];
+        return tx;
+      });
+      localStorage.setItem("fin_txs",JSON.stringify(txs));
+    }
+    // โหลด employees
+    const empSnap=await db.collection("employees").get();
+    if(!empSnap.empty){
+      employees=empSnap.docs.map(d=>{
+        const d2=d.data();
+        return{
+          id:d.id,
+          name:d2.name||"",
+          dept:d2.dept||d2.position||"",
+          limit:d2.salary||d2.limit||0,
+          payrollTypes:d2.payrollTypes||["expense"],
+          active:d2.active!==false,
+          note:d2.note||""
+        };
+      });
+      localStorage.setItem("fin_employees",JSON.stringify(employees));
+    }
+    // โหลด payrollTypes
+    const ptSnap=await db.collection("fin_payroll_types").get();
+    if(!ptSnap.empty){
+      payrollTypes=ptSnap.docs.map(d=>({...d.data(),id:d.id}));
+      localStorage.setItem("fin_ptypes",JSON.stringify(payrollTypes));
+    }
+    // โหลด categories
+    const catDoc=await db.collection("fin_settings").doc("cats").get();
+    if(catDoc.exists){
+      dynCats=catDoc.data();
+      Object.assign(CATS,dynCats);
+      localStorage.setItem("fin_cats",JSON.stringify(dynCats));
+    }
+    isOnline=true;
+    setFbStatus("online");
+    render();
+    toast_(`✅ โหลดสำเร็จ — ${txs.length} รายการ, ${employees.length} พนักงาน บันทึกในเครื่องแล้ว`,"#16a34a");
+  }catch(e){
+    toast_("❌ โหลดจาก Firebase ล้มเหลว: "+e.message,"#dc2626");
+    isOnline=false;
+    setFbStatus("offline");
+  }
+}
+
+// ─── CLEANUP v2sync JUNK FROM FIRESTORE ──────────────────────────────────────
+// ลบรายการที่ถูก import มาจาก v2 (มี _v2sync:true) ออกจาก Firestore และ local
+async function cleanupV2SyncTxs(){
+  if(!isOnline||!db)return;
+  // ตรวจ local ก่อน
+  const junk=txs.filter(t=>t._v2sync===true);
+  if(!junk.length){
+    localStorage.removeItem("fin_v2sync_cleaned");
+    return; // ไม่มีอะไรต้องล้าง
+  }
+  try{
+    const batch=db.batch();
+    junk.forEach(t=>{
+      batch.delete(db.collection("fin_transactions").doc(t.id));
+    });
+    await batch.commit();
+    // ลบออกจาก local ด้วย
+    txs=txs.filter(t=>!t._v2sync);
+    localStorage.setItem("fin_txs",JSON.stringify(txs));
+    toast_(`🧹 ล้างข้อมูล ${junk.length} รายการที่ sync ผิดพลาดออกแล้ว`,"#0d9488");
+    console.log(`[Cleanup] removed ${junk.length} _v2sync tx(s) from Firestore`);
+    render();
+  }catch(e){
+    console.warn("[Cleanup] cleanupV2SyncTxs failed:",e);
+  }
+}
+
+// ─── MIGRATE: map party name → empId for old payroll txs ─────────────────────
+async function migratePayrollEmpIds(){
+  if(!employees.length) return;
+  let changed = 0;
+  txs = txs.map(t => {
+    // เฉพาะ payroll ที่ยังไม่มี empId
+    if(t.type !== "payroll" || t.empId) return t;
+    // ค้นหา employee ที่ชื่อตรงกับ t.party (ตัดช่องว่างและคำนำหน้า)
+    const normalize = s => (s||"").replace(/นาย|นาง|น\.ส\.|นางสาว|คุณ|\s/g,"").toLowerCase();
+    const needle = normalize(t.party);
+    if(!needle) return t;
+    const match = employees.find(e => normalize(e.name).includes(needle) || needle.includes(normalize(e.name)));
+    if(match){
+      changed++;
+      return {...t, empId: match.id};
+    }
+    return t;
+  });
+  if(changed > 0){
+    localStorage.setItem("fin_txs", JSON.stringify(txs));
+    // อัพเดท Firestore เฉพาะรายการที่เปลี่ยน
+    if(isOnline && db){
+      const batch = db.batch();
+      txs.filter(t => t.type==="payroll" && t.empId).forEach(t => {
+        batch.update(db.collection("fin_transactions").doc(t.id), {empId: t.empId});
+      });
+      batch.commit().catch(e => console.warn("[Migrate] empId patch failed:", e));
+    }
+    console.log(`[Migrate] patched empId for ${changed} payroll tx(s)`);
+    render();
+  }
+}
+</script>
+
+<!-- DUPLICATE SLIP CONFIRM POPUP — ต้องอยู่นอก #main เพื่อให้ z-index ทำงานถูกต้อง -->
+<div id="dupOverlay" onclick="dupOverlayClick(event)">
+  <div id="dupBox">
+    <div class="dup-head">
+      <div class="dh-icon">⚠️</div>
+      <div class="dh-text">
+        <div class="dh-title">พบสลิปซ้ำในระบบ!</div>
+        <div class="dh-sub">ตรวจพบรายการที่มีข้อมูลตรงกันอยู่แล้ว</div>
+      </div>
+    </div>
+    <div class="dup-body">
+      <div class="dup-info" id="dupInfo"></div>
+      <div class="dup-question">ต้องการบันทึกรายการนี้ซ้ำหรือไม่?</div>
+      <div class="dup-btns">
+        <button class="dup-cancel" onclick="closeDupPopup()">✕ ยกเลิก / ไม่บันทึก</button>
+        <button class="dup-confirm" onclick="dupConfirmSave()">✓ บันทึกซ้ำต่อไป</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
