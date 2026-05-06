@@ -1,10 +1,13 @@
-<!-- AR SYSTEM v2.0 — 2026-04-28 23:55 | แก้เลขบัญชีไม่ชิดขวา, แก้เส้นลายเซ็น -->
+<!-- AR SYSTEM v2.1 — 2026-05-07
+     changelog: แก้บั๊ก data loss — ถอด autoPush ออกจาก exit events, เพิ่ม safety guard (skip empty array),
+     เปลี่ยนเป็น safe upsert (ไม่ delete-all), auto backup ก่อน clear, เตือนเมื่อ Firebase ว่าง+local มีข้อมูล
+-->
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.0 — 2026-04-28 23:55</title>
+<title>AR System | v2.1 — 2026-05-07</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -968,6 +971,43 @@ async function storeDelete(col, id) {
 function syncLS(col, arr) { lsSave(col, arr); }
 
 // ══════════════════════════════════════════════════════
+// LOCAL BACKUP HELPERS — BUG #2/4 แก้: สำรองข้อมูลใน localStorage ก่อน destructive ops
+// เก็บล่าสุด MAX_LOCAL_BACKUPS ชุด, key = ar_backup_{timestamp}
+// ══════════════════════════════════════════════════════
+const MAX_LOCAL_BACKUPS = 5;
+const LS_BACKUP_PREFIX = 'ar_backup_';
+
+function saveLocalBackup() {
+  try {
+    const ts = Date.now();
+    const payload = {
+      savedAt: new Date(ts).toISOString(),
+      companies: data.companies || [],
+      quotations: data.quotations || [],
+      invoices: data.invoices || [],
+      billings: data.billings || []
+    };
+    const total = payload.companies.length + payload.quotations.length + payload.invoices.length + payload.billings.length;
+    if (total === 0) return; // ไม่ backup ถ้าข้อมูลว่างอยู่แล้ว
+    localStorage.setItem(LS_BACKUP_PREFIX + ts, JSON.stringify(payload));
+    // ตัด backup เก่าออก เหลือไว้แค่ MAX_LOCAL_BACKUPS ชุด
+    const keys = Object.keys(localStorage).filter(k => k.startsWith(LS_BACKUP_PREFIX)).sort();
+    while (keys.length > MAX_LOCAL_BACKUPS) localStorage.removeItem(keys.shift());
+    console.log(`[AR] Local backup saved: ${total} records (ts=${ts})`);
+  } catch(e) { console.warn('[AR] saveLocalBackup failed:', e); }
+}
+
+function listLocalBackups() {
+  return Object.keys(localStorage)
+    .filter(k => k.startsWith(LS_BACKUP_PREFIX))
+    .sort().reverse()
+    .map(k => {
+      try { const v = localStorage.getItem(k); return { key: k, sizeKB: (v.length/1024).toFixed(1), ...JSON.parse(v) }; }
+      catch(e) { return null; }
+    }).filter(Boolean);
+}
+
+// ══════════════════════════════════════════════════════
 // SYNC ENGINE — Firebase ↔ localStorage
 // ══════════════════════════════════════════════════════
 const SYNC_COLS = ['companies','quotations','invoices','billings'];
@@ -1026,36 +1066,51 @@ async function syncPull() {
 window.syncPull = syncPull;
 
 // ── PUSH: localStorage → Firebase (set ทุก doc) ──
+// BUG #2 แก้: เพิ่ม safety guard — ถ้า local ว่าง หรือน้อยกว่า remote มากผิดปกติ → ข้าม/เตือน
 async function syncPush() {
   if(!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
   if(!confirm('อัปโหลดข้อมูลในเครื่องทั้งหมดขึ้น Firebase?\nข้อมูลที่อยู่บน Firebase จะถูกแทนที่')) return;
   syncUpdateUI('syncing', 'กำลัง Push...');
   try {
-    let totalDocs = 0;
+    saveLocalBackup(); // BUG #2: บันทึก backup ก่อน destructive sync เสมอ
+    let totalDocs = 0, skipped = [];
     for(const col of SYNC_COLS) {
       const arr = lsLoad(col) || data[col] || [];
-      // ลบ collection เก่าทั้งหมดก่อน (batch delete)
+      // BUG #2 safety guard: ถ้า local ว่าง → ข้ามทั้ง collection ห้ามแตะ Firebase
+      if(arr.length === 0) {
+        console.warn(`[AR] syncPush: skip ${col} — local array empty`);
+        skipped.push(`${col}(ว่าง)`); continue;
+      }
+      // ตรวจ count ที่ผิดปกติ: local น้อยกว่า remote เกิน 80% และ remote มีมากกว่า 10 docs
       const snapOld = await _fbdb.collection(col).get();
+      const remoteCount = snapOld.docs.length;
+      if(remoteCount > 10 && arr.length < remoteCount * 0.2) {
+        const warn = `${col}: เครื่องมี ${arr.length} รายการ แต่ Firebase มี ${remoteCount} รายการ`;
+        console.warn(`[AR] syncPush suspicious count: ${warn}`);
+        if(!confirm(`⚠️ ข้อมูลไม่สมดุล — ${warn}\n\nอาจทำให้ข้อมูล Firebase หายไปหากดำเนินต่อ\n\nยืนยัน Push ${col} ต่อหรือไม่?`)) {
+          skipped.push(col); continue;
+        }
+      }
+      // ลบ collection เก่าแล้ว re-write (ปลอดภัยเพราะ local มีข้อมูลแล้ว)
       const batchDel = _fbdb.batch();
       snapOld.docs.forEach(d => batchDel.delete(d.ref));
-      if(snapOld.docs.length > 0) await batchDel.commit();
-      // เขียนใหม่ทีละ 500 (Firestore batch limit)
-      const chunks = [];
-      for(let i = 0; i < arr.length; i += 400) chunks.push(arr.slice(i, i+400));
-      for(const chunk of chunks) {
+      if(remoteCount > 0) await batchDel.commit();
+      // เขียนใหม่ทีละ 400
+      for(let i = 0; i < arr.length; i += 400) {
+        const chunk = arr.slice(i, i+400);
         const batch = _fbdb.batch();
         chunk.forEach(doc => {
           const {id, ...rest} = doc;
-          const ref = _fbdb.collection(col).doc(id);
-          batch.set(ref, {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()});
+          batch.set(_fbdb.collection(col).doc(id), {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()});
         });
         await batch.commit();
       }
       totalDocs += arr.length;
     }
     const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+    const skipMsg = skipped.length ? ` (ข้าม: ${skipped.join(', ')})` : '';
     syncUpdateUI('online', 'Push สำเร็จ ✅', now);
-    toast(`Push สำเร็จ — ${totalDocs} รายการ`, 'ok');
+    toast(`Push สำเร็จ — ${totalDocs} รายการ${skipMsg}`, 'ok');
   } catch(e) {
     syncUpdateUI('error', 'Push ล้มเหลว ❌');
     toast('Push ล้มเหลว: ' + e.message, 'err');
@@ -2959,6 +3014,7 @@ window.closeSidebar = closeSidebar;
       setMsg('เชื่อมต่อ Firebase สำเร็จ', 'กำลังดึงข้อมูล...');
       const COLS = ['companies','quotations','invoices','billings'];
       let total = 0;
+      const emptyFromFb = []; // BUG #6: เก็บ collection ที่ Firebase ว่างแต่ localStorage มีข้อมูล
       for(const col of COLS) {
         setMsg(`กำลังดึง ${col}...`, 'Firebase → เครื่อง');
         const snap = await _fbdb.collection(col).get();
@@ -2968,12 +3024,54 @@ window.closeSidebar = closeSidebar;
           if(dd._syncedAt?.toDate) delete dd._syncedAt;
           return {id: d.id, ...dd};
         });
+        // BUG #6 แก้: ถ้า Firebase ว่างแต่ localStorage มีข้อมูล → อย่า overwrite localStorage
+        // (ป้องกันกรณี Firebase ถูกลบโดยไม่ตั้งใจ แล้ว overwrite local ที่ยังดีอยู่ด้วย [])
+        if(arr.length === 0) {
+          const localArr = lsLoad(col);
+          if(localArr && localArr.length > 0) {
+            emptyFromFb.push({ col, localCount: localArr.length });
+            data[col] = localArr;
+            total += localArr.length;
+            continue; // ข้าม lsSave เพื่อไม่ให้ [] ทับ localStorage
+          }
+        }
         lsSave(col, arr);
         data[col] = arr;
         total += arr.length;
       }
       companies = data.companies;
-      setMsg(`✅ โหลดสำเร็จ — ${total} รายการ`, 'กำลังเข้าสู่ระบบ...');
+      // BUG #6: แจ้งเตือนและให้ user เลือก Restore ถ้า Firebase ว่างแต่ local มีข้อมูล
+      if(emptyFromFb.length > 0) {
+        const details = emptyFromFb.map(w => `• ${w.col}: ${w.localCount} รายการใน localStorage`).join('\n');
+        setMsg('⚠️ Firebase ว่าง — พบข้อมูลใน localStorage', 'รอการยืนยัน...');
+        await new Promise(r => setTimeout(r, 200));
+        const restore = confirm(
+          `⚠️ พบ Firebase ว่างเปล่า แต่ localStorage มีข้อมูล:\n${details}\n\n` +
+          `อาจเกิดจากการถูกลบโดยไม่ตั้งใจ\n\n` +
+          `ต้องการ Push ข้อมูลจาก localStorage กลับขึ้น Firebase ทันทีหรือไม่?\n` +
+          `(กด Cancel เพื่อดูข้อมูลก่อน แล้วกด Push เองในภายหลัง)`
+        );
+        if(restore) {
+          setMsg('กำลัง Restore ข้อมูลขึ้น Firebase...', '');
+          for(const { col } of emptyFromFb) {
+            const localArr = lsLoad(col) || [];
+            for(let i = 0; i < localArr.length; i += 400) {
+              const chunk = localArr.slice(i, i + 400);
+              const batch = _fbdb.batch();
+              chunk.forEach(doc => {
+                const { id, ...rest } = doc;
+                batch.set(_fbdb.collection(col).doc(id), { ...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp() });
+              });
+              await batch.commit();
+            }
+          }
+          setMsg(`✅ Restore สำเร็จ — ${total} รายการ`, 'กำลังเข้าสู่ระบบ...');
+        } else {
+          setMsg(`⚠️ Firebase ว่าง — ใช้ข้อมูลจาก localStorage (${total} รายการ)`, 'กด Push เพื่อ sync ขึ้น Firebase');
+        }
+      } else {
+        setMsg(`✅ โหลดสำเร็จ — ${total} รายการ`, 'กำลังเข้าสู่ระบบ...');
+      }
     } else {
       // ── ไม่มี Firebase → โหลดจาก localStorage ──
       setMsg('ไม่พบ Firebase', 'โหลดจาก localStorage...');
@@ -3004,10 +3102,16 @@ window.closeSidebar = closeSidebar;
   goPage('dashboard');
 })();
 
-// ── AUTO PUSH เมื่อปิด/ออกจากหน้า ──
+// ══════════════════════════════════════════════════════
+// SAFE UPSERT ENGINE — BUG #1 แก้: ป้องกัน data loss เมื่อ auto-sync
+// เปลี่ยนจาก "delete-all then re-write" เป็น upsert เฉพาะ doc ที่มีในเครื่อง
+// ไม่ delete orphan docs บน Firebase → ถ้า local ว่าง Firebase จะไม่ถูกแตะ
+// ══════════════════════════════════════════════════════
 let _autoSaving = false;
-async function autoPushOnExit() {
-  if(!_fbdb || _autoSaving) return;
+let _suppressAutoPush = false; // BUG #3/4: ตั้ง true หลัง clear data เพื่อกัน auto-push ทับข้อมูลว่างขึ้น Firebase
+
+async function safeUpsertToFirebase() {
+  if(!_fbdb || _autoSaving || _suppressAutoPush) return;
   _autoSaving = true;
   const saving = document.getElementById('saving-screen');
   if(saving) saving.classList.add('show');
@@ -3015,14 +3119,13 @@ async function autoPushOnExit() {
     const COLS = ['companies','quotations','invoices','billings'];
     for(const col of COLS) {
       const arr = data[col] || lsLoad(col) || [];
-      // batch delete เก่า
-      const snapOld = await _fbdb.collection(col).get();
-      if(snapOld.docs.length > 0) {
-        const bDel = _fbdb.batch();
-        snapOld.docs.forEach(d => bDel.delete(d.ref));
-        await bDel.commit();
+      // BUG #1 safety guard: ถ้า local ว่าง → ข้าม ห้ามแตะ Firebase เด็ดขาด
+      if(arr.length === 0) {
+        console.warn(`[AR] safeUpsert: skip ${col} — local array empty`);
+        continue;
       }
-      // batch write ใหม่ (chunks of 400)
+      // upsert เฉพาะ doc ที่มีในเครื่อง (batch.set ไม่ใช่ delete+write)
+      // orphan docs บน Firebase จะยังคงอยู่ (ไม่ถูกลบ) ซึ่งปลอดภัยกว่า
       for(let i = 0; i < arr.length; i += 400) {
         const chunk = arr.slice(i, i + 400);
         const batch = _fbdb.batch();
@@ -3037,29 +3140,19 @@ async function autoPushOnExit() {
       }
     }
   } catch(e) {
-    console.warn('Auto push failed:', e);
+    console.warn('[AR] safeUpsert failed:', e);
   }
   _autoSaving = false;
   if(saving) saving.classList.remove('show');
 }
+window.safeUpsertToFirebase = safeUpsertToFirebase;
 
-// visibilitychange — เมื่อ tab ถูกซ่อน (เปลี่ยน tab / กดโฮม iPad)
-document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState === 'hidden') autoPushOnExit();
-});
-
-// pagehide — เมื่อปิด tab หรือ navigate ออก (รองรับ iOS Safari)
-window.addEventListener('pagehide', () => { autoPushOnExit(); });
-
-// beforeunload — เมื่อปิด browser บน desktop
-window.addEventListener('beforeunload', (e) => {
-  if(_fbdb && !_autoSaving) {
-    autoPushOnExit();
-    // บน desktop แสดง confirm dialog ให้รอ
-    e.preventDefault();
-    e.returnValue = '';
-  }
-});
+// BUG #1 แก้: ถอด autoPush ออกจาก visibilitychange/pagehide/beforeunload
+// (เหตุผล: ถ้า data[col] หรือ localStorage ว่างตอนปิด จะ delete Firebase ทั้งหมด)
+// ใช้ periodic safe upsert ทุก 5 นาทีระหว่างใช้งานแทน
+setInterval(() => {
+  if(_fbdb && !_autoSaving && !_suppressAutoPush) safeUpsertToFirebase();
+}, 5 * 60 * 1000); // 5 นาที — ไม่ delete ดังนั้นปลอดภัย
 
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL — กด A ค้าง 3 วินาที เพื่อเปิด
@@ -3560,8 +3653,8 @@ window.admChangePass=admChangePass;
 // ── DANGER ZONE ──
 function admPageDanger(){
   document.getElementById('adm-page-content').innerHTML=`
-  <div style="font-size:12px;color:#a0a0b8;margin-bottom:16px;font-family:'IBM Plex Mono',monospace">⚠️ ทุกการดำเนินการในหน้านี้ไม่สามารถย้อนกลับได้</div>
-  <button class="adm-btn adm-btn-success" style="margin-bottom:16px" onclick="admExportAll()">📤 Export Backup ก่อน</button>
+  <div style="font-size:12px;color:#a0a0b8;margin-bottom:16px;font-family:'IBM Plex Mono',monospace">⚠️ ทุกการดำเนินการในหน้านี้ไม่สามารถย้อนกลับได้ — ระบบจะ download backup อัตโนมัติก่อนลบ</div>
+  <button class="adm-btn adm-btn-success" style="margin-bottom:16px" onclick="admExportAll()">📤 Export Backup ด้วยตนเอง</button>
 
   <div class="adm-danger-zone">
     <div class="adm-danger-title">🧹 ลบ Invoice ที่ยังไม่ชำระ</div>
@@ -3571,7 +3664,7 @@ function admPageDanger(){
 
   <div class="adm-danger-zone">
     <div class="adm-danger-title">💣 Reset Collection เดี่ยว</div>
-    <div class="adm-danger-desc">ลบข้อมูลใน collection ที่เลือกทั้งหมด</div>
+    <div class="adm-danger-desc">ลบข้อมูลใน collection ที่เลือกทั้งหมด — ระบบจะ download backup JSON อัตโนมัติก่อนลบ</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${['quotations','invoices','billings'].map(c=>`<button class="adm-btn adm-btn-danger" onclick="admResetCol('${c}')">🗑️ Clear ${c}</button>`).join('')}
     </div>
@@ -3579,15 +3672,21 @@ function admPageDanger(){
 
   <div class="adm-danger-zone">
     <div class="adm-danger-title">☠️ Nuclear Reset — ล้างทุกอย่าง</div>
-    <div class="adm-danger-desc">ลบข้อมูลทั้งหมดรวมถึงบริษัท เอกสาร และ payments ระบบจะกลับสู่สถานะเริ่มต้น (ไม่โหลด demo)</div>
+    <div class="adm-danger-desc">ลบข้อมูลทั้งหมดรวมถึงบริษัท เอกสาร และ payments — ระบบจะ download backup JSON อัตโนมัติก่อนลบ</div>
     <button class="adm-btn adm-btn-danger" onclick="admResetAll()">☠️ Reset ทั้งระบบ</button>
   </div>
 
-  <div class="adm-card" style="margin-top:16px"><div class="adm-card-header"><div class="adm-card-title">🔧 Fix Tools</div></div><div class="adm-card-body" style="display:flex;flex-direction:column;gap:7px">
+  <div class="adm-card" style="margin-top:16px;border:1px solid #3b82f6"><div class="adm-card-header" style="border-color:#2a3f5f"><div class="adm-card-title" style="color:#60a5fa">♻️ Restore from Backup</div></div><div class="adm-card-body" style="display:flex;flex-direction:column;gap:7px">
+    <div style="font-size:11px;color:#a0a0b8;margin-bottom:4px">backup อัตโนมัติ (localStorage ล่าสุด 5 ชุด) — สร้างก่อนทุกครั้งที่มี destructive operation</div>
+    <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admShowRestore()">📋 แสดง / Restore จาก localStorage Backup</button>
+    <div id="adm-restore-panel"></div>
+  </div></div>
+
+  <div class="adm-card" style="margin-top:12px"><div class="adm-card-header"><div class="adm-card-title">🔧 Fix Tools</div></div><div class="adm-card-body" style="display:flex;flex-direction:column;gap:7px">
     <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admFixPaid()">🔧 คำนวณ paidAmount ใหม่จาก payment records</button>
     <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admFixStatus()">🔧 อัปเดต Invoice status ทั้งหมด</button>
     <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admClearSeq()">🔧 Reset sequence counter เลขเอกสาร</button>
-    <label class="adm-btn adm-btn-ghost" style="justify-content:flex-start;cursor:pointer">📥 Import JSON Backup<input type="file" accept=".json" style="display:none" onchange="admImportAll(event)"></label>
+    <label class="adm-btn adm-btn-ghost" style="justify-content:flex-start;cursor:pointer">📥 Import JSON Backup (จากไฟล์)<input type="file" accept=".json" style="display:none" onchange="admImportAll(event)"></label>
   </div></div>`;
 }
 
@@ -3609,22 +3708,34 @@ function admDelUnpaid(){
 window.admDelUnpaid=admDelUnpaid;
 
 function admResetCol(col){
-  admShowConfirm(`💣 Clear ${col}`,`จะลบ <strong style="color:#ef4444">${ADM[col].length} รายการ</strong> ใน ${col}`,'พิมพ์ CLEAR','CLEAR',()=>{
-    ADM[col]=[]; admSaveCol(col); data[col]=[]; if(col==='companies') companies=[];
-    admPageDanger(); admToast(`Cleared ${col}`,'ok');
-  });
+  admShowConfirm(`💣 Clear ${col}`,
+    `จะลบ <strong style="color:#ef4444">${ADM[col].length} รายการ</strong> ใน ${col}<br>` +
+    `<small style="color:#f59e0b">⚠️ ระบบจะ download backup JSON อัตโนมัติก่อนลบ</small>`,
+    'พิมพ์ CLEAR','CLEAR',()=>{
+      // BUG #3/4 แก้: download backup อัตโนมัติ + บันทึก localStorage backup + ป้องกัน autoPush ทับขึ้น Firebase
+      admAutoBackupDownload();
+      saveLocalBackup();
+      _suppressAutoPush = true;
+      ADM[col]=[]; admSaveCol(col); data[col]=[]; if(col==='companies') companies=[];
+      admPageDanger(); admToast(`Cleared ${col} — backup ถูก download แล้ว`,'ok');
+    });
 }
 window.admResetCol=admResetCol;
 
 function admResetAll(){
   admShowConfirm('☠️ NUCLEAR RESET',
-    `จะลบข้อมูลทั้งหมด:<br>${ADM_COLS.map(c=>`• ${c}: ${ADM[c].length} รายการ`).join('<br>')}<br><br>ระบบจะ<strong style="color:#22c55e">เริ่มว่างเปล่า</strong> (ไม่โหลด demo)`,
+    `จะลบข้อมูลทั้งหมด:<br>${ADM_COLS.map(c=>`• ${c}: ${ADM[c].length} รายการ`).join('<br>')}<br><br>` +
+    `ระบบจะ<strong style="color:#22c55e">เริ่มว่างเปล่า</strong> (ไม่โหลด demo)<br>` +
+    `<small style="color:#f59e0b">⚠️ ระบบจะ download backup JSON อัตโนมัติก่อนลบ</small>`,
     'พิมพ์ RESET ALL','RESET ALL',()=>{
+      // BUG #3/4 แก้: download backup อัตโนมัติ + บันทึก localStorage backup + ป้องกัน autoPush ทับขึ้น Firebase
+      admAutoBackupDownload();
+      saveLocalBackup();
+      _suppressAutoPush = true;
       ADM_COLS.forEach(col=>{ADM[col]=[];admLsSave(col,[]);data[col]=[];});
       companies=[];
-      // clear seq counters
       Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_')).forEach(k=>localStorage.removeItem(k));
-      admPageDanger(); admToast('ล้างข้อมูลทั้งหมดเรียบร้อย ✅','ok');
+      admPageDanger(); admToast('ล้างข้อมูลทั้งหมดเรียบร้อย — backup ถูก download แล้ว ✅','ok');
     });
 }
 window.admResetAll=admResetAll;
@@ -3678,12 +3789,65 @@ function admImportAll(event){
       if(!confirm(`Import จาก ${file.name}?\nบริษัท:${p.companies.length} INV:${p.invoices.length}\nข้อมูลปัจจุบันจะถูกแทนที่`)) return;
       ADM_COLS.forEach(col=>{ADM[col]=p[col]||[];admSaveCol(col);data[col]=ADM[col];});
       companies=ADM.companies;
+      _suppressAutoPush=false; // เปิด autoPush กลับหลัง restore
       admGoPage(_admCurrentPage); admToast('Import เรียบร้อย ✅','ok');
     }catch(err){admToast('❌ '+err.message,'err');}
   };
   reader.readAsText(file); event.target.value='';
 }
 window.admImportAll=admImportAll;
+
+// ── BUG #3/4 แก้: download backup JSON อัตโนมัติก่อน destructive operation ──
+function admAutoBackupDownload(){
+  const p={exportedAt:new Date().toISOString(),autoBackup:true,version:2,
+    ...Object.fromEntries(ADM_COLS.map(c=>[c,ADM[c]]))};
+  const total=ADM_COLS.reduce((s,c)=>s+ADM[c].length,0);
+  if(total===0){console.warn('[AR] admAutoBackupDownload: all collections empty, skip download');return;}
+  const blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob), a=document.createElement('a');
+  const ts=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  a.href=url; a.download=`ar-auto-backup-${ts}.json`; a.click();
+  URL.revokeObjectURL(url);
+  console.log(`[AR] Auto backup downloaded: ${total} records`);
+}
+
+// ── BUG #5 แก้: แสดงรายการ backup ใน localStorage + ให้ restore ได้ ──
+function admShowRestore(){
+  const panel=document.getElementById('adm-restore-panel');
+  if(!panel) return;
+  if(panel.innerHTML){panel.innerHTML='';return;} // toggle
+  const backups=listLocalBackups();
+  if(!backups.length){
+    panel.innerHTML='<div style="color:#a0a0b8;font-size:12px;padding:8px 0">ไม่พบ backup ใน localStorage<br><small>backup จะถูกสร้างอัตโนมัติเมื่อ sync หรือลบข้อมูล</small></div>';
+    return;
+  }
+  panel.innerHTML=backups.map(b=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid #2a2a38">
+      <div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a0a0b8">${new Date(b.savedAt).toLocaleString('th-TH')}</div>
+        <div style="font-size:12px">บริษัท:${(b.companies||[]).length} QT:${(b.quotations||[]).length} INV:${(b.invoices||[]).length} BL:${(b.billings||[]).length} · ${b.sizeKB} KB</div>
+      </div>
+      <button class="adm-btn adm-btn-warn" style="font-size:11px;padding:4px 10px" onclick="admRestoreFromKey('${b.key}')">♻️ Restore</button>
+    </div>
+  `).join('');
+}
+window.admShowRestore=admShowRestore;
+
+function admRestoreFromKey(key){
+  if(!confirm('Restore ข้อมูลจาก backup นี้?\nข้อมูลปัจจุบันใน localStorage และ in-memory จะถูกแทนที่')) return;
+  try{
+    const raw=localStorage.getItem(key);
+    if(!raw){admToast('❌ ไม่พบ backup key นี้','err');return;}
+    const p=JSON.parse(raw);
+    ADM_COLS.forEach(col=>{ADM[col]=p[col]||[];admSaveCol(col);data[col]=ADM[col];});
+    companies=ADM.companies;
+    _suppressAutoPush=false; // เปิด autoPush กลับหลัง restore
+    const total=ADM_COLS.reduce((s,c)=>s+ADM[c].length,0);
+    admGoPage(_admCurrentPage);
+    admToast(`✅ Restore สำเร็จ — ${total} รายการ`,'ok');
+  }catch(e){admToast('❌ Restore ล้มเหลว: '+e.message,'err');}
+}
+window.admRestoreFromKey=admRestoreFromKey;
 
 // ── CONFIRM DIALOG ──
 function admShowConfirm(title,body,hint,keyword,action){
