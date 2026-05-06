@@ -3799,15 +3799,29 @@ window.admImportAll=admImportAll;
 
 // ── BUG #3/4 แก้: download backup JSON อัตโนมัติก่อน destructive operation ──
 function admAutoBackupDownload(){
-  const p={exportedAt:new Date().toISOString(),autoBackup:true,version:2,
-    ...Object.fromEntries(ADM_COLS.map(c=>[c,ADM[c]]))};
-  const total=ADM_COLS.reduce((s,c)=>s+ADM[c].length,0);
-  if(total===0){console.warn('[AR] admAutoBackupDownload: all collections empty, skip download');return;}
+  // ใช้ data[] เป็น fallback ถ้า ADM[] ยังไม่ได้โหลด (เช่น Firebase-only, localStorage ว่าง)
+  const src={
+    companies: ADM.companies.length ? ADM.companies : (data.companies||[]),
+    quotations: ADM.quotations.length ? ADM.quotations : (data.quotations||[]),
+    invoices:   ADM.invoices.length   ? ADM.invoices   : (data.invoices||[]),
+    billings:   ADM.billings.length   ? ADM.billings   : (data.billings||[])
+  };
+  const total=ADM_COLS.reduce((s,c)=>s+src[c].length,0);
+  if(total===0){
+    console.warn('[AR] admAutoBackupDownload: no data in ADM or data[] — skip download');
+    admToast('⚠️ ไม่มีข้อมูลสำหรับ backup (ข้อมูลว่าง)','info');
+    return;
+  }
+  const p={exportedAt:new Date().toISOString(),autoBackup:true,version:2,...src};
   const blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob), a=document.createElement('a');
+  const url=URL.createObjectURL(blob);
   const ts=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
-  a.href=url; a.download=`ar-auto-backup-${ts}.json`; a.click();
-  URL.revokeObjectURL(url);
+  const a=document.createElement('a');
+  a.href=url; a.download=`ar-auto-backup-${ts}.json`;
+  document.body.appendChild(a); // ต้อง append ก่อน click ถึงจะ trigger download ได้ใน browser
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000); // ให้เวลา browser เริ่ม download ก่อน revoke URL
   console.log(`[AR] Auto backup downloaded: ${total} records`);
 }
 
