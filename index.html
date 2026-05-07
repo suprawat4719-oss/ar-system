@@ -1,10 +1,13 @@
-<!-- AR SYSTEM v2.0 — 2026-04-28 23:55 | แก้เลขบัญชีไม่ชิดขวา, แก้เส้นลายเซ็น -->
+<!-- AR SYSTEM v2.1 — 2026-05-07
+     changelog: แก้บั๊ก data loss — ถอด autoPush ออกจาก exit events, เพิ่ม safety guard (skip empty array),
+     เปลี่ยนเป็น safe upsert (ไม่ delete-all), auto backup ก่อน clear, เตือนเมื่อ Firebase ว่าง+local มีข้อมูล
+-->
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.0 — 2026-04-28 23:55</title>
+<title>AR System | v2.1 — 2026-05-07</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -429,7 +432,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.0 — 2026-04-28 03:41</div>
+    <div class="logo-sub">v2.1 — 2026-05-07</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -444,6 +447,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <button class="nav-item" onclick="goPage('report-receipt')" id="nav-report-receipt"><span class="nav-icon">📅</span>เงินรับรายเดือน</button>
   <div class="nav-section">ตั้งค่า</div>
   <button class="nav-item" onclick="goPage('companies')" id="nav-companies"><span class="nav-icon">🏛</span>จัดการบริษัท</button>
+  <button class="nav-item" onclick="goPage('settings')" id="nav-settings"><span class="nav-icon">⚙️</span>ตั้งค่าระบบ</button>
   <div class="sidebar-spacer"></div>
   <div class="sync-bar">
     <div class="sync-status">
@@ -451,10 +455,11 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
       <span id="sync-status-text">กำลังตรวจสอบ...</span>
     </div>
     <div class="sync-btns">
-      <button class="sync-btn pull" id="btn-pull" onclick="syncPull()" disabled title="ดึงข้อมูลจาก Firebase → เครื่อง">⬇ Pull</button>
+      <button class="sync-btn pull" id="btn-pull" onclick="syncPull()" disabled title="บังคับดึงข้อมูลจาก Firebase → เครื่อง (ปกติ Live sync จัดการให้อัตโนมัติ)">⬇ Force Pull</button>
       <button class="sync-btn push" id="btn-push" onclick="syncPush()" disabled title="อัปโหลดข้อมูลเครื่อง → Firebase">⬆ Push</button>
     </div>
     <div class="sync-last" id="sync-last-time">—</div>
+    <div id="data-source-label" style="font-size:9px;color:rgba(255,255,255,.35);font-family:'IBM Plex Mono',monospace;padding-left:2px;min-height:12px"></div>
   </div>
 </aside>
 
@@ -530,6 +535,33 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-doc')">ปิด</button>
       <button class="btn btn-outline" onclick="printCurrentDoc()">🖨 พิมพ์</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── CONFLICT MODAL (Optimistic Lock) ── -->
+<div class="overlay" id="modal-conflict">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title" style="color:var(--red)">⚠️ ข้อมูลขัดแย้ง</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;word-break:break-all" id="conflict-col-text"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+      <div style="background:var(--accent-light);border:1px solid var(--accent-mid);border-radius:var(--r);padding:12px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--accent);text-transform:uppercase;margin-bottom:6px">เวอร์ชันของฉัน</div>
+        <div style="font-size:12px;color:var(--ink2)">แก้โดย: <strong id="conflict-local-by"></strong></div>
+        <div style="font-size:11px;color:var(--ink4);margin-top:3px" id="conflict-local-at"></div>
+      </div>
+      <div style="background:var(--yellow-light);border:1px solid var(--yellow-mid);border-radius:var(--r);padding:12px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--yellow);text-transform:uppercase;margin-bottom:6px">เวอร์ชัน Firebase</div>
+        <div style="font-size:12px;color:var(--ink2)">แก้โดย: <strong id="conflict-remote-by"></strong></div>
+        <div style="font-size:11px;color:var(--ink4);margin-top:3px" id="conflict-remote-at"></div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <button class="btn btn-ghost btn-sm" id="conflict-btn-cancel">✕ ยกเลิก</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" id="conflict-btn-theirs" style="border-color:var(--yellow);color:var(--yellow)">⬇ ใช้ของเครื่องอื่น</button>
+        <button class="btn btn-primary btn-sm" id="conflict-btn-mine">✅ ใช้ของฉัน (overwrite)</button>
+      </div>
     </div>
   </div>
 </div>
@@ -830,36 +862,20 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 // ══════════════════════════════════════════════════════
 let companies = [];
 let _currentPage = 'dashboard';
+const LS_DEVICE_NAME = 'ar_device_name';
+let _deviceName = localStorage.getItem(LS_DEVICE_NAME) || 'เครื่องนี้';
 let _payingInvoice = null;
 let _convertDoc = null;
 let _printDocData = null;
 let _rowCount = 0;
 
-// DEMO DATA (ใช้เมื่อไม่มี Firebase)
-const DEMO = {
-  companies: [
-    {id:'c1',name:'บริษัท เอ จำกัด',nameEn:'A Co., Ltd.',taxId:'1234567890123',address:'123 ถ.สุขุมวิท กรุงเทพฯ 10110',phone:'02-111-1111',prefix:'A',hasVat:true},
-    {id:'c2',name:'บริษัท บี จำกัด',nameEn:'B Co., Ltd.',taxId:'9876543210987',address:'456 ถ.เชียงใหม่ เชียงใหม่ 50000',phone:'053-222-2222',prefix:'B',hasVat:false},
-  ],
-  quotations: [
-    {id:'q1',docNumber:'QT-A-256801-001',docDate:'2025-01-10',docValid:'2025-02-10',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',custTax:'1111111111111',items:[{desc:'บริการที่ปรึกษา',qty:1,unit:'งาน',price:50000,total:50000}],hasVat:true,subtotal:50000,vat:3500,wht:0,total:53500,status:'approved',linkedInvoice:'inv1'},
-    {id:'q2',docNumber:'QT-B-256802-001',docDate:'2025-02-05',docValid:'2025-03-05',companyId:'c2',companyName:'บริษัท บี จำกัด',custName:'บริษัท อีเอฟ จำกัด',custTax:'2222222222222',items:[{desc:'ออกแบบระบบ',qty:1,unit:'โครงการ',price:120000,total:120000}],hasVat:false,subtotal:120000,vat:0,wht:0,total:120000,status:'sent',linkedInvoice:null},
-  ],
-  invoices: [
-    {id:'inv1',docNumber:'INV-A-256801-001',docDate:'2025-01-15',docDue:'2025-02-15',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',custTax:'1111111111111',items:[{desc:'บริการที่ปรึกษา',qty:1,unit:'งาน',price:50000,total:50000}],hasVat:true,subtotal:50000,vat:3500,wht:0,total:53500,paidAmount:30000,status:'partial',linkedQt:'q1',linkedBilling:null,payments:[{id:'p1',date:'2025-01-20',amount:30000,method:'โอนธนาคาร',note:'งวดแรก'}]},
-    {id:'inv2',docNumber:'INV-A-256802-001',docDate:'2025-02-01',docDue:'2025-03-01',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ลูกค้า จีเอช',custTax:'3333333333333',items:[{desc:'ค่าบริการรายเดือน',qty:2,unit:'เดือน',price:15000,total:30000}],hasVat:true,subtotal:30000,vat:2100,wht:0,total:32100,paidAmount:0,status:'sent',linkedQt:null,linkedBilling:null,payments:[]},
-    {id:'inv3',docNumber:'INV-B-256801-001',docDate:'2025-01-20',docDue:'2025-02-20',companyId:'c2',companyName:'บริษัท บี จำกัด',custName:'บริษัท อีเอฟ จำกัด',custTax:'2222222222222',items:[{desc:'ออกแบบโลโก้',qty:1,unit:'งาน',price:8000,total:8000}],hasVat:false,subtotal:8000,vat:0,wht:0,total:8000,paidAmount:8000,status:'paid',linkedQt:null,linkedBilling:null,payments:[{id:'p2',date:'2025-02-01',amount:8000,method:'เงินสด',note:''}]},
-  ],
-  billings: [
-    {id:'bl1',docNumber:'BL-A-256801-001',docDate:'2025-01-16',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',invoiceIds:['inv1'],total:53500,status:'sent',linkedInvoice:'inv1'},
-  ],
-};
+// DEMO DATA ถูกลบออกแล้ว — production mode ใช้ Firebase / localStorage เท่านั้น
 
 let data = {
-  companies: [...DEMO.companies],
-  quotations: [...DEMO.quotations],
-  invoices: [...DEMO.invoices],
-  billings: [...DEMO.billings],
+  companies: [],
+  quotations: [],
+  invoices: [],
+  billings: [],
 };
 
 // ══════════════════════════════════════════════════════
@@ -881,10 +897,10 @@ try {
     if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     _fbdb = firebase.firestore();
   }
-} catch(e) { console.warn('Firebase not available, using demo data'); }
+} catch(e) { console.warn('Firebase not available, using localStorage/empty data'); }
 
 // ══════════════════════════════════════════════════════
-// STORAGE LAYER  (Firebase → localStorage → DEMO)
+// STORAGE LAYER  (Firebase → localStorage → [])
 // ══════════════════════════════════════════════════════
 const LS_PREFIX = 'ar_sys_';
 
@@ -898,22 +914,28 @@ function lsLoad(col) {
 function lsSave(col, arr) {
   try { localStorage.setItem(LS_PREFIX + col, JSON.stringify(arr)); } catch(e){}
 }
-function lsNewId() { return 'ls-' + Date.now() + '-' + Math.random().toString(36).slice(2,6); }
+
 
 // ── Firebase helpers (only when _fbdb available) ──
 async function fbLoad(col) {
   if(!_fbdb) return null;
   try {
     const snap = await _fbdb.collection(col).get();
-    return snap.docs.map(d=>({id:d.id,...d.data()}));
+    return snap.docs.map(d => {
+      const dd = d.data();
+      if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+      if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
+      delete dd._syncedAt;
+      return {id: d.id, ...dd};
+    });
   } catch(e) { return null; }
 }
-async function fbAdd(col, d) {
-  if(!_fbdb) return null;
+async function fbSet(col, id, d) {
+  if(!_fbdb) return false;
   try {
-    const ref = await _fbdb.collection(col).add({...d, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
-    return ref.id;
-  } catch(e) { return null; }
+    await _fbdb.collection(col).doc(id).set({...d, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    return true;
+  } catch(e) { return false; }
 }
 async function fbUpdate(col, id, d) {
   if(!_fbdb || !id) return false;
@@ -923,42 +945,133 @@ async function fbDelete(col, id) {
   if(!_fbdb || !id) return false;
   try { await _fbdb.collection(col).doc(id).delete(); return true; } catch(e){ return false; }
 }
+async function fbGetDoc(col, id) {
+  if(!_fbdb || !id) return null;
+  try {
+    const snap = await _fbdb.collection(col).doc(id).get();
+    if(!snap.exists) return null;
+    const dd = snap.data();
+    if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+    if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
+    delete dd._syncedAt;
+    return {id: snap.id, ...dd};
+  } catch(e) { return null; }
+}
 
-// ── Unified CRUD (Firebase first, localStorage fallback) ──
-async function storeLoad(col, demoFallback) {
-  // 1) Firebase
-  const fbRes = await fbLoad(col);
-  if(fbRes !== null) { lsSave(col, fbRes); return fbRes; }
-  // 2) localStorage
-  const lsRes = lsLoad(col);
-  if(lsRes !== null) return lsRes;
-  // 3) DEMO data (first run only — save to localStorage so edits persist)
-  lsSave(col, demoFallback);
-  return [...demoFallback];
+// ── Unified CRUD — Data Source Priority Rule ──
+async function storeLoad(col) {
+  const fbRes = await fbLoad(col); // null = Firebase offline/error
+  const lsRes = lsLoad(col) || [];
+
+  // Firebase unavailable
+  if(fbRes === null) {
+    _setDsLabel('💾 ใช้ข้อมูลจากเครื่องนี้');
+    return lsRes;
+  }
+
+  // Firebase empty, local has data → ห้ามทับ local
+  if(fbRes.length === 0 && lsRes.length > 0) {
+    _setDsLabel('⚠️ Firebase ว่าง ใช้ local');
+    return lsRes;
+  }
+
+  // ทั้งคู่มีข้อมูล → compare updatedAt
+  if(fbRes.length > 0 && lsRes.length > 0) {
+    const fbMax = _maxUpdatedAt(fbRes);
+    const lsMax = _maxUpdatedAt(lsRes);
+    if(lsMax > fbMax) {
+      // local ใหม่กว่า → ถามก่อน push
+      _setDsLabel('⏳ local ใหม่กว่า รอผู้ใช้ยืนยัน');
+      const fmtISO = iso => iso ? iso.slice(0,16).replace('T',' ') : '?';
+      const doPush = confirm(
+        `⚠️ ข้อมูลในเครื่องนี้ (${col}) ใหม่กว่า Firebase\n` +
+        `เครื่องนี้: ${fmtISO(lsMax)}\nFirebase:   ${fmtISO(fbMax)}\n\n` +
+        `ต้องการ Push ข้อมูลเครื่องนี้ขึ้น Firebase หรือไม่?\n` +
+        `(OK = Push | Cancel = ใช้ Firebase โดยไม่ Push)`
+      );
+      if(doPush && _fbdb) {
+        for(let i = 0; i < lsRes.length; i += 400) {
+          const batch = _fbdb.batch();
+          lsRes.slice(i, i+400).forEach(doc => {
+            const {id, ...rest} = doc;
+            batch.set(_fbdb.collection(col).doc(id), {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge:true});
+          });
+          await batch.commit();
+        }
+        toast(`Push ${col} สำเร็จ`, 'ok');
+        lsSave(col, lsRes);
+        _setDsLabel('☁️ ใช้ข้อมูลจาก Firebase');
+        return lsRes;
+      }
+    }
+  }
+
+  // Firebase ใหม่กว่าหรือเท่ากัน → ใช้ Firebase
+  if(fbRes.length > 0) lsSave(col, fbRes);
+  _setDsLabel('☁️ ใช้ข้อมูลจาก Firebase');
+  return fbRes;
 }
 
 async function storeAdd(col, d) {
-  // Firebase
-  const fbId = await fbAdd(col, d);
-  if(fbId) return fbId;
-  // localStorage
-  const id = lsNewId();
+  _lastLocalWrite = Date.now();
+  const id = uid();
+  const enriched = {...d, updatedAt: new Date().toISOString(), updatedBy: _deviceName};
+  const fbOk = await fbSet(col, id, enriched);
+  if(_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase ตอบกลับผิดพลาด', 'err'); return null; }
   const arr = lsLoad(col) || [];
-  arr.push({id, ...d});
+  arr.push({id, ...enriched});
   lsSave(col, arr);
   return id;
 }
 
 async function storeUpdate(col, id, d) {
-  // Firebase
-  const ok = await fbUpdate(col, id, d);
-  // Always update localStorage copy
+  _lastLocalWrite = Date.now();
+  const updates = {...d, updatedAt: new Date().toISOString(), updatedBy: _deviceName};
+
+  // ── Optimistic lock: ตรวจ updatedAt บน Firebase ก่อน write ──
+  const localDoc = (data[col] || []).find(x => x.id === id);
+  const localUpdatedAt = localDoc?.updatedAt ?? null;
+  if(_fbdb && localUpdatedAt) {
+    const remoteDoc = await fbGetDoc(col, id);
+    const remoteUpdatedAt = remoteDoc?.updatedAt ?? null;
+    if(remoteDoc && remoteUpdatedAt && remoteUpdatedAt !== localUpdatedAt) {
+      const choice = await showConflictDialog(col, localDoc, remoteDoc);
+      if(choice === 'cancel') return false;
+      if(choice === 'theirs') {
+        // ใช้ของเครื่องอื่น: อัปเดต local ด้วย remote version, ยกเลิก write ของเรา
+        if(data[col]) {
+          const j = data[col].findIndex(x => x.id === id);
+          if(j >= 0) Object.assign(data[col][j], remoteDoc);
+          if(col === 'companies') companies = data.companies;
+        }
+        const arr2 = lsLoad(col) || [];
+        const k = arr2.findIndex(x => x.id === id);
+        if(k >= 0) { arr2[k] = remoteDoc; lsSave(col, arr2); }
+        toast(`ใช้ข้อมูลจาก ${remoteDoc.updatedBy || 'เครื่องอื่น'} แล้ว`, 'info');
+        goPage(_currentPage);
+        return false;
+      }
+      // 'mine': ดำเนินต่อ (force overwrite)
+    }
+  }
+
+  // Firebase update
+  const fbOk = await fbUpdate(col, id, updates);
+  if(_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase ตอบกลับผิดพลาด', 'err'); return false; }
+  // localStorage + in-memory (ให้ syncLS() ที่ caller เรียกได้ updatedAt ถูกต้อง)
   const arr = lsLoad(col) || [];
   const i = arr.findIndex(x => x.id === id);
-  if(i >= 0) { arr[i] = {...arr[i], ...d}; lsSave(col, arr); }
+  if(i >= 0) { arr[i] = {...arr[i], ...updates}; lsSave(col, arr); }
+  if(data[col]) {
+    const j = data[col].findIndex(x => x.id === id);
+    if(j >= 0) Object.assign(data[col][j], updates);
+    if(col === 'companies') companies = data.companies;
+  }
+  return true;
 }
 
 async function storeDelete(col, id) {
+  _lastLocalWrite = Date.now();
   await fbDelete(col, id);
   const arr = (lsLoad(col) || []).filter(x => x.id !== id);
   lsSave(col, arr);
@@ -966,6 +1079,43 @@ async function storeDelete(col, id) {
 
 // ── Sync entire in-memory collection back to localStorage ──
 function syncLS(col, arr) { lsSave(col, arr); }
+
+// ══════════════════════════════════════════════════════
+// LOCAL BACKUP HELPERS — BUG #2/4 แก้: สำรองข้อมูลใน localStorage ก่อน destructive ops
+// เก็บล่าสุด MAX_LOCAL_BACKUPS ชุด, key = ar_backup_{timestamp}
+// ══════════════════════════════════════════════════════
+const MAX_LOCAL_BACKUPS = 5;
+const LS_BACKUP_PREFIX = 'ar_backup_';
+
+function saveLocalBackup() {
+  try {
+    const ts = Date.now();
+    const payload = {
+      savedAt: new Date(ts).toISOString(),
+      companies: data.companies || [],
+      quotations: data.quotations || [],
+      invoices: data.invoices || [],
+      billings: data.billings || []
+    };
+    const total = payload.companies.length + payload.quotations.length + payload.invoices.length + payload.billings.length;
+    if (total === 0) return; // ไม่ backup ถ้าข้อมูลว่างอยู่แล้ว
+    localStorage.setItem(LS_BACKUP_PREFIX + ts, JSON.stringify(payload));
+    // ตัด backup เก่าออก เหลือไว้แค่ MAX_LOCAL_BACKUPS ชุด
+    const keys = Object.keys(localStorage).filter(k => k.startsWith(LS_BACKUP_PREFIX)).sort();
+    while (keys.length > MAX_LOCAL_BACKUPS) localStorage.removeItem(keys.shift());
+    console.log(`[AR] Local backup saved: ${total} records (ts=${ts})`);
+  } catch(e) { console.warn('[AR] saveLocalBackup failed:', e); }
+}
+
+function listLocalBackups() {
+  return Object.keys(localStorage)
+    .filter(k => k.startsWith(LS_BACKUP_PREFIX))
+    .sort().reverse()
+    .map(k => {
+      try { const v = localStorage.getItem(k); return { key: k, sizeKB: (v.length/1024).toFixed(1), ...JSON.parse(v) }; }
+      catch(e) { return null; }
+    }).filter(Boolean);
+}
 
 // ══════════════════════════════════════════════════════
 // SYNC ENGINE — Firebase ↔ localStorage
@@ -992,9 +1142,7 @@ function syncCheckConnection() {
     syncUpdateUI('', 'localStorage เท่านั้น');
     return;
   }
-  syncUpdateUI('online', 'Firebase พร้อม');
-  document.getElementById('btn-pull').disabled = false;
-  document.getElementById('btn-push').disabled = false;
+  startRealtimeListeners(); // idempotent — ไม่สร้าง listener ซ้ำถ้ามีอยู่แล้ว
 }
 
 // ── PULL: Firebase → localStorage + in-memory ──
@@ -1003,20 +1151,64 @@ async function syncPull() {
   syncUpdateUI('syncing', 'กำลัง Pull...');
   try {
     let totalDocs = 0;
+    const emptyFromFb = [];
     for(const col of SYNC_COLS) {
       const snap = await _fbdb.collection(col).get();
-      const arr = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      // remove Firestore timestamps (not serializable cleanly)
-      arr.forEach(doc => { if(doc.createdAt?.toDate) doc.createdAt = doc.createdAt.toDate().toISOString(); });
+      const remoteCount = snap.docs.length;
+      const arr = snap.docs.map(d => {
+        const dd = d.data();
+        if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+        delete dd._syncedAt;
+        return {id: d.id, ...dd};
+      });
+      const localArr = lsLoad(col) || [];
+      console.log(`[AR] syncPull: ${col} — remote=${remoteCount}, local=${localArr.length}`);
+      // safety guard: ถ้า Firebase ว่างแต่ localStorage มีข้อมูล → ห้าม overwrite local ด้วย []
+      if(arr.length === 0 && localArr.length > 0) {
+        console.warn(`[AR] syncPull: skip ${col} — Firebase empty but local has ${localArr.length} docs`);
+        emptyFromFb.push({ col, localCount: localArr.length });
+        data[col] = localArr;
+        totalDocs += localArr.length;
+        continue;
+      }
       lsSave(col, arr);
       data[col] = arr;
       totalDocs += arr.length;
     }
     companies = data.companies;
     const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
-    syncUpdateUI('online', 'Pull สำเร็จ ✅', now);
-    toast(`Pull สำเร็จ — ${totalDocs} รายการ`, 'ok');
-    goPage(_currentPage); // refresh current page
+    if(emptyFromFb.length > 0) {
+      const details = emptyFromFb.map(w => `• ${w.col}: ${w.localCount} รายการใน localStorage`).join('\n');
+      const restore = confirm(
+        `⚠️ Firebase ว่าง แต่ localStorage มีข้อมูล:\n${details}\n\n` +
+        `ต้องการ Push ข้อมูลจาก localStorage กลับขึ้น Firebase หรือไม่?\n` +
+        `(กด Cancel เพื่อดูข้อมูลก่อน แล้วกด Push เองในภายหลัง)`
+      );
+      if(restore) {
+        syncUpdateUI('syncing', 'กำลัง Restore...');
+        for(const { col } of emptyFromFb) {
+          const localArr = lsLoad(col) || [];
+          for(let i = 0; i < localArr.length; i += 400) {
+            const chunk = localArr.slice(i, i + 400);
+            const batch = _fbdb.batch();
+            chunk.forEach(doc => {
+              const { id, ...rest } = doc;
+              batch.set(_fbdb.collection(col).doc(id), { ...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            });
+            await batch.commit();
+          }
+        }
+        syncUpdateUI('online', 'Pull + Restore สำเร็จ ✅', now);
+        toast(`Pull สำเร็จ — ${totalDocs} รายการ (Restore แล้ว)`, 'ok');
+      } else {
+        syncUpdateUI('online', 'Pull สำเร็จ ⚠️', now);
+        toast(`⚠️ Firebase ว่าง — ใช้ข้อมูล localStorage (${totalDocs} รายการ)`, 'info');
+      }
+    } else {
+      syncUpdateUI('online', 'Pull สำเร็จ ✅', now);
+      toast(`Pull สำเร็จ — ${totalDocs} รายการ`, 'ok');
+    }
+    goPage(_currentPage);
   } catch(e) {
     syncUpdateUI('error', 'Pull ล้มเหลว ❌');
     toast('Pull ล้มเหลว: ' + e.message, 'err');
@@ -1025,37 +1217,67 @@ async function syncPull() {
 }
 window.syncPull = syncPull;
 
-// ── PUSH: localStorage → Firebase (set ทุก doc) ──
+// ── PUSH: localStorage → Firebase (safe upsert เท่านั้น — ไม่ delete doc ใดๆ บน Firebase) ──
 async function syncPush() {
   if(!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
-  if(!confirm('อัปโหลดข้อมูลในเครื่องทั้งหมดขึ้น Firebase?\nข้อมูลที่อยู่บน Firebase จะถูกแทนที่')) return;
+  if(!confirm('⬆ Push ข้อมูลในเครื่องขึ้น Firebase\n\nจะ upsert เฉพาะ doc ที่มีในเครื่อง — ไม่ลบ doc ที่อยู่บน Firebase\nตรวจสอบข้อมูลก่อนกด OK')) return;
   syncUpdateUI('syncing', 'กำลัง Push...');
   try {
-    let totalDocs = 0;
+    saveLocalBackup(); // backup local ก่อนทุกครั้ง
+    let totalDocs = 0, skipped = [], conflicts = 0;
     for(const col of SYNC_COLS) {
       const arr = lsLoad(col) || data[col] || [];
-      // ลบ collection เก่าทั้งหมดก่อน (batch delete)
-      const snapOld = await _fbdb.collection(col).get();
-      const batchDel = _fbdb.batch();
-      snapOld.docs.forEach(d => batchDel.delete(d.ref));
-      if(snapOld.docs.length > 0) await batchDel.commit();
-      // เขียนใหม่ทีละ 500 (Firestore batch limit)
-      const chunks = [];
-      for(let i = 0; i < arr.length; i += 400) chunks.push(arr.slice(i, i+400));
-      for(const chunk of chunks) {
+      // safety guard: ถ้า local ว่าง → ข้ามทั้ง collection ห้ามแตะ Firebase เด็ดขาด
+      if(arr.length === 0) {
+        console.warn(`[AR] syncPush: skip ${col} — local array empty`);
+        skipped.push(`${col}(ว่าง)`); continue;
+      }
+      // ตรวจ count ที่ผิดปกติ: local น้อยกว่า remote เกิน 80% และ remote มีมากกว่า 10 docs
+      const snapRemote = await _fbdb.collection(col).get();
+      const remoteCount = snapRemote.docs.length;
+      console.log(`[AR] syncPush: ${col} — local=${arr.length}, remote=${remoteCount}`);
+      if(remoteCount > 10 && arr.length < remoteCount * 0.2) {
+        const warn = `${col}: เครื่องมี ${arr.length} รายการ แต่ Firebase มี ${remoteCount} รายการ`;
+        console.warn(`[AR] syncPush suspicious count: ${warn}`);
+        if(!confirm(`⚠️ ข้อมูลไม่สมดุล — ${warn}\n\nจะ upsert เฉพาะ doc ในเครื่อง (ไม่ลบ doc บน Firebase)\nยืนยัน Push ${col} ต่อหรือไม่?`)) {
+          skipped.push(col); continue;
+        }
+      }
+      // build remote updatedAt map: ห้ามเอา local เก่าทับ remote ใหม่
+      const remoteMap = {};
+      snapRemote.docs.forEach(d => {
+        const dd = d.data();
+        let at = dd.updatedAt;
+        if(at?.toDate) at = at.toDate().toISOString();
+        remoteMap[d.id] = at || '';
+      });
+      const toPush = arr.filter(doc => {
+        const remoteAt = remoteMap[doc.id] || '';
+        const localAt  = doc.updatedAt   || '';
+        if(remoteAt && remoteAt > localAt) {
+          console.log(`[AR] syncPush: conflict skip ${col}/${doc.id} — remote ${remoteAt} > local ${localAt}`);
+          conflicts++;
+          return false;
+        }
+        return true;
+      });
+      // safe upsert with merge:true — ไม่ delete doc ใดๆ บน Firebase
+      for(let i = 0; i < toPush.length; i += 400) {
+        const chunk = toPush.slice(i, i + 400);
         const batch = _fbdb.batch();
         chunk.forEach(doc => {
           const {id, ...rest} = doc;
-          const ref = _fbdb.collection(col).doc(id);
-          batch.set(ref, {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()});
+          batch.set(_fbdb.collection(col).doc(id), {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge: true});
         });
         await batch.commit();
       }
-      totalDocs += arr.length;
+      totalDocs += toPush.length;
     }
     const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+    const skipMsg     = skipped.length   ? ` (ข้าม: ${skipped.join(', ')})`          : '';
+    const conflictMsg = conflicts > 0    ? ` ⚠️ ข้าม remote ใหม่กว่า: ${conflicts} doc` : '';
     syncUpdateUI('online', 'Push สำเร็จ ✅', now);
-    toast(`Push สำเร็จ — ${totalDocs} รายการ`, 'ok');
+    toast(`Push สำเร็จ — ${totalDocs} รายการ${skipMsg}${conflictMsg}`, 'ok');
   } catch(e) {
     syncUpdateUI('error', 'Push ล้มเหลว ❌');
     toast('Push ล้มเหลว: ' + e.message, 'err');
@@ -1064,9 +1286,115 @@ async function syncPush() {
 }
 window.syncPush = syncPush;
 
-async function loadCompanies() {
-  const res = await storeLoad('companies', DEMO.companies);
-  data.companies = res; companies = res;
+// ══════════════════════════════════════════════════════
+// REAL-TIME LISTENERS — onSnapshot (multi-device sync)
+// ══════════════════════════════════════════════════════
+const _listeners = {};          // col → unsubscribe fn
+const _snapFirstDone = {};      // col → bool: first snapshot received
+const _snapDebounce = {};       // col → setTimeout id
+let _lastLocalWrite = 0;        // ms — suppress echo re-render within 2.5s of our own write
+
+// Pages safe to re-render without losing user input
+const _LIVE_PAGES = new Set(['dashboard','quotations','invoices','billing',
+  'payments','report-ar','report-co','report-aging','report-receipt','companies']);
+
+function _applySnapshot(col, snap) {
+  const arr = snap.docs.map(d => {
+    const dd = d.data();
+    if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+    if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
+    delete dd._syncedAt;
+    return {id: d.id, ...dd};
+  });
+
+  const isFirst = !_snapFirstDone[col];
+  _snapFirstDone[col] = true;
+
+  // Safety guard on first snapshot: Firebase empty but local has data → keep local
+  if(isFirst && arr.length === 0) {
+    const localArr = lsLoad(col) || [];
+    if(localArr.length > 0) {
+      console.warn(`[AR] onSnapshot first ${col}: Firebase empty, keeping local (${localArr.length})`);
+      data[col] = localArr;
+      if(col === 'companies') companies = localArr;
+      return;
+    }
+  }
+
+  console.log(`[AR] onSnapshot ${col}: ${arr.length} docs (first=${isFirst}, fromCache=${snap.metadata.fromCache})`);
+  data[col] = arr;
+  if(col === 'companies') companies = arr;
+  lsSave(col, arr);
+
+  // ตรวจว่าเป็นการอัปเดตจากเครื่องอื่น (ไม่ใช่ echo จาก write ของตัวเอง)
+  const fromServer = !snap.metadata.fromCache && !snap.metadata.hasPendingWrites;
+  const isEcho = (Date.now() - _lastLocalWrite) < 2500;
+  if(!isFirst && fromServer && !isEcho) {
+    const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+    syncUpdateUI('online', '🔄 Live sync ✅', now);
+    toast(`🔄 ${col} อัปเดตจากเครื่องอื่น`, 'info');
+    if(_LIVE_PAGES.has(_currentPage)) goPage(_currentPage);
+  }
+}
+
+function startRealtimeListeners() {
+  if(!_fbdb) return;
+  SYNC_COLS.forEach(col => {
+    if(_listeners[col]) return; // already listening
+    _snapFirstDone[col] = false;
+    _listeners[col] = _fbdb.collection(col).onSnapshot(
+      snap => {
+        clearTimeout(_snapDebounce[col]);
+        _snapDebounce[col] = setTimeout(() => _applySnapshot(col, snap), 350);
+      },
+      err => {
+        console.warn(`[AR] onSnapshot ${col} error:`, err.message);
+        syncUpdateUI('error', 'Listener ขาด — กด Force Pull');
+      }
+    );
+    console.log(`[AR] listener started: ${col}`);
+  });
+  syncUpdateUI('online', 'Live sync พร้อม 🟢');
+  const btnPull = document.getElementById('btn-pull');
+  const btnPush = document.getElementById('btn-push');
+  if(btnPull) btnPull.disabled = false;
+  if(btnPush) btnPush.disabled = false;
+}
+window.startRealtimeListeners = startRealtimeListeners;
+
+function stopRealtimeListeners() {
+  SYNC_COLS.forEach(col => {
+    if(_listeners[col]) { _listeners[col](); delete _listeners[col]; }
+    clearTimeout(_snapDebounce[col]);
+    _snapFirstDone[col] = false;
+  });
+  console.log('[AR] listeners stopped');
+}
+window.stopRealtimeListeners = stopRealtimeListeners;
+
+// ══════════════════════════════════════════════════════
+// CONFLICT DIALOG — Optimistic Locking
+// ══════════════════════════════════════════════════════
+function showConflictDialog(col, localDoc, remoteDoc) {
+  return new Promise(resolve => {
+    const fmtDt = iso => {
+      if(!iso) return '—';
+      try { return new Date(iso).toLocaleString('th-TH', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+      catch(e) { return iso; }
+    };
+    document.getElementById('conflict-col-text').textContent =
+      `พบการแก้ไขขัดแย้งใน collection "${col}" — doc id: ${localDoc?.id || ''}`;
+    document.getElementById('conflict-local-by').textContent  = localDoc?.updatedBy  || 'เครื่องนี้';
+    document.getElementById('conflict-local-at').textContent  = fmtDt(localDoc?.updatedAt);
+    document.getElementById('conflict-remote-by').textContent = remoteDoc?.updatedBy || 'ไม่ทราบ';
+    document.getElementById('conflict-remote-at').textContent = fmtDt(remoteDoc?.updatedAt);
+    const el = document.getElementById('modal-conflict');
+    el.classList.add('show');
+    const done = choice => { el.classList.remove('show'); resolve(choice); };
+    document.getElementById('conflict-btn-mine').onclick   = () => done('mine');
+    document.getElementById('conflict-btn-theirs').onclick = () => done('theirs');
+    document.getElementById('conflict-btn-cancel').onclick = () => done('cancel');
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -1083,7 +1411,7 @@ function goPage(p) {
     billing:'ใบวางบิล',payments:'บันทึกรับชำระ',
     'report-ar':'ค้างชำระรายลูกค้า','report-co':'ค้างชำระรายบริษัท',
     'report-aging':'Aging Report','report-receipt':'เงินรับรายเดือน',
-    companies:'จัดการบริษัท','new-qt':'สร้างใบเสนอราคา',
+    companies:'จัดการบริษัท',settings:'ตั้งค่าระบบ','new-qt':'สร้างใบเสนอราคา',
     'new-inv':'สร้างใบแจ้งหนี้','new-bl':'สร้างใบวางบิล'
   };
   document.getElementById('page-title').textContent = titles[p]||p;
@@ -1094,6 +1422,7 @@ function goPage(p) {
     dashboard: renderDashboard, quotations: renderQuotations,
     invoices: renderInvoices, billing: renderBilling,
     payments: renderPayments, companies: renderCompanies,
+    settings: renderSettings,
     'report-ar': renderReportAR, 'report-co': renderReportCO,
     'report-aging': renderReportAging, 'report-receipt': renderReportReceipt,
     'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
@@ -1293,7 +1622,8 @@ function refreshQTTable() {
 window.refreshQTTable=refreshQTTable;
 async function updateQTStatus(id,status) {
   const qt=data.quotations.find(q=>q.id===id); if(!qt) return;
-  qt.status=status; await storeUpdate('quotations',id,{status});
+  const ok=await storeUpdate('quotations',id,{status}); if(!ok) return;
+  qt.status=status;
   syncLS('quotations', data.quotations);
   refreshQTTable(); toast('อัพเดทสถานะเรียบร้อย','ok');
 }
@@ -1363,8 +1693,8 @@ async function saveEditQT(id) {
     status:document.getElementById('eqt-status').value,custName:document.getElementById('eqt-cust').value,
     custTax:document.getElementById('eqt-tax').value,custContact:document.getElementById('eqt-contact').value,
     custAddress:document.getElementById('eqt-addr').value,note:document.getElementById('eqt-note').value};
-  Object.assign(q,d);
-  await storeUpdate('quotations',id,d); syncLS('quotations',data.quotations);
+  const ok=await storeUpdate('quotations',id,d); if(!ok) return;
+  Object.assign(q,d); syncLS('quotations',data.quotations);
   document.getElementById('modal-edit-qt')?.remove();
   refreshQTTable(); toast('แก้ไขใบเสนอราคาเรียบร้อย','ok');
 }
@@ -1462,8 +1792,8 @@ async function saveEditINV(id) {
     custName:document.getElementById('einv-cust').value,custTax:document.getElementById('einv-tax').value,
     custContact:document.getElementById('einv-contact').value,custAddress:document.getElementById('einv-addr').value,
     note:document.getElementById('einv-note').value};
-  Object.assign(inv,d);
-  await storeUpdate('invoices',id,d); syncLS('invoices',data.invoices);
+  const ok=await storeUpdate('invoices',id,d); if(!ok) return;
+  Object.assign(inv,d); syncLS('invoices',data.invoices);
   document.getElementById('modal-edit-inv')?.remove();
   refreshINVTable(); toast('แก้ไขใบแจ้งหนี้เรียบร้อย','ok');
 }
@@ -1477,7 +1807,10 @@ async function deleteINV(id) {
   // unlink quotation
   if(inv.linkedQt) {
     const qt=data.quotations.find(q=>q.id===inv.linkedQt);
-    if(qt) { qt.linkedInvoice=null; qt.status='sent'; await storeUpdate('quotations',qt.id,{linkedInvoice:null,status:'sent'}); syncLS('quotations',data.quotations); }
+    if(qt) {
+      const ok=await storeUpdate('quotations',qt.id,{linkedInvoice:null,status:'sent'});
+      if(ok) { qt.linkedInvoice=null; qt.status='sent'; syncLS('quotations',data.quotations); }
+    }
   }
   data.invoices=data.invoices.filter(x=>x.id!==id);
   await storeDelete('invoices',id); syncLS('invoices',data.invoices);
@@ -1543,8 +1876,8 @@ window.refreshBLTable=refreshBLTable;
 
 async function updateBLStatus(id, status) {
   const bl=data.billings.find(b=>b.id===id); if(!bl) return;
+  const ok=await storeUpdate('billings',id,{status}); if(!ok) return;
   bl.status=status;
-  await storeUpdate('billings',id,{status});
   syncLS('billings',data.billings);
   toast('อัปเดตสถานะใบวางบิลเรียบร้อย','ok');
 }
@@ -1598,8 +1931,8 @@ window.editBL=editBL;
 async function saveEditBL(id) {
   const bl=data.billings.find(b=>b.id===id); if(!bl) return;
   const d={docDate:document.getElementById('ebl-date').value,status:document.getElementById('ebl-status').value,note:document.getElementById('ebl-note').value};
+  const ok=await storeUpdate('billings',id,d); if(!ok) return;
   Object.assign(bl,d);
-  await storeUpdate('billings',id,d);
   syncLS('billings',data.billings);
   document.getElementById('modal-edit-bl')?.remove();
   refreshBLTable(); toast('แก้ไขใบวางบิลเรียบร้อย','ok');
@@ -1947,9 +2280,9 @@ async function saveDoc(type) {
       note:document.getElementById('f-note')?.value,
       payMethod:getSelectedPayMethod(),
     };
-    const id=await storeAdd('billings',bl); bl.id=id||uid();
+    bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
-    for(const inv of invs){ inv.linkedBilling=bl.id; await storeUpdate('invoices',inv.id,{linkedBilling:bl.id}); }
+    for(const inv of invs){ const r=await storeUpdate('invoices',inv.id,{linkedBilling:bl.id}); if(r) inv.linkedBilling=bl.id; }
     syncLS('billings', data.billings); syncLS('invoices', data.invoices);
     toast('บันทึกใบวางบิลเรียบร้อย','ok'); goPage('billing'); return;
   }
@@ -1975,7 +2308,7 @@ async function saveDoc(type) {
     ...(type==='qt'?{docValid:document.getElementById('f-valid')?.value,linkedInvoice:null}:{}),
   };
   const col=type==='qt'?'quotations':'invoices';
-  const id=await storeAdd(col,docData); docData.id=id||uid();
+  docData.id=await storeAdd(col,docData);
   data[col==='quotations'?'quotations':'invoices'].push(docData);
   syncLS(col, data[col==='quotations'?'quotations':'invoices']);
   toast(`บันทึก${type==='qt'?'ใบเสนอราคา':'ใบแจ้งหนี้'}เรียบร้อย`,'ok');
@@ -2021,10 +2354,10 @@ async function confirmConvert() {
       subtotal:qt.subtotal, vat:qt.vat, wht:qt.wht, total:qt.total,
       paidAmount:0, status:'sent', payments:[], linkedQt:qt.id, linkedBilling:null, note:qt.note,
     };
-    const id=await storeAdd('invoices',inv); inv.id=id||uid();
+    inv.id=await storeAdd('invoices',inv);
     data.invoices.push(inv);
-    qt.linkedInvoice=inv.id; qt.status='approved';
-    await storeUpdate('quotations',qt.id,{linkedInvoice:inv.id,status:'approved'});
+    const okQt=await storeUpdate('quotations',qt.id,{linkedInvoice:inv.id,status:'approved'});
+    if(okQt) { qt.linkedInvoice=inv.id; qt.status='approved'; }
     syncLS('invoices', data.invoices); syncLS('quotations', data.quotations);
     toast('แปลงเป็นใบแจ้งหนี้เรียบร้อย','ok');
     closeModal('modal-convert'); goPage('invoices');
@@ -2036,10 +2369,10 @@ async function confirmConvert() {
       docDate:cvDate, companyId:inv.companyId, companyName:inv.companyName,
       custName:inv.custName, invoiceIds:[inv.id], total:remainAmount(inv), status:'sent',
     };
-    const id=await storeAdd('billings',bl); bl.id=id||uid();
+    bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
-    inv.linkedBilling=bl.id;
-    await storeUpdate('invoices',inv.id,{linkedBilling:bl.id});
+    const okInv=await storeUpdate('invoices',inv.id,{linkedBilling:bl.id});
+    if(okInv) inv.linkedBilling=bl.id;
     syncLS('billings', data.billings); syncLS('invoices', data.invoices);
     toast('แปลงเป็นใบวางบิลเรียบร้อย','ok');
     closeModal('modal-convert'); goPage('billing');
@@ -2084,11 +2417,13 @@ async function confirmPayment() {
   const pmt={ id:uid(), date:document.getElementById('pmt-date').value,
     amount:amt, method:document.getElementById('pmt-method').value,
     note:document.getElementById('pmt-note').value };
-  _payingInvoice.payments = [...(_payingInvoice.payments||[]), pmt];
-  _payingInvoice.paidAmount = (_payingInvoice.paidAmount||0)+amt;
-  const newSt = invStatus(_payingInvoice);
-  _payingInvoice.status = newSt;
-  await storeUpdate('invoices',_payingInvoice.id,{payments:_payingInvoice.payments,paidAmount:_payingInvoice.paidAmount,status:newSt});
+  const newPayments=[...(_payingInvoice.payments||[]),pmt];
+  const newPaidAmount=(_payingInvoice.paidAmount||0)+amt;
+  const tempInv={..._payingInvoice,payments:newPayments,paidAmount:newPaidAmount};
+  const newSt=invStatus(tempInv);
+  const updates={payments:newPayments,paidAmount:newPaidAmount,status:newSt};
+  const ok=await storeUpdate('invoices',_payingInvoice.id,updates); if(!ok) return;
+  Object.assign(_payingInvoice,updates);
   syncLS('invoices', data.invoices);
   closeModal('modal-payment');
   toast(`บันทึกรับชำระ ${fmt(amt)} บาท เรียบร้อย`,'ok');
@@ -2860,6 +3195,53 @@ async function deleteCo(id) {
 window.deleteCo=deleteCo;
 
 // ══════════════════════════════════════════════════════
+// SETTINGS PAGE
+// ══════════════════════════════════════════════════════
+function renderSettings() {
+  document.getElementById('page-content').innerHTML = `
+  <div class="card" style="max-width:560px">
+    <div class="card-header"><span class="card-title">🖥️ ชื่อเครื่อง (Device Name)</span></div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:14px">
+        ใช้ระบุผู้แก้ไขล่าสุดใน <strong>Optimistic Lock conflict dialog</strong><br>
+        เมื่อ 2 เครื่องแก้ doc เดียวกันพร้อมกัน จะเห็นว่าใครแก้ไปก่อน
+      </p>
+      <div class="form-grid" style="gap:10px">
+        <div class="field span2">
+          <label>ชื่อเครื่อง</label>
+          <input type="text" id="settings-device-name" value="${_deviceName}" placeholder="เช่น คอมออฟฟิศ, แล็ปท็อปบ้าน, iPad">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
+        <button class="btn btn-primary" onclick="saveDeviceName()">💾 บันทึกชื่อเครื่อง</button>
+        <span id="settings-saved-msg" style="display:none;font-size:13px;color:var(--green)">✅ บันทึกแล้ว</span>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="max-width:560px">
+    <div class="card-header"><span class="card-title">ℹ️ ข้อมูลระบบ</span></div>
+    <div class="card-body" style="font-size:13px;color:var(--ink3);line-height:2">
+      <div>Firebase: <strong style="color:${_fbdb?'var(--green)':'var(--red)'}">${_fbdb?'เชื่อมต่อแล้ว':'ไม่ได้เชื่อมต่อ'}</strong></div>
+      <div>Live sync: <strong style="color:${Object.keys(_listeners).length?'var(--green)':'var(--ink4)'}">
+        ${Object.keys(_listeners).length?'กำลัง listen '+Object.keys(_listeners).length+' collections':'ไม่ได้ listen'}</strong></div>
+      <div>Device name: <strong>${_deviceName}</strong></div>
+    </div>
+  </div>`;
+}
+window.renderSettings = renderSettings;
+
+function saveDeviceName() {
+  const val = document.getElementById('settings-device-name')?.value?.trim();
+  if(!val) { toast('กรุณากรอกชื่อเครื่อง', 'err'); return; }
+  _deviceName = val;
+  localStorage.setItem(LS_DEVICE_NAME, val);
+  const msg = document.getElementById('settings-saved-msg');
+  if(msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none', 2000); }
+  toast(`บันทึกชื่อเครื่อง: "${val}" แล้ว`, 'ok');
+}
+window.saveDeviceName = saveDeviceName;
+
+// ══════════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════════
 function closeModal(id) { document.getElementById(id)?.classList.remove('show'); }
@@ -2942,6 +3324,26 @@ function closeSidebar() {
 window.toggleSidebar = toggleSidebar;
 window.closeSidebar = closeSidebar;
 
+// ── DATA SOURCE HELPERS ──
+function _maxUpdatedAt(arr) {
+  return arr.reduce((max, d) => { const t = d.updatedAt || ''; return t > max ? t : max; }, '');
+}
+function _setDsLabel(text) {
+  const el = document.getElementById('data-source-label');
+  if(el) el.textContent = text;
+}
+function updateDataSourceLabel(sources) {
+  const el = document.getElementById('data-source-label');
+  if(!el) return;
+  const vals = Object.values(sources);
+  if(!vals.length) return;
+  const allFb    = vals.every(v => v === 'firebase');
+  const allLocal = vals.every(v => v === 'local');
+  if(allFb)         { el.textContent = '☁️ ข้อมูลจาก Firebase';       el.style.color = 'rgba(34,197,94,.6)'; }
+  else if(allLocal) { el.textContent = '💾 ข้อมูลจากเครื่องนี้';      el.style.color = 'rgba(251,191,36,.7)'; }
+  else              { el.textContent = '⚠️ ผสม Firebase + เครื่องนี้'; el.style.color = 'rgba(251,191,36,.7)'; }
+}
+
 // ── INIT — Auto Pull จาก Firebase ทุกครั้งที่เปิด ──
 (async function init() {
   const msgEl  = document.getElementById('loading-msg');
@@ -2953,61 +3355,159 @@ window.closeSidebar = closeSidebar;
     if(subEl) subEl.textContent = sub || '';
   }
 
+  let sourceUsed = {}; // col → 'firebase' | 'local'
   try {
     if(_fbdb) {
       // ── มี Firebase → Pull ก่อนเสมอ ──
       setMsg('เชื่อมต่อ Firebase สำเร็จ', 'กำลังดึงข้อมูล...');
       const COLS = ['companies','quotations','invoices','billings'];
       let total = 0;
+      const emptyFromFb    = []; // collection ที่ Firebase ว่างแต่ local มีข้อมูล
+      const colFbData      = {}; // col → { fbArr, lsArr }
+      const localNewerCols = []; // cols ที่ local updatedAt ใหม่กว่า Firebase
+
+      // 1st pass: fetch + classify
       for(const col of COLS) {
         setMsg(`กำลังดึง ${col}...`, 'Firebase → เครื่อง');
         const snap = await _fbdb.collection(col).get();
-        const arr = snap.docs.map(d => {
+        const fbArr = snap.docs.map(d => {
           const dd = d.data();
           if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
-          if(dd._syncedAt?.toDate) delete dd._syncedAt;
+          if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
+          delete dd._syncedAt;
           return {id: d.id, ...dd};
         });
-        lsSave(col, arr);
-        data[col] = arr;
-        total += arr.length;
+        const lsArr = lsLoad(col) || [];
+        colFbData[col] = { fbArr, lsArr };
+
+        if(fbArr.length === 0 && lsArr.length > 0) {
+          // Firebase ว่าง แต่ local มีข้อมูล → เก็บ local, รอถามผู้ใช้
+          console.log(`[AR] init: ${col} — remote=0, local=${lsArr.length} (keep local)`);
+          emptyFromFb.push({ col, localCount: lsArr.length });
+          sourceUsed[col] = 'local';
+        } else if(fbArr.length > 0 && lsArr.length > 0) {
+          // ทั้งคู่มีข้อมูล → เปรียบ updatedAt ล่าสุด
+          const fbMax = _maxUpdatedAt(fbArr);
+          const lsMax = _maxUpdatedAt(lsArr);
+          if(lsMax > fbMax) {
+            localNewerCols.push({ col, fbMax, lsMax });
+            sourceUsed[col] = 'pending';
+          } else {
+            sourceUsed[col] = 'firebase'; // Firebase ใหม่กว่าหรือเท่ากัน
+          }
+        } else {
+          sourceUsed[col] = 'firebase';
+        }
+      }
+
+      // ถามครั้งเดียวถ้ามี collection ที่ local ใหม่กว่า Firebase
+      if(localNewerCols.length > 0) {
+        const fmtISO = iso => iso ? iso.slice(0,16).replace('T',' ') : '?';
+        const details = localNewerCols.map(c =>
+          `• ${c.col}: เครื่องนี้ ${fmtISO(c.lsMax)} / Firebase ${fmtISO(c.fbMax)}`
+        ).join('\n');
+        setMsg('⚠️ ข้อมูลเครื่องนี้ใหม่กว่า Firebase', 'รอการยืนยัน...');
+        await new Promise(r => setTimeout(r, 200));
+        const useLocal = confirm(
+          `⚠️ ข้อมูลในเครื่องนี้ใหม่กว่า Firebase:\n${details}\n\n` +
+          `ต้องการใช้ข้อมูลจากเครื่องนี้แทน Firebase หรือไม่?\n` +
+          `(OK = ใช้เครื่องนี้ | Cancel = ใช้ Firebase)`
+        );
+        for(const { col } of localNewerCols) {
+          sourceUsed[col] = useLocal ? 'local' : 'firebase';
+        }
+      }
+
+      // 2nd pass: apply decisions
+      for(const col of COLS) {
+        const { fbArr, lsArr } = colFbData[col];
+        if(sourceUsed[col] === 'local') {
+          data[col] = lsArr;
+          total += lsArr.length;
+        } else {
+          if(fbArr.length > 0) lsSave(col, fbArr);
+          data[col] = fbArr;
+          total += fbArr.length;
+        }
+        console.log(`[AR] init: ${col} — source=${sourceUsed[col]}, count=${data[col].length}`);
       }
       companies = data.companies;
-      setMsg(`✅ โหลดสำเร็จ — ${total} รายการ`, 'กำลังเข้าสู่ระบบ...');
+      // BUG #6: แจ้งเตือนและให้ user เลือก Restore ถ้า Firebase ว่างแต่ local มีข้อมูล
+      if(emptyFromFb.length > 0) {
+        const details = emptyFromFb.map(w => `• ${w.col}: ${w.localCount} รายการใน localStorage`).join('\n');
+        setMsg('⚠️ Firebase ว่าง — พบข้อมูลใน localStorage', 'รอการยืนยัน...');
+        await new Promise(r => setTimeout(r, 200));
+        const restore = confirm(
+          `⚠️ พบ Firebase ว่างเปล่า แต่ localStorage มีข้อมูล:\n${details}\n\n` +
+          `อาจเกิดจากการถูกลบโดยไม่ตั้งใจ\n\n` +
+          `ต้องการ Push ข้อมูลจาก localStorage กลับขึ้น Firebase ทันทีหรือไม่?\n` +
+          `(กด Cancel เพื่อดูข้อมูลก่อน แล้วกด Push เองในภายหลัง)`
+        );
+        if(restore) {
+          setMsg('กำลัง Restore ข้อมูลขึ้น Firebase...', '');
+          for(const { col } of emptyFromFb) {
+            const localArr = lsLoad(col) || [];
+            for(let i = 0; i < localArr.length; i += 400) {
+              const chunk = localArr.slice(i, i + 400);
+              const batch = _fbdb.batch();
+              chunk.forEach(doc => {
+                const { id, ...rest } = doc;
+                batch.set(_fbdb.collection(col).doc(id), { ...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp() });
+              });
+              await batch.commit();
+            }
+          }
+          setMsg(`✅ Restore สำเร็จ — ${total} รายการ`, 'กำลังเข้าสู่ระบบ...');
+        } else {
+          setMsg(`⚠️ Firebase ว่าง — ใช้ข้อมูลจาก localStorage (${total} รายการ)`, 'กด Push เพื่อ sync ขึ้น Firebase');
+        }
+      } else {
+        setMsg(`✅ โหลดสำเร็จ — ${total} รายการ`, 'กำลังเข้าสู่ระบบ...');
+      }
     } else {
       // ── ไม่มี Firebase → โหลดจาก localStorage ──
       setMsg('ไม่พบ Firebase', 'โหลดจาก localStorage...');
-      data.companies  = lsLoad('companies')  || DEMO.companies;
-      data.quotations = lsLoad('quotations') || DEMO.quotations;
-      data.invoices   = lsLoad('invoices')   || DEMO.invoices;
-      data.billings   = lsLoad('billings')   || DEMO.billings;
+      data.companies  = lsLoad('companies')  || [];
+      data.quotations = lsLoad('quotations') || [];
+      data.invoices   = lsLoad('invoices')   || [];
+      data.billings   = lsLoad('billings')   || [];
       companies = data.companies;
+      sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local'};
       setMsg('⚠️ โหลดจาก localStorage', 'ไม่ได้เชื่อมต่อ Firebase');
     }
   } catch(e) {
     // Firebase error → fallback localStorage
     setMsg('⚠️ Firebase error — โหลดจาก localStorage', e.message);
-    data.companies  = lsLoad('companies')  || DEMO.companies;
-    data.quotations = lsLoad('quotations') || DEMO.quotations;
-    data.invoices   = lsLoad('invoices')   || DEMO.invoices;
-    data.billings   = lsLoad('billings')   || DEMO.billings;
+    data.companies  = lsLoad('companies')  || [];
+    data.quotations = lsLoad('quotations') || [];
+    data.invoices   = lsLoad('invoices')   || [];
+    data.billings   = lsLoad('billings')   || [];
     companies = data.companies;
+    sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local'};
     console.warn('Firebase pull failed:', e);
   }
 
+  updateDataSourceLabel(sourceUsed);
   // รอ 400ms แล้ว fade out loading screen
   await new Promise(r => setTimeout(r, 400));
   screen.classList.add('fade-out');
   setTimeout(() => { screen.style.display = 'none'; }, 450);
 
-  syncCheckConnection();
+  startRealtimeListeners(); // เริ่ม onSnapshot — ครอบคลุม syncCheckConnection ด้วย
   goPage('dashboard');
 })();
 
-// ── AUTO PUSH เมื่อปิด/ออกจากหน้า ──
+// ══════════════════════════════════════════════════════
+// SAFE UPSERT ENGINE — BUG #1 แก้: ป้องกัน data loss เมื่อ auto-sync
+// เปลี่ยนจาก "delete-all then re-write" เป็น upsert เฉพาะ doc ที่มีในเครื่อง
+// ไม่ delete orphan docs บน Firebase → ถ้า local ว่าง Firebase จะไม่ถูกแตะ
+// ══════════════════════════════════════════════════════
 let _autoSaving = false;
-async function autoPushOnExit() {
-  if(!_fbdb || _autoSaving) return;
+let _suppressAutoPush = false; // BUG #3/4: ตั้ง true หลัง clear data เพื่อกัน auto-push ทับข้อมูลว่างขึ้น Firebase
+
+async function safeUpsertToFirebase() {
+  if(!_fbdb || _autoSaving || _suppressAutoPush) return;
+  _lastLocalWrite = Date.now();
   _autoSaving = true;
   const saving = document.getElementById('saving-screen');
   if(saving) saving.classList.add('show');
@@ -3015,14 +3515,13 @@ async function autoPushOnExit() {
     const COLS = ['companies','quotations','invoices','billings'];
     for(const col of COLS) {
       const arr = data[col] || lsLoad(col) || [];
-      // batch delete เก่า
-      const snapOld = await _fbdb.collection(col).get();
-      if(snapOld.docs.length > 0) {
-        const bDel = _fbdb.batch();
-        snapOld.docs.forEach(d => bDel.delete(d.ref));
-        await bDel.commit();
+      // BUG #1 safety guard: ถ้า local ว่าง → ข้าม ห้ามแตะ Firebase เด็ดขาด
+      if(arr.length === 0) {
+        console.warn(`[AR] safeUpsert: skip ${col} — local array empty`);
+        continue;
       }
-      // batch write ใหม่ (chunks of 400)
+      // upsert เฉพาะ doc ที่มีในเครื่อง (batch.set ไม่ใช่ delete+write)
+      // orphan docs บน Firebase จะยังคงอยู่ (ไม่ถูกลบ) ซึ่งปลอดภัยกว่า
       for(let i = 0; i < arr.length; i += 400) {
         const chunk = arr.slice(i, i + 400);
         const batch = _fbdb.batch();
@@ -3037,34 +3536,24 @@ async function autoPushOnExit() {
       }
     }
   } catch(e) {
-    console.warn('Auto push failed:', e);
+    console.warn('[AR] safeUpsert failed:', e);
   }
   _autoSaving = false;
   if(saving) saving.classList.remove('show');
 }
+window.safeUpsertToFirebase = safeUpsertToFirebase;
 
-// visibilitychange — เมื่อ tab ถูกซ่อน (เปลี่ยน tab / กดโฮม iPad)
-document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState === 'hidden') autoPushOnExit();
-});
-
-// pagehide — เมื่อปิด tab หรือ navigate ออก (รองรับ iOS Safari)
-window.addEventListener('pagehide', () => { autoPushOnExit(); });
-
-// beforeunload — เมื่อปิด browser บน desktop
-window.addEventListener('beforeunload', (e) => {
-  if(_fbdb && !_autoSaving) {
-    autoPushOnExit();
-    // บน desktop แสดง confirm dialog ให้รอ
-    e.preventDefault();
-    e.returnValue = '';
-  }
-});
+// BUG #1 แก้: ถอด autoPush ออกจาก visibilitychange/pagehide/beforeunload
+// (เหตุผล: ถ้า data[col] หรือ localStorage ว่างตอนปิด จะ delete Firebase ทั้งหมด)
+// ใช้ periodic safe upsert ทุก 5 นาทีระหว่างใช้งานแทน
+setInterval(() => {
+  if(_fbdb && !_autoSaving && !_suppressAutoPush) safeUpsertToFirebase();
+}, 5 * 60 * 1000); // 5 นาที — ไม่ delete ดังนั้นปลอดภัย
 
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL — กด A ค้าง 3 วินาที เพื่อเปิด
 // ══════════════════════════════════════════════════════
-const ADM_PASS = 'admin1234'; // ← เปลี่ยนรหัสได้ที่นี่
+const ADM_PASS = '1234';
 const ADM_COLS = ['companies','quotations','invoices','billings'];
 let ADM = { companies:[], quotations:[], invoices:[], billings:[] };
 let _admCurrentPage = 'overview';
@@ -3560,8 +4049,8 @@ window.admChangePass=admChangePass;
 // ── DANGER ZONE ──
 function admPageDanger(){
   document.getElementById('adm-page-content').innerHTML=`
-  <div style="font-size:12px;color:#a0a0b8;margin-bottom:16px;font-family:'IBM Plex Mono',monospace">⚠️ ทุกการดำเนินการในหน้านี้ไม่สามารถย้อนกลับได้</div>
-  <button class="adm-btn adm-btn-success" style="margin-bottom:16px" onclick="admExportAll()">📤 Export Backup ก่อน</button>
+  <div style="font-size:12px;color:#a0a0b8;margin-bottom:16px;font-family:'IBM Plex Mono',monospace">⚠️ ทุกการดำเนินการในหน้านี้ไม่สามารถย้อนกลับได้ — ระบบจะ download backup อัตโนมัติก่อนลบ</div>
+  <button class="adm-btn adm-btn-success" style="margin-bottom:16px" onclick="admExportAll()">📤 Export Backup ด้วยตนเอง</button>
 
   <div class="adm-danger-zone">
     <div class="adm-danger-title">🧹 ลบ Invoice ที่ยังไม่ชำระ</div>
@@ -3571,7 +4060,7 @@ function admPageDanger(){
 
   <div class="adm-danger-zone">
     <div class="adm-danger-title">💣 Reset Collection เดี่ยว</div>
-    <div class="adm-danger-desc">ลบข้อมูลใน collection ที่เลือกทั้งหมด</div>
+    <div class="adm-danger-desc">ลบข้อมูลใน collection ที่เลือกทั้งหมด — ระบบจะ download backup JSON อัตโนมัติก่อนลบ</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${['quotations','invoices','billings'].map(c=>`<button class="adm-btn adm-btn-danger" onclick="admResetCol('${c}')">🗑️ Clear ${c}</button>`).join('')}
     </div>
@@ -3579,15 +4068,21 @@ function admPageDanger(){
 
   <div class="adm-danger-zone">
     <div class="adm-danger-title">☠️ Nuclear Reset — ล้างทุกอย่าง</div>
-    <div class="adm-danger-desc">ลบข้อมูลทั้งหมดรวมถึงบริษัท เอกสาร และ payments ระบบจะกลับสู่สถานะเริ่มต้น (ไม่โหลด demo)</div>
+    <div class="adm-danger-desc">ลบข้อมูลทั้งหมดรวมถึงบริษัท เอกสาร และ payments — ระบบจะ download backup JSON อัตโนมัติก่อนลบ</div>
     <button class="adm-btn adm-btn-danger" onclick="admResetAll()">☠️ Reset ทั้งระบบ</button>
   </div>
 
-  <div class="adm-card" style="margin-top:16px"><div class="adm-card-header"><div class="adm-card-title">🔧 Fix Tools</div></div><div class="adm-card-body" style="display:flex;flex-direction:column;gap:7px">
+  <div class="adm-card" style="margin-top:16px;border:1px solid #3b82f6"><div class="adm-card-header" style="border-color:#2a3f5f"><div class="adm-card-title" style="color:#60a5fa">♻️ Restore from Backup</div></div><div class="adm-card-body" style="display:flex;flex-direction:column;gap:7px">
+    <div style="font-size:11px;color:#a0a0b8;margin-bottom:4px">backup อัตโนมัติ (localStorage ล่าสุด 5 ชุด) — สร้างก่อนทุกครั้งที่มี destructive operation</div>
+    <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admShowRestore()">📋 แสดง / Restore จาก localStorage Backup</button>
+    <div id="adm-restore-panel"></div>
+  </div></div>
+
+  <div class="adm-card" style="margin-top:12px"><div class="adm-card-header"><div class="adm-card-title">🔧 Fix Tools</div></div><div class="adm-card-body" style="display:flex;flex-direction:column;gap:7px">
     <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admFixPaid()">🔧 คำนวณ paidAmount ใหม่จาก payment records</button>
     <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admFixStatus()">🔧 อัปเดต Invoice status ทั้งหมด</button>
     <button class="adm-btn adm-btn-ghost" style="justify-content:flex-start" onclick="admClearSeq()">🔧 Reset sequence counter เลขเอกสาร</button>
-    <label class="adm-btn adm-btn-ghost" style="justify-content:flex-start;cursor:pointer">📥 Import JSON Backup<input type="file" accept=".json" style="display:none" onchange="admImportAll(event)"></label>
+    <label class="adm-btn adm-btn-ghost" style="justify-content:flex-start;cursor:pointer">📥 Import JSON Backup (จากไฟล์)<input type="file" accept=".json" style="display:none" onchange="admImportAll(event)"></label>
   </div></div>`;
 }
 
@@ -3609,22 +4104,38 @@ function admDelUnpaid(){
 window.admDelUnpaid=admDelUnpaid;
 
 function admResetCol(col){
-  admShowConfirm(`💣 Clear ${col}`,`จะลบ <strong style="color:#ef4444">${ADM[col].length} รายการ</strong> ใน ${col}`,'พิมพ์ CLEAR','CLEAR',()=>{
-    ADM[col]=[]; admSaveCol(col); data[col]=[]; if(col==='companies') companies=[];
-    admPageDanger(); admToast(`Cleared ${col}`,'ok');
-  });
+  admShowConfirm(`💣 Clear ${col}`,
+    `จะลบ <strong style="color:#ef4444">${ADM[col].length} รายการ</strong> ใน ${col}<br>` +
+    `<small style="color:#f59e0b">⚠️ ระบบจะ download backup JSON อัตโนมัติก่อนลบ</small>`,
+    'พิมพ์ CLEAR','CLEAR',()=>{
+      // BUG #3/4 แก้: download backup อัตโนมัติ + บันทึก localStorage backup + ป้องกัน autoPush ทับขึ้น Firebase
+      admAutoBackupDownload();
+      saveLocalBackup();
+      stopRealtimeListeners(); // หยุด listener ก่อน reset เพื่อป้องกัน snapshot ว่างยิงกลับ
+      _suppressAutoPush = true;
+      ADM[col]=[]; admSaveCol(col); data[col]=[]; if(col==='companies') companies=[];
+      admPageDanger(); admToast(`Cleared ${col} — backup ถูก download แล้ว`,'ok');
+      toast('⚠️ Auto Push ปิดชั่วคราว — กด Push เองเมื่อพร้อม เพื่อป้องกันข้อมูลว่างทับ Firebase', 'info');
+    });
 }
 window.admResetCol=admResetCol;
 
 function admResetAll(){
   admShowConfirm('☠️ NUCLEAR RESET',
-    `จะลบข้อมูลทั้งหมด:<br>${ADM_COLS.map(c=>`• ${c}: ${ADM[c].length} รายการ`).join('<br>')}<br><br>ระบบจะ<strong style="color:#22c55e">เริ่มว่างเปล่า</strong> (ไม่โหลด demo)`,
+    `จะลบข้อมูลทั้งหมด:<br>${ADM_COLS.map(c=>`• ${c}: ${ADM[c].length} รายการ`).join('<br>')}<br><br>` +
+    `ระบบจะ<strong style="color:#22c55e">เริ่มว่างเปล่า</strong> (ไม่โหลด demo)<br>` +
+    `<small style="color:#f59e0b">⚠️ ระบบจะ download backup JSON อัตโนมัติก่อนลบ</small>`,
     'พิมพ์ RESET ALL','RESET ALL',()=>{
+      // BUG #3/4 แก้: download backup อัตโนมัติ + บันทึก localStorage backup + ป้องกัน autoPush ทับขึ้น Firebase
+      admAutoBackupDownload();
+      saveLocalBackup();
+      stopRealtimeListeners(); // หยุด listener ก่อน reset เพื่อป้องกัน snapshot ว่างยิงกลับ
+      _suppressAutoPush = true;
       ADM_COLS.forEach(col=>{ADM[col]=[];admLsSave(col,[]);data[col]=[];});
       companies=[];
-      // clear seq counters
       Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_')).forEach(k=>localStorage.removeItem(k));
-      admPageDanger(); admToast('ล้างข้อมูลทั้งหมดเรียบร้อย ✅','ok');
+      admPageDanger(); admToast('ล้างข้อมูลทั้งหมดเรียบร้อย — backup ถูก download แล้ว ✅','ok');
+      toast('⚠️ Auto Push ปิดชั่วคราว — กด Push เองเมื่อพร้อม เพื่อป้องกันข้อมูลว่างทับ Firebase', 'info');
     });
 }
 window.admResetAll=admResetAll;
@@ -3678,12 +4189,81 @@ function admImportAll(event){
       if(!confirm(`Import จาก ${file.name}?\nบริษัท:${p.companies.length} INV:${p.invoices.length}\nข้อมูลปัจจุบันจะถูกแทนที่`)) return;
       ADM_COLS.forEach(col=>{ADM[col]=p[col]||[];admSaveCol(col);data[col]=ADM[col];});
       companies=ADM.companies;
+      _suppressAutoPush=false;
+      startRealtimeListeners(); // restart listeners หลัง restore
       admGoPage(_admCurrentPage); admToast('Import เรียบร้อย ✅','ok');
     }catch(err){admToast('❌ '+err.message,'err');}
   };
   reader.readAsText(file); event.target.value='';
 }
 window.admImportAll=admImportAll;
+
+// ── BUG #3/4 แก้: download backup JSON อัตโนมัติก่อน destructive operation ──
+function admAutoBackupDownload(){
+  // ใช้ data[] เป็น fallback ถ้า ADM[] ยังไม่ได้โหลด (เช่น Firebase-only, localStorage ว่าง)
+  const src={
+    companies: ADM.companies.length ? ADM.companies : (data.companies||[]),
+    quotations: ADM.quotations.length ? ADM.quotations : (data.quotations||[]),
+    invoices:   ADM.invoices.length   ? ADM.invoices   : (data.invoices||[]),
+    billings:   ADM.billings.length   ? ADM.billings   : (data.billings||[])
+  };
+  const total=ADM_COLS.reduce((s,c)=>s+src[c].length,0);
+  if(total===0){
+    console.warn('[AR] admAutoBackupDownload: no data in ADM or data[] — skip download');
+    admToast('⚠️ ไม่มีข้อมูลสำหรับ backup (ข้อมูลว่าง)','info');
+    return;
+  }
+  const p={exportedAt:new Date().toISOString(),autoBackup:true,version:2,...src};
+  const blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const ts=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  const a=document.createElement('a');
+  a.href=url; a.download=`ar-auto-backup-${ts}.json`;
+  document.body.appendChild(a); // ต้อง append ก่อน click ถึงจะ trigger download ได้ใน browser
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000); // ให้เวลา browser เริ่ม download ก่อน revoke URL
+  console.log(`[AR] Auto backup downloaded: ${total} records`);
+}
+
+// ── BUG #5 แก้: แสดงรายการ backup ใน localStorage + ให้ restore ได้ ──
+function admShowRestore(){
+  const panel=document.getElementById('adm-restore-panel');
+  if(!panel) return;
+  if(panel.innerHTML){panel.innerHTML='';return;} // toggle
+  const backups=listLocalBackups();
+  if(!backups.length){
+    panel.innerHTML='<div style="color:#a0a0b8;font-size:12px;padding:8px 0">ไม่พบ backup ใน localStorage<br><small>backup จะถูกสร้างอัตโนมัติเมื่อ sync หรือลบข้อมูล</small></div>';
+    return;
+  }
+  panel.innerHTML=backups.map(b=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid #2a2a38">
+      <div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a0a0b8">${new Date(b.savedAt).toLocaleString('th-TH')}</div>
+        <div style="font-size:12px">บริษัท:${(b.companies||[]).length} QT:${(b.quotations||[]).length} INV:${(b.invoices||[]).length} BL:${(b.billings||[]).length} · ${b.sizeKB} KB</div>
+      </div>
+      <button class="adm-btn adm-btn-warn" style="font-size:11px;padding:4px 10px" onclick="admRestoreFromKey('${b.key}')">♻️ Restore</button>
+    </div>
+  `).join('');
+}
+window.admShowRestore=admShowRestore;
+
+function admRestoreFromKey(key){
+  if(!confirm('Restore ข้อมูลจาก backup นี้?\nข้อมูลปัจจุบันใน localStorage และ in-memory จะถูกแทนที่')) return;
+  try{
+    const raw=localStorage.getItem(key);
+    if(!raw){admToast('❌ ไม่พบ backup key นี้','err');return;}
+    const p=JSON.parse(raw);
+    ADM_COLS.forEach(col=>{ADM[col]=p[col]||[];admSaveCol(col);data[col]=ADM[col];});
+    companies=ADM.companies;
+    _suppressAutoPush=false;
+    startRealtimeListeners(); // restart listeners หลัง restore
+    const total=ADM_COLS.reduce((s,c)=>s+ADM[c].length,0);
+    admGoPage(_admCurrentPage);
+    admToast(`✅ Restore สำเร็จ — ${total} รายการ`,'ok');
+  }catch(e){admToast('❌ Restore ล้มเหลว: '+e.message,'err');}
+}
+window.admRestoreFromKey=admRestoreFromKey;
 
 // ── CONFIRM DIALOG ──
 function admShowConfirm(title,body,hint,keyword,action){
