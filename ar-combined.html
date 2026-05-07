@@ -447,6 +447,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <button class="nav-item" onclick="goPage('report-receipt')" id="nav-report-receipt"><span class="nav-icon">📅</span>เงินรับรายเดือน</button>
   <div class="nav-section">ตั้งค่า</div>
   <button class="nav-item" onclick="goPage('companies')" id="nav-companies"><span class="nav-icon">🏛</span>จัดการบริษัท</button>
+  <button class="nav-item" onclick="goPage('settings')" id="nav-settings"><span class="nav-icon">⚙️</span>ตั้งค่าระบบ</button>
   <div class="sidebar-spacer"></div>
   <div class="sync-bar">
     <div class="sync-status">
@@ -533,6 +534,33 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-doc')">ปิด</button>
       <button class="btn btn-outline" onclick="printCurrentDoc()">🖨 พิมพ์</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── CONFLICT MODAL (Optimistic Lock) ── -->
+<div class="overlay" id="modal-conflict">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title" style="color:var(--red)">⚠️ ข้อมูลขัดแย้ง</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;word-break:break-all" id="conflict-col-text"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+      <div style="background:var(--accent-light);border:1px solid var(--accent-mid);border-radius:var(--r);padding:12px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--accent);text-transform:uppercase;margin-bottom:6px">เวอร์ชันของฉัน</div>
+        <div style="font-size:12px;color:var(--ink2)">แก้โดย: <strong id="conflict-local-by"></strong></div>
+        <div style="font-size:11px;color:var(--ink4);margin-top:3px" id="conflict-local-at"></div>
+      </div>
+      <div style="background:var(--yellow-light);border:1px solid var(--yellow-mid);border-radius:var(--r);padding:12px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--yellow);text-transform:uppercase;margin-bottom:6px">เวอร์ชัน Firebase</div>
+        <div style="font-size:12px;color:var(--ink2)">แก้โดย: <strong id="conflict-remote-by"></strong></div>
+        <div style="font-size:11px;color:var(--ink4);margin-top:3px" id="conflict-remote-at"></div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <button class="btn btn-ghost btn-sm" id="conflict-btn-cancel">✕ ยกเลิก</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" id="conflict-btn-theirs" style="border-color:var(--yellow);color:var(--yellow)">⬇ ใช้ของเครื่องอื่น</button>
+        <button class="btn btn-primary btn-sm" id="conflict-btn-mine">✅ ใช้ของฉัน (overwrite)</button>
+      </div>
     </div>
   </div>
 </div>
@@ -833,6 +861,8 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 // ══════════════════════════════════════════════════════
 let companies = [];
 let _currentPage = 'dashboard';
+const LS_DEVICE_NAME = 'ar_device_name';
+let _deviceName = localStorage.getItem(LS_DEVICE_NAME) || 'เครื่องนี้';
 let _payingInvoice = null;
 let _convertDoc = null;
 let _printDocData = null;
@@ -908,6 +938,18 @@ async function fbDelete(col, id) {
   if(!_fbdb || !id) return false;
   try { await _fbdb.collection(col).doc(id).delete(); return true; } catch(e){ return false; }
 }
+async function fbGetDoc(col, id) {
+  if(!_fbdb || !id) return null;
+  try {
+    const snap = await _fbdb.collection(col).doc(id).get();
+    if(!snap.exists) return null;
+    const dd = snap.data();
+    if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+    if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
+    delete dd._syncedAt;
+    return {id: snap.id, ...dd};
+  } catch(e) { return null; }
+}
 
 // ── Unified CRUD (Firebase first, localStorage fallback) ──
 async function storeLoad(col) {
@@ -923,22 +965,57 @@ async function storeLoad(col) {
 
 async function storeAdd(col, d) {
   _lastLocalWrite = Date.now();
-  const id = uid(); // generate stable ID first — same ID used in both Firebase and localStorage
-  await fbSet(col, id, d); // fire-and-forget safe: failure just means local-only until next Push
+  const id = uid();
+  const enriched = {...d, updatedAt: new Date().toISOString(), updatedBy: _deviceName};
+  await fbSet(col, id, enriched);
   const arr = lsLoad(col) || [];
-  arr.push({id, ...d});
+  arr.push({id, ...enriched});
   lsSave(col, arr);
   return id;
 }
 
 async function storeUpdate(col, id, d) {
   _lastLocalWrite = Date.now();
-  // Firebase
-  const ok = await fbUpdate(col, id, d);
-  // Always update localStorage copy
+  const updates = {...d, updatedAt: new Date().toISOString(), updatedBy: _deviceName};
+
+  // ── Optimistic lock: ตรวจ updatedAt บน Firebase ก่อน write ──
+  const localDoc = (data[col] || []).find(x => x.id === id);
+  const localUpdatedAt = localDoc?.updatedAt ?? null;
+  if(_fbdb && localUpdatedAt) {
+    const remoteDoc = await fbGetDoc(col, id);
+    const remoteUpdatedAt = remoteDoc?.updatedAt ?? null;
+    if(remoteDoc && remoteUpdatedAt && remoteUpdatedAt !== localUpdatedAt) {
+      const choice = await showConflictDialog(col, localDoc, remoteDoc);
+      if(choice === 'cancel') return;
+      if(choice === 'theirs') {
+        // ใช้ของเครื่องอื่น: อัปเดต local ด้วย remote version, ยกเลิก write ของเรา
+        if(data[col]) {
+          const j = data[col].findIndex(x => x.id === id);
+          if(j >= 0) Object.assign(data[col][j], remoteDoc);
+          if(col === 'companies') companies = data.companies;
+        }
+        const arr2 = lsLoad(col) || [];
+        const k = arr2.findIndex(x => x.id === id);
+        if(k >= 0) { arr2[k] = remoteDoc; lsSave(col, arr2); }
+        toast(`ใช้ข้อมูลจาก ${remoteDoc.updatedBy || 'เครื่องอื่น'} แล้ว`, 'info');
+        goPage(_currentPage);
+        return;
+      }
+      // 'mine': ดำเนินต่อ (force overwrite)
+    }
+  }
+
+  // Firebase update
+  await fbUpdate(col, id, updates);
+  // localStorage + in-memory (ให้ syncLS() ที่ caller เรียกได้ updatedAt ถูกต้อง)
   const arr = lsLoad(col) || [];
   const i = arr.findIndex(x => x.id === id);
-  if(i >= 0) { arr[i] = {...arr[i], ...d}; lsSave(col, arr); }
+  if(i >= 0) { arr[i] = {...arr[i], ...updates}; lsSave(col, arr); }
+  if(data[col]) {
+    const j = data[col].findIndex(x => x.id === id);
+    if(j >= 0) Object.assign(data[col][j], updates);
+    if(col === 'companies') companies = data.companies;
+  }
 }
 
 async function storeDelete(col, id) {
@@ -1224,6 +1301,31 @@ function stopRealtimeListeners() {
 window.stopRealtimeListeners = stopRealtimeListeners;
 
 // ══════════════════════════════════════════════════════
+// CONFLICT DIALOG — Optimistic Locking
+// ══════════════════════════════════════════════════════
+function showConflictDialog(col, localDoc, remoteDoc) {
+  return new Promise(resolve => {
+    const fmtDt = iso => {
+      if(!iso) return '—';
+      try { return new Date(iso).toLocaleString('th-TH', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+      catch(e) { return iso; }
+    };
+    document.getElementById('conflict-col-text').textContent =
+      `พบการแก้ไขขัดแย้งใน collection "${col}" — doc id: ${localDoc?.id || ''}`;
+    document.getElementById('conflict-local-by').textContent  = localDoc?.updatedBy  || 'เครื่องนี้';
+    document.getElementById('conflict-local-at').textContent  = fmtDt(localDoc?.updatedAt);
+    document.getElementById('conflict-remote-by').textContent = remoteDoc?.updatedBy || 'ไม่ทราบ';
+    document.getElementById('conflict-remote-at').textContent = fmtDt(remoteDoc?.updatedAt);
+    const el = document.getElementById('modal-conflict');
+    el.classList.add('show');
+    const done = choice => { el.classList.remove('show'); resolve(choice); };
+    document.getElementById('conflict-btn-mine').onclick   = () => done('mine');
+    document.getElementById('conflict-btn-theirs').onclick = () => done('theirs');
+    document.getElementById('conflict-btn-cancel').onclick = () => done('cancel');
+  });
+}
+
+// ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
 function goPage(p) {
@@ -1237,7 +1339,7 @@ function goPage(p) {
     billing:'ใบวางบิล',payments:'บันทึกรับชำระ',
     'report-ar':'ค้างชำระรายลูกค้า','report-co':'ค้างชำระรายบริษัท',
     'report-aging':'Aging Report','report-receipt':'เงินรับรายเดือน',
-    companies:'จัดการบริษัท','new-qt':'สร้างใบเสนอราคา',
+    companies:'จัดการบริษัท',settings:'ตั้งค่าระบบ','new-qt':'สร้างใบเสนอราคา',
     'new-inv':'สร้างใบแจ้งหนี้','new-bl':'สร้างใบวางบิล'
   };
   document.getElementById('page-title').textContent = titles[p]||p;
@@ -1248,6 +1350,7 @@ function goPage(p) {
     dashboard: renderDashboard, quotations: renderQuotations,
     invoices: renderInvoices, billing: renderBilling,
     payments: renderPayments, companies: renderCompanies,
+    settings: renderSettings,
     'report-ar': renderReportAR, 'report-co': renderReportCO,
     'report-aging': renderReportAging, 'report-receipt': renderReportReceipt,
     'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
@@ -3012,6 +3115,53 @@ async function deleteCo(id) {
   refreshCoList(); toast('ลบเรียบร้อย');
 }
 window.deleteCo=deleteCo;
+
+// ══════════════════════════════════════════════════════
+// SETTINGS PAGE
+// ══════════════════════════════════════════════════════
+function renderSettings() {
+  document.getElementById('page-content').innerHTML = `
+  <div class="card" style="max-width:560px">
+    <div class="card-header"><span class="card-title">🖥️ ชื่อเครื่อง (Device Name)</span></div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:14px">
+        ใช้ระบุผู้แก้ไขล่าสุดใน <strong>Optimistic Lock conflict dialog</strong><br>
+        เมื่อ 2 เครื่องแก้ doc เดียวกันพร้อมกัน จะเห็นว่าใครแก้ไปก่อน
+      </p>
+      <div class="form-grid" style="gap:10px">
+        <div class="field span2">
+          <label>ชื่อเครื่อง</label>
+          <input type="text" id="settings-device-name" value="${_deviceName}" placeholder="เช่น คอมออฟฟิศ, แล็ปท็อปบ้าน, iPad">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
+        <button class="btn btn-primary" onclick="saveDeviceName()">💾 บันทึกชื่อเครื่อง</button>
+        <span id="settings-saved-msg" style="display:none;font-size:13px;color:var(--green)">✅ บันทึกแล้ว</span>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="max-width:560px">
+    <div class="card-header"><span class="card-title">ℹ️ ข้อมูลระบบ</span></div>
+    <div class="card-body" style="font-size:13px;color:var(--ink3);line-height:2">
+      <div>Firebase: <strong style="color:${_fbdb?'var(--green)':'var(--red)'}">${_fbdb?'เชื่อมต่อแล้ว':'ไม่ได้เชื่อมต่อ'}</strong></div>
+      <div>Live sync: <strong style="color:${Object.keys(_listeners).length?'var(--green)':'var(--ink4)'}">
+        ${Object.keys(_listeners).length?'กำลัง listen '+Object.keys(_listeners).length+' collections':'ไม่ได้ listen'}</strong></div>
+      <div>Device name: <strong>${_deviceName}</strong></div>
+    </div>
+  </div>`;
+}
+window.renderSettings = renderSettings;
+
+function saveDeviceName() {
+  const val = document.getElementById('settings-device-name')?.value?.trim();
+  if(!val) { toast('กรุณากรอกชื่อเครื่อง', 'err'); return; }
+  _deviceName = val;
+  localStorage.setItem(LS_DEVICE_NAME, val);
+  const msg = document.getElementById('settings-saved-msg');
+  if(msg) { msg.style.display='inline'; setTimeout(()=>msg.style.display='none', 2000); }
+  toast(`บันทึกชื่อเครื่อง: "${val}" แล้ว`, 'ok');
+}
+window.saveDeviceName = saveDeviceName;
 
 // ══════════════════════════════════════════════════════
 // UTILS
