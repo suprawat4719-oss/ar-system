@@ -883,7 +883,7 @@ function lsLoad(col) {
 function lsSave(col, arr) {
   try { localStorage.setItem(LS_PREFIX + col, JSON.stringify(arr)); } catch(e){}
 }
-function lsNewId() { return 'ls-' + Date.now() + '-' + Math.random().toString(36).slice(2,6); }
+
 
 // ── Firebase helpers (only when _fbdb available) ──
 async function fbLoad(col) {
@@ -893,12 +893,12 @@ async function fbLoad(col) {
     return snap.docs.map(d=>({id:d.id,...d.data()}));
   } catch(e) { return null; }
 }
-async function fbAdd(col, d) {
-  if(!_fbdb) return null;
+async function fbSet(col, id, d) {
+  if(!_fbdb) return false;
   try {
-    const ref = await _fbdb.collection(col).add({...d, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
-    return ref.id;
-  } catch(e) { return null; }
+    await _fbdb.collection(col).doc(id).set({...d, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    return true;
+  } catch(e) { return false; }
 }
 async function fbUpdate(col, id, d) {
   if(!_fbdb || !id) return false;
@@ -922,11 +922,8 @@ async function storeLoad(col) {
 }
 
 async function storeAdd(col, d) {
-  // Firebase
-  const fbId = await fbAdd(col, d);
-  if(fbId) return fbId;
-  // localStorage
-  const id = lsNewId();
+  const id = uid(); // generate stable ID first — same ID used in both Firebase and localStorage
+  await fbSet(col, id, d); // fire-and-forget safe: failure just means local-only until next Push
   const arr = lsLoad(col) || [];
   arr.push({id, ...d});
   lsSave(col, arr);
@@ -2019,7 +2016,7 @@ async function saveDoc(type) {
       note:document.getElementById('f-note')?.value,
       payMethod:getSelectedPayMethod(),
     };
-    const id=await storeAdd('billings',bl); bl.id=id||uid();
+    bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
     for(const inv of invs){ inv.linkedBilling=bl.id; await storeUpdate('invoices',inv.id,{linkedBilling:bl.id}); }
     syncLS('billings', data.billings); syncLS('invoices', data.invoices);
@@ -2047,7 +2044,7 @@ async function saveDoc(type) {
     ...(type==='qt'?{docValid:document.getElementById('f-valid')?.value,linkedInvoice:null}:{}),
   };
   const col=type==='qt'?'quotations':'invoices';
-  const id=await storeAdd(col,docData); docData.id=id||uid();
+  docData.id=await storeAdd(col,docData);
   data[col==='quotations'?'quotations':'invoices'].push(docData);
   syncLS(col, data[col==='quotations'?'quotations':'invoices']);
   toast(`บันทึก${type==='qt'?'ใบเสนอราคา':'ใบแจ้งหนี้'}เรียบร้อย`,'ok');
@@ -2093,7 +2090,7 @@ async function confirmConvert() {
       subtotal:qt.subtotal, vat:qt.vat, wht:qt.wht, total:qt.total,
       paidAmount:0, status:'sent', payments:[], linkedQt:qt.id, linkedBilling:null, note:qt.note,
     };
-    const id=await storeAdd('invoices',inv); inv.id=id||uid();
+    inv.id=await storeAdd('invoices',inv);
     data.invoices.push(inv);
     qt.linkedInvoice=inv.id; qt.status='approved';
     await storeUpdate('quotations',qt.id,{linkedInvoice:inv.id,status:'approved'});
@@ -2108,7 +2105,7 @@ async function confirmConvert() {
       docDate:cvDate, companyId:inv.companyId, companyName:inv.companyName,
       custName:inv.custName, invoiceIds:[inv.id], total:remainAmount(inv), status:'sent',
     };
-    const id=await storeAdd('billings',bl); bl.id=id||uid();
+    bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
     inv.linkedBilling=bl.id;
     await storeUpdate('invoices',inv.id,{linkedBilling:bl.id});
