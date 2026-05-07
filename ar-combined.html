@@ -920,7 +920,13 @@ async function fbLoad(col) {
   if(!_fbdb) return null;
   try {
     const snap = await _fbdb.collection(col).get();
-    return snap.docs.map(d=>({id:d.id,...d.data()}));
+    return snap.docs.map(d => {
+      const dd = d.data();
+      if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+      if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
+      delete dd._syncedAt;
+      return {id: d.id, ...dd};
+    });
   } catch(e) { return null; }
 }
 async function fbSet(col, id, d) {
@@ -986,7 +992,7 @@ async function storeUpdate(col, id, d) {
     const remoteUpdatedAt = remoteDoc?.updatedAt ?? null;
     if(remoteDoc && remoteUpdatedAt && remoteUpdatedAt !== localUpdatedAt) {
       const choice = await showConflictDialog(col, localDoc, remoteDoc);
-      if(choice === 'cancel') return;
+      if(choice === 'cancel') return false;
       if(choice === 'theirs') {
         // ใช้ของเครื่องอื่น: อัปเดต local ด้วย remote version, ยกเลิก write ของเรา
         if(data[col]) {
@@ -999,7 +1005,7 @@ async function storeUpdate(col, id, d) {
         if(k >= 0) { arr2[k] = remoteDoc; lsSave(col, arr2); }
         toast(`ใช้ข้อมูลจาก ${remoteDoc.updatedBy || 'เครื่องอื่น'} แล้ว`, 'info');
         goPage(_currentPage);
-        return;
+        return false;
       }
       // 'mine': ดำเนินต่อ (force overwrite)
     }
@@ -1016,6 +1022,7 @@ async function storeUpdate(col, id, d) {
     if(j >= 0) Object.assign(data[col][j], updates);
     if(col === 'companies') companies = data.companies;
   }
+  return true;
 }
 
 async function storeDelete(col, id) {
@@ -1231,6 +1238,7 @@ function _applySnapshot(col, snap) {
   const arr = snap.docs.map(d => {
     const dd = d.data();
     if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+    if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
     delete dd._syncedAt;
     return {id: d.id, ...dd};
   });
@@ -1550,7 +1558,8 @@ function refreshQTTable() {
 window.refreshQTTable=refreshQTTable;
 async function updateQTStatus(id,status) {
   const qt=data.quotations.find(q=>q.id===id); if(!qt) return;
-  qt.status=status; await storeUpdate('quotations',id,{status});
+  const ok=await storeUpdate('quotations',id,{status}); if(!ok) return;
+  qt.status=status;
   syncLS('quotations', data.quotations);
   refreshQTTable(); toast('อัพเดทสถานะเรียบร้อย','ok');
 }
@@ -1620,8 +1629,8 @@ async function saveEditQT(id) {
     status:document.getElementById('eqt-status').value,custName:document.getElementById('eqt-cust').value,
     custTax:document.getElementById('eqt-tax').value,custContact:document.getElementById('eqt-contact').value,
     custAddress:document.getElementById('eqt-addr').value,note:document.getElementById('eqt-note').value};
-  Object.assign(q,d);
-  await storeUpdate('quotations',id,d); syncLS('quotations',data.quotations);
+  const ok=await storeUpdate('quotations',id,d); if(!ok) return;
+  Object.assign(q,d); syncLS('quotations',data.quotations);
   document.getElementById('modal-edit-qt')?.remove();
   refreshQTTable(); toast('แก้ไขใบเสนอราคาเรียบร้อย','ok');
 }
@@ -1719,8 +1728,8 @@ async function saveEditINV(id) {
     custName:document.getElementById('einv-cust').value,custTax:document.getElementById('einv-tax').value,
     custContact:document.getElementById('einv-contact').value,custAddress:document.getElementById('einv-addr').value,
     note:document.getElementById('einv-note').value};
-  Object.assign(inv,d);
-  await storeUpdate('invoices',id,d); syncLS('invoices',data.invoices);
+  const ok=await storeUpdate('invoices',id,d); if(!ok) return;
+  Object.assign(inv,d); syncLS('invoices',data.invoices);
   document.getElementById('modal-edit-inv')?.remove();
   refreshINVTable(); toast('แก้ไขใบแจ้งหนี้เรียบร้อย','ok');
 }
@@ -1734,7 +1743,10 @@ async function deleteINV(id) {
   // unlink quotation
   if(inv.linkedQt) {
     const qt=data.quotations.find(q=>q.id===inv.linkedQt);
-    if(qt) { qt.linkedInvoice=null; qt.status='sent'; await storeUpdate('quotations',qt.id,{linkedInvoice:null,status:'sent'}); syncLS('quotations',data.quotations); }
+    if(qt) {
+      const ok=await storeUpdate('quotations',qt.id,{linkedInvoice:null,status:'sent'});
+      if(ok) { qt.linkedInvoice=null; qt.status='sent'; syncLS('quotations',data.quotations); }
+    }
   }
   data.invoices=data.invoices.filter(x=>x.id!==id);
   await storeDelete('invoices',id); syncLS('invoices',data.invoices);
@@ -1800,8 +1812,8 @@ window.refreshBLTable=refreshBLTable;
 
 async function updateBLStatus(id, status) {
   const bl=data.billings.find(b=>b.id===id); if(!bl) return;
+  const ok=await storeUpdate('billings',id,{status}); if(!ok) return;
   bl.status=status;
-  await storeUpdate('billings',id,{status});
   syncLS('billings',data.billings);
   toast('อัปเดตสถานะใบวางบิลเรียบร้อย','ok');
 }
@@ -1855,8 +1867,8 @@ window.editBL=editBL;
 async function saveEditBL(id) {
   const bl=data.billings.find(b=>b.id===id); if(!bl) return;
   const d={docDate:document.getElementById('ebl-date').value,status:document.getElementById('ebl-status').value,note:document.getElementById('ebl-note').value};
+  const ok=await storeUpdate('billings',id,d); if(!ok) return;
   Object.assign(bl,d);
-  await storeUpdate('billings',id,d);
   syncLS('billings',data.billings);
   document.getElementById('modal-edit-bl')?.remove();
   refreshBLTable(); toast('แก้ไขใบวางบิลเรียบร้อย','ok');
@@ -2206,7 +2218,7 @@ async function saveDoc(type) {
     };
     bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
-    for(const inv of invs){ inv.linkedBilling=bl.id; await storeUpdate('invoices',inv.id,{linkedBilling:bl.id}); }
+    for(const inv of invs){ const r=await storeUpdate('invoices',inv.id,{linkedBilling:bl.id}); if(r) inv.linkedBilling=bl.id; }
     syncLS('billings', data.billings); syncLS('invoices', data.invoices);
     toast('บันทึกใบวางบิลเรียบร้อย','ok'); goPage('billing'); return;
   }
@@ -2280,8 +2292,8 @@ async function confirmConvert() {
     };
     inv.id=await storeAdd('invoices',inv);
     data.invoices.push(inv);
-    qt.linkedInvoice=inv.id; qt.status='approved';
-    await storeUpdate('quotations',qt.id,{linkedInvoice:inv.id,status:'approved'});
+    const okQt=await storeUpdate('quotations',qt.id,{linkedInvoice:inv.id,status:'approved'});
+    if(okQt) { qt.linkedInvoice=inv.id; qt.status='approved'; }
     syncLS('invoices', data.invoices); syncLS('quotations', data.quotations);
     toast('แปลงเป็นใบแจ้งหนี้เรียบร้อย','ok');
     closeModal('modal-convert'); goPage('invoices');
@@ -2295,8 +2307,8 @@ async function confirmConvert() {
     };
     bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
-    inv.linkedBilling=bl.id;
-    await storeUpdate('invoices',inv.id,{linkedBilling:bl.id});
+    const okInv=await storeUpdate('invoices',inv.id,{linkedBilling:bl.id});
+    if(okInv) inv.linkedBilling=bl.id;
     syncLS('billings', data.billings); syncLS('invoices', data.invoices);
     toast('แปลงเป็นใบวางบิลเรียบร้อย','ok');
     closeModal('modal-convert'); goPage('billing');
@@ -2341,11 +2353,13 @@ async function confirmPayment() {
   const pmt={ id:uid(), date:document.getElementById('pmt-date').value,
     amount:amt, method:document.getElementById('pmt-method').value,
     note:document.getElementById('pmt-note').value };
-  _payingInvoice.payments = [...(_payingInvoice.payments||[]), pmt];
-  _payingInvoice.paidAmount = (_payingInvoice.paidAmount||0)+amt;
-  const newSt = invStatus(_payingInvoice);
-  _payingInvoice.status = newSt;
-  await storeUpdate('invoices',_payingInvoice.id,{payments:_payingInvoice.payments,paidAmount:_payingInvoice.paidAmount,status:newSt});
+  const newPayments=[...(_payingInvoice.payments||[]),pmt];
+  const newPaidAmount=(_payingInvoice.paidAmount||0)+amt;
+  const tempInv={..._payingInvoice,payments:newPayments,paidAmount:newPaidAmount};
+  const newSt=invStatus(tempInv);
+  const updates={payments:newPayments,paidAmount:newPaidAmount,status:newSt};
+  const ok=await storeUpdate('invoices',_payingInvoice.id,updates); if(!ok) return;
+  Object.assign(_payingInvoice,updates);
   syncLS('invoices', data.invoices);
   closeModal('modal-payment');
   toast(`บันทึกรับชำระ ${fmt(amt)} บาท เรียบร้อย`,'ok');
