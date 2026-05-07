@@ -1109,11 +1109,10 @@ async function syncPull() {
 }
 window.syncPull = syncPull;
 
-// ── PUSH: localStorage → Firebase (set ทุก doc) ──
-// BUG #2 แก้: เพิ่ม safety guard — ถ้า local ว่าง หรือน้อยกว่า remote มากผิดปกติ → ข้าม/เตือน
+// ── PUSH: localStorage → Firebase (safe upsert เท่านั้น — ไม่ delete doc ใดๆ บน Firebase) ──
 async function syncPush() {
   if(!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
-  if(!confirm('⬆ Push ข้อมูลในเครื่องขึ้น Firebase\n\nข้อมูลที่อยู่บน Firebase จะถูกแทนที่ด้วยข้อมูลในเครื่อง\nกระบวนการนี้ไม่สามารถย้อนกลับได้ — ตรวจสอบข้อมูลก่อนกด OK')) return;
+  if(!confirm('⬆ Push ข้อมูลในเครื่องขึ้น Firebase\n\nจะ upsert เฉพาะ doc ที่มีในเครื่อง — ไม่ลบ doc ที่อยู่บน Firebase\nตรวจสอบข้อมูลก่อนกด OK')) return;
   syncUpdateUI('syncing', 'กำลัง Push...');
   try {
     saveLocalBackup(); // backup local ก่อนทุกครั้ง
@@ -1126,23 +1125,19 @@ async function syncPush() {
         skipped.push(`${col}(ว่าง)`); continue;
       }
       // ตรวจ count ที่ผิดปกติ: local น้อยกว่า remote เกิน 80% และ remote มีมากกว่า 10 docs
-      const snapOld = await _fbdb.collection(col).get();
-      const remoteCount = snapOld.docs.length;
+      const snapRemote = await _fbdb.collection(col).get();
+      const remoteCount = snapRemote.docs.length;
       console.log(`[AR] syncPush: ${col} — local=${arr.length}, remote=${remoteCount}`);
       if(remoteCount > 10 && arr.length < remoteCount * 0.2) {
         const warn = `${col}: เครื่องมี ${arr.length} รายการ แต่ Firebase มี ${remoteCount} รายการ`;
         console.warn(`[AR] syncPush suspicious count: ${warn}`);
-        if(!confirm(`⚠️ ข้อมูลไม่สมดุล — ${warn}\n\nการ Push จะแทนที่ข้อมูล Firebase ด้วยข้อมูลเครื่องที่น้อยกว่า\nอาจทำให้ข้อมูล Firebase หายไปได้\n\nยืนยัน Push ${col} ต่อหรือไม่?`)) {
+        if(!confirm(`⚠️ ข้อมูลไม่สมดุล — ${warn}\n\nจะ upsert เฉพาะ doc ในเครื่อง (ไม่ลบ doc บน Firebase)\nยืนยัน Push ${col} ต่อหรือไม่?`)) {
           skipped.push(col); continue;
         }
       }
-      // ลบ collection เก่าแล้ว re-write (ปลอดภัยเพราะ local มีข้อมูลแล้ว)
-      const batchDel = _fbdb.batch();
-      snapOld.docs.forEach(d => batchDel.delete(d.ref));
-      if(remoteCount > 0) await batchDel.commit();
-      // เขียนใหม่ทีละ 400
+      // safe upsert: batch.set เฉพาะ doc ที่มีในเครื่อง — ไม่ delete doc ใดๆ บน Firebase
       for(let i = 0; i < arr.length; i += 400) {
-        const chunk = arr.slice(i, i+400);
+        const chunk = arr.slice(i, i + 400);
         const batch = _fbdb.batch();
         chunk.forEach(doc => {
           const {id, ...rest} = doc;
@@ -1164,10 +1159,11 @@ async function syncPush() {
 }
 window.syncPush = syncPush;
 
-async function loadCompanies() {
-  const res = await storeLoad('companies', DEMO.companies);
-  data.companies = res; companies = res;
-}
+// @deprecated — ไม่ได้ถูกเรียกแล้ว; init() โหลด companies ผ่าน Firebase/localStorage โดยตรง
+// async function loadCompanies() {
+//   const res = await storeLoad('companies', DEMO.companies);
+//   data.companies = res; companies = res;
+// }
 
 // ══════════════════════════════════════════════════════
 // NAVIGATION
@@ -3203,7 +3199,7 @@ setInterval(() => {
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL — กด A ค้าง 3 วินาที เพื่อเปิด
 // ══════════════════════════════════════════════════════
-const ADM_PASS = 'admin1234'; // ← เปลี่ยนรหัสได้ที่นี่
+const ADM_PASS = 'CHANGE_ME_ADMIN_PASS'; // ← ต้องเปลี่ยนก่อนใช้งาน
 const ADM_COLS = ['companies','quotations','invoices','billings'];
 let ADM = { companies:[], quotations:[], invoices:[], billings:[] };
 let _admCurrentPage = 'overview';
