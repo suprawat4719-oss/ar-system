@@ -454,7 +454,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
       <span id="sync-status-text">กำลังตรวจสอบ...</span>
     </div>
     <div class="sync-btns">
-      <button class="sync-btn pull" id="btn-pull" onclick="syncPull()" disabled title="ดึงข้อมูลจาก Firebase → เครื่อง">⬇ Pull</button>
+      <button class="sync-btn pull" id="btn-pull" onclick="syncPull()" disabled title="บังคับดึงข้อมูลจาก Firebase → เครื่อง (ปกติ Live sync จัดการให้อัตโนมัติ)">⬇ Force Pull</button>
       <button class="sync-btn push" id="btn-push" onclick="syncPush()" disabled title="อัปโหลดข้อมูลเครื่อง → Firebase">⬆ Push</button>
     </div>
     <div class="sync-last" id="sync-last-time">—</div>
@@ -922,6 +922,7 @@ async function storeLoad(col) {
 }
 
 async function storeAdd(col, d) {
+  _lastLocalWrite = Date.now();
   const id = uid(); // generate stable ID first — same ID used in both Firebase and localStorage
   await fbSet(col, id, d); // fire-and-forget safe: failure just means local-only until next Push
   const arr = lsLoad(col) || [];
@@ -931,6 +932,7 @@ async function storeAdd(col, d) {
 }
 
 async function storeUpdate(col, id, d) {
+  _lastLocalWrite = Date.now();
   // Firebase
   const ok = await fbUpdate(col, id, d);
   // Always update localStorage copy
@@ -940,6 +942,7 @@ async function storeUpdate(col, id, d) {
 }
 
 async function storeDelete(col, id) {
+  _lastLocalWrite = Date.now();
   await fbDelete(col, id);
   const arr = (lsLoad(col) || []).filter(x => x.id !== id);
   lsSave(col, arr);
@@ -1010,9 +1013,7 @@ function syncCheckConnection() {
     syncUpdateUI('', 'localStorage เท่านั้น');
     return;
   }
-  syncUpdateUI('online', 'Firebase พร้อม');
-  document.getElementById('btn-pull').disabled = false;
-  document.getElementById('btn-push').disabled = false;
+  startRealtimeListeners(); // idempotent — ไม่สร้าง listener ซ้ำถ้ามีอยู่แล้ว
 }
 
 // ── PULL: Firebase → localStorage + in-memory ──
@@ -1137,6 +1138,90 @@ async function syncPush() {
 }
 window.syncPush = syncPush;
 
+// ══════════════════════════════════════════════════════
+// REAL-TIME LISTENERS — onSnapshot (multi-device sync)
+// ══════════════════════════════════════════════════════
+const _listeners = {};          // col → unsubscribe fn
+const _snapFirstDone = {};      // col → bool: first snapshot received
+const _snapDebounce = {};       // col → setTimeout id
+let _lastLocalWrite = 0;        // ms — suppress echo re-render within 2.5s of our own write
+
+// Pages safe to re-render without losing user input
+const _LIVE_PAGES = new Set(['dashboard','quotations','invoices','billing',
+  'payments','report-ar','report-co','report-aging','report-receipt','companies']);
+
+function _applySnapshot(col, snap) {
+  const arr = snap.docs.map(d => {
+    const dd = d.data();
+    if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+    delete dd._syncedAt;
+    return {id: d.id, ...dd};
+  });
+
+  const isFirst = !_snapFirstDone[col];
+  _snapFirstDone[col] = true;
+
+  // Safety guard on first snapshot: Firebase empty but local has data → keep local
+  if(isFirst && arr.length === 0) {
+    const localArr = lsLoad(col) || [];
+    if(localArr.length > 0) {
+      console.warn(`[AR] onSnapshot first ${col}: Firebase empty, keeping local (${localArr.length})`);
+      data[col] = localArr;
+      if(col === 'companies') companies = localArr;
+      return;
+    }
+  }
+
+  console.log(`[AR] onSnapshot ${col}: ${arr.length} docs (first=${isFirst}, fromCache=${snap.metadata.fromCache})`);
+  data[col] = arr;
+  if(col === 'companies') companies = arr;
+  lsSave(col, arr);
+
+  // ตรวจว่าเป็นการอัปเดตจากเครื่องอื่น (ไม่ใช่ echo จาก write ของตัวเอง)
+  const fromServer = !snap.metadata.fromCache && !snap.metadata.hasPendingWrites;
+  const isEcho = (Date.now() - _lastLocalWrite) < 2500;
+  if(!isFirst && fromServer && !isEcho) {
+    const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+    syncUpdateUI('online', '🔄 Live sync ✅', now);
+    toast(`🔄 ${col} อัปเดตจากเครื่องอื่น`, 'info');
+    if(_LIVE_PAGES.has(_currentPage)) goPage(_currentPage);
+  }
+}
+
+function startRealtimeListeners() {
+  if(!_fbdb) return;
+  SYNC_COLS.forEach(col => {
+    if(_listeners[col]) return; // already listening
+    _snapFirstDone[col] = false;
+    _listeners[col] = _fbdb.collection(col).onSnapshot(
+      snap => {
+        clearTimeout(_snapDebounce[col]);
+        _snapDebounce[col] = setTimeout(() => _applySnapshot(col, snap), 350);
+      },
+      err => {
+        console.warn(`[AR] onSnapshot ${col} error:`, err.message);
+        syncUpdateUI('error', 'Listener ขาด — กด Force Pull');
+      }
+    );
+    console.log(`[AR] listener started: ${col}`);
+  });
+  syncUpdateUI('online', 'Live sync พร้อม 🟢');
+  const btnPull = document.getElementById('btn-pull');
+  const btnPush = document.getElementById('btn-push');
+  if(btnPull) btnPull.disabled = false;
+  if(btnPush) btnPush.disabled = false;
+}
+window.startRealtimeListeners = startRealtimeListeners;
+
+function stopRealtimeListeners() {
+  SYNC_COLS.forEach(col => {
+    if(_listeners[col]) { _listeners[col](); delete _listeners[col]; }
+    clearTimeout(_snapDebounce[col]);
+    _snapFirstDone[col] = false;
+  });
+  console.log('[AR] listeners stopped');
+}
+window.stopRealtimeListeners = stopRealtimeListeners;
 
 // ══════════════════════════════════════════════════════
 // NAVIGATION
@@ -3113,7 +3198,7 @@ window.closeSidebar = closeSidebar;
   screen.classList.add('fade-out');
   setTimeout(() => { screen.style.display = 'none'; }, 450);
 
-  syncCheckConnection();
+  startRealtimeListeners(); // เริ่ม onSnapshot — ครอบคลุม syncCheckConnection ด้วย
   goPage('dashboard');
 })();
 
@@ -3127,6 +3212,7 @@ let _suppressAutoPush = false; // BUG #3/4: ตั้ง true หลัง clear
 
 async function safeUpsertToFirebase() {
   if(!_fbdb || _autoSaving || _suppressAutoPush) return;
+  _lastLocalWrite = Date.now();
   _autoSaving = true;
   const saving = document.getElementById('saving-screen');
   if(saving) saving.classList.add('show');
@@ -3730,6 +3816,7 @@ function admResetCol(col){
       // BUG #3/4 แก้: download backup อัตโนมัติ + บันทึก localStorage backup + ป้องกัน autoPush ทับขึ้น Firebase
       admAutoBackupDownload();
       saveLocalBackup();
+      stopRealtimeListeners(); // หยุด listener ก่อน reset เพื่อป้องกัน snapshot ว่างยิงกลับ
       _suppressAutoPush = true;
       ADM[col]=[]; admSaveCol(col); data[col]=[]; if(col==='companies') companies=[];
       admPageDanger(); admToast(`Cleared ${col} — backup ถูก download แล้ว`,'ok');
@@ -3747,6 +3834,7 @@ function admResetAll(){
       // BUG #3/4 แก้: download backup อัตโนมัติ + บันทึก localStorage backup + ป้องกัน autoPush ทับขึ้น Firebase
       admAutoBackupDownload();
       saveLocalBackup();
+      stopRealtimeListeners(); // หยุด listener ก่อน reset เพื่อป้องกัน snapshot ว่างยิงกลับ
       _suppressAutoPush = true;
       ADM_COLS.forEach(col=>{ADM[col]=[];admLsSave(col,[]);data[col]=[];});
       companies=[];
@@ -3806,7 +3894,8 @@ function admImportAll(event){
       if(!confirm(`Import จาก ${file.name}?\nบริษัท:${p.companies.length} INV:${p.invoices.length}\nข้อมูลปัจจุบันจะถูกแทนที่`)) return;
       ADM_COLS.forEach(col=>{ADM[col]=p[col]||[];admSaveCol(col);data[col]=ADM[col];});
       companies=ADM.companies;
-      _suppressAutoPush=false; // เปิด autoPush กลับหลัง restore
+      _suppressAutoPush=false;
+      startRealtimeListeners(); // restart listeners หลัง restore
       admGoPage(_admCurrentPage); admToast('Import เรียบร้อย ✅','ok');
     }catch(err){admToast('❌ '+err.message,'err');}
   };
@@ -3872,7 +3961,8 @@ function admRestoreFromKey(key){
     const p=JSON.parse(raw);
     ADM_COLS.forEach(col=>{ADM[col]=p[col]||[];admSaveCol(col);data[col]=ADM[col];});
     companies=ADM.companies;
-    _suppressAutoPush=false; // เปิด autoPush กลับหลัง restore
+    _suppressAutoPush=false;
+    startRealtimeListeners(); // restart listeners หลัง restore
     const total=ADM_COLS.reduce((s,c)=>s+ADM[c].length,0);
     admGoPage(_admCurrentPage);
     admToast(`✅ Restore สำเร็จ — ${total} รายการ`,'ok');
