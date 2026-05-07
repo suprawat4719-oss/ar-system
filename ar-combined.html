@@ -838,31 +838,13 @@ let _convertDoc = null;
 let _printDocData = null;
 let _rowCount = 0;
 
-// DEMO DATA (ใช้เมื่อไม่มี Firebase)
-const DEMO = {
-  companies: [
-    {id:'c1',name:'บริษัท เอ จำกัด',nameEn:'A Co., Ltd.',taxId:'1234567890123',address:'123 ถ.สุขุมวิท กรุงเทพฯ 10110',phone:'02-111-1111',prefix:'A',hasVat:true},
-    {id:'c2',name:'บริษัท บี จำกัด',nameEn:'B Co., Ltd.',taxId:'9876543210987',address:'456 ถ.เชียงใหม่ เชียงใหม่ 50000',phone:'053-222-2222',prefix:'B',hasVat:false},
-  ],
-  quotations: [
-    {id:'q1',docNumber:'QT-A-256801-001',docDate:'2025-01-10',docValid:'2025-02-10',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',custTax:'1111111111111',items:[{desc:'บริการที่ปรึกษา',qty:1,unit:'งาน',price:50000,total:50000}],hasVat:true,subtotal:50000,vat:3500,wht:0,total:53500,status:'approved',linkedInvoice:'inv1'},
-    {id:'q2',docNumber:'QT-B-256802-001',docDate:'2025-02-05',docValid:'2025-03-05',companyId:'c2',companyName:'บริษัท บี จำกัด',custName:'บริษัท อีเอฟ จำกัด',custTax:'2222222222222',items:[{desc:'ออกแบบระบบ',qty:1,unit:'โครงการ',price:120000,total:120000}],hasVat:false,subtotal:120000,vat:0,wht:0,total:120000,status:'sent',linkedInvoice:null},
-  ],
-  invoices: [
-    {id:'inv1',docNumber:'INV-A-256801-001',docDate:'2025-01-15',docDue:'2025-02-15',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',custTax:'1111111111111',items:[{desc:'บริการที่ปรึกษา',qty:1,unit:'งาน',price:50000,total:50000}],hasVat:true,subtotal:50000,vat:3500,wht:0,total:53500,paidAmount:30000,status:'partial',linkedQt:'q1',linkedBilling:null,payments:[{id:'p1',date:'2025-01-20',amount:30000,method:'โอนธนาคาร',note:'งวดแรก'}]},
-    {id:'inv2',docNumber:'INV-A-256802-001',docDate:'2025-02-01',docDue:'2025-03-01',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ลูกค้า จีเอช',custTax:'3333333333333',items:[{desc:'ค่าบริการรายเดือน',qty:2,unit:'เดือน',price:15000,total:30000}],hasVat:true,subtotal:30000,vat:2100,wht:0,total:32100,paidAmount:0,status:'sent',linkedQt:null,linkedBilling:null,payments:[]},
-    {id:'inv3',docNumber:'INV-B-256801-001',docDate:'2025-01-20',docDue:'2025-02-20',companyId:'c2',companyName:'บริษัท บี จำกัด',custName:'บริษัท อีเอฟ จำกัด',custTax:'2222222222222',items:[{desc:'ออกแบบโลโก้',qty:1,unit:'งาน',price:8000,total:8000}],hasVat:false,subtotal:8000,vat:0,wht:0,total:8000,paidAmount:8000,status:'paid',linkedQt:null,linkedBilling:null,payments:[{id:'p2',date:'2025-02-01',amount:8000,method:'เงินสด',note:''}]},
-  ],
-  billings: [
-    {id:'bl1',docNumber:'BL-A-256801-001',docDate:'2025-01-16',companyId:'c1',companyName:'บริษัท เอ จำกัด',custName:'ห้างหุ้นส่วนจำกัด ซีดี',invoiceIds:['inv1'],total:53500,status:'sent',linkedInvoice:'inv1'},
-  ],
-};
+// DEMO DATA ถูกลบออกแล้ว — production mode ใช้ Firebase / localStorage เท่านั้น
 
 let data = {
-  companies: [...DEMO.companies],
-  quotations: [...DEMO.quotations],
-  invoices: [...DEMO.invoices],
-  billings: [...DEMO.billings],
+  companies: [],
+  quotations: [],
+  invoices: [],
+  billings: [],
 };
 
 // ══════════════════════════════════════════════════════
@@ -887,7 +869,7 @@ try {
 } catch(e) { console.warn('Firebase not available, using demo data'); }
 
 // ══════════════════════════════════════════════════════
-// STORAGE LAYER  (Firebase → localStorage → DEMO)
+// STORAGE LAYER  (Firebase → localStorage → [])
 // ══════════════════════════════════════════════════════
 const LS_PREFIX = 'ar_sys_';
 
@@ -935,9 +917,8 @@ async function storeLoad(col, demoFallback) {
   // 2) localStorage
   const lsRes = lsLoad(col);
   if(lsRes !== null) return lsRes;
-  // 3) DEMO data (first run only — save to localStorage so edits persist)
-  lsSave(col, demoFallback);
-  return [...demoFallback];
+  // 3) empty — no demo data in production
+  return [];
 }
 
 async function storeAdd(col, d) {
@@ -3117,20 +3098,20 @@ window.closeSidebar = closeSidebar;
     } else {
       // ── ไม่มี Firebase → โหลดจาก localStorage ──
       setMsg('ไม่พบ Firebase', 'โหลดจาก localStorage...');
-      data.companies  = lsLoad('companies')  || DEMO.companies;
-      data.quotations = lsLoad('quotations') || DEMO.quotations;
-      data.invoices   = lsLoad('invoices')   || DEMO.invoices;
-      data.billings   = lsLoad('billings')   || DEMO.billings;
+      data.companies  = lsLoad('companies')  || [];
+      data.quotations = lsLoad('quotations') || [];
+      data.invoices   = lsLoad('invoices')   || [];
+      data.billings   = lsLoad('billings')   || [];
       companies = data.companies;
       setMsg('⚠️ โหลดจาก localStorage', 'ไม่ได้เชื่อมต่อ Firebase');
     }
   } catch(e) {
     // Firebase error → fallback localStorage
     setMsg('⚠️ Firebase error — โหลดจาก localStorage', e.message);
-    data.companies  = lsLoad('companies')  || DEMO.companies;
-    data.quotations = lsLoad('quotations') || DEMO.quotations;
-    data.invoices   = lsLoad('invoices')   || DEMO.invoices;
-    data.billings   = lsLoad('billings')   || DEMO.billings;
+    data.companies  = lsLoad('companies')  || [];
+    data.quotations = lsLoad('quotations') || [];
+    data.invoices   = lsLoad('invoices')   || [];
+    data.billings   = lsLoad('billings')   || [];
     companies = data.companies;
     console.warn('Firebase pull failed:', e);
   }
@@ -3199,7 +3180,7 @@ setInterval(() => {
 // ══════════════════════════════════════════════════════
 // ADMIN PANEL — กด A ค้าง 3 วินาที เพื่อเปิด
 // ══════════════════════════════════════════════════════
-const ADM_PASS = 'CHANGE_ME_ADMIN_PASS'; // ← ต้องเปลี่ยนก่อนใช้งาน
+const ADM_PASS = '1234';
 const ADM_COLS = ['companies','quotations','invoices','billings'];
 let ADM = { companies:[], quotations:[], invoices:[], billings:[] };
 let _admCurrentPage = 'overview';
