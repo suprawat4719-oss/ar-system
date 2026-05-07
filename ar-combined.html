@@ -459,6 +459,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
       <button class="sync-btn push" id="btn-push" onclick="syncPush()" disabled title="อัปโหลดข้อมูลเครื่อง → Firebase">⬆ Push</button>
     </div>
     <div class="sync-last" id="sync-last-time">—</div>
+    <div id="data-source-label" style="font-size:9px;color:rgba(255,255,255,.35);font-family:'IBM Plex Mono',monospace;padding-left:2px;min-height:12px"></div>
   </div>
 </aside>
 
@@ -3261,6 +3262,22 @@ function closeSidebar() {
 window.toggleSidebar = toggleSidebar;
 window.closeSidebar = closeSidebar;
 
+// ── DATA SOURCE HELPERS ──
+function _maxUpdatedAt(arr) {
+  return arr.reduce((max, d) => { const t = d.updatedAt || ''; return t > max ? t : max; }, '');
+}
+function updateDataSourceLabel(sources) {
+  const el = document.getElementById('data-source-label');
+  if(!el) return;
+  const vals = Object.values(sources);
+  if(!vals.length) return;
+  const allFb    = vals.every(v => v === 'firebase');
+  const allLocal = vals.every(v => v === 'local');
+  if(allFb)         { el.textContent = '☁️ ข้อมูลจาก Firebase';       el.style.color = 'rgba(34,197,94,.6)'; }
+  else if(allLocal) { el.textContent = '💾 ข้อมูลจากเครื่องนี้';      el.style.color = 'rgba(251,191,36,.7)'; }
+  else              { el.textContent = '⚠️ ผสม Firebase + เครื่องนี้'; el.style.color = 'rgba(251,191,36,.7)'; }
+}
+
 // ── INIT — Auto Pull จาก Firebase ทุกครั้งที่เปิด ──
 (async function init() {
   const msgEl  = document.getElementById('loading-msg');
@@ -3272,37 +3289,81 @@ window.closeSidebar = closeSidebar;
     if(subEl) subEl.textContent = sub || '';
   }
 
+  let sourceUsed = {}; // col → 'firebase' | 'local'
   try {
     if(_fbdb) {
       // ── มี Firebase → Pull ก่อนเสมอ ──
       setMsg('เชื่อมต่อ Firebase สำเร็จ', 'กำลังดึงข้อมูล...');
       const COLS = ['companies','quotations','invoices','billings'];
       let total = 0;
-      const emptyFromFb = []; // BUG #6: เก็บ collection ที่ Firebase ว่างแต่ localStorage มีข้อมูล
+      const emptyFromFb    = []; // collection ที่ Firebase ว่างแต่ local มีข้อมูล
+      const colFbData      = {}; // col → { fbArr, lsArr }
+      const localNewerCols = []; // cols ที่ local updatedAt ใหม่กว่า Firebase
+
+      // 1st pass: fetch + classify
       for(const col of COLS) {
         setMsg(`กำลังดึง ${col}...`, 'Firebase → เครื่อง');
         const snap = await _fbdb.collection(col).get();
-        const arr = snap.docs.map(d => {
+        const fbArr = snap.docs.map(d => {
           const dd = d.data();
           if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
-          delete dd._syncedAt; // ลบทุกครั้งโดยไม่มีเงื่อนไข
+          if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
+          delete dd._syncedAt;
           return {id: d.id, ...dd};
         });
-        // ถ้า Firebase ว่างแต่ localStorage มีข้อมูล → อย่า overwrite localStorage ด้วย []
-        if(arr.length === 0) {
-          const localArr = lsLoad(col);
-          if(localArr && localArr.length > 0) {
-            console.log(`[AR] init: ${col} — remote=0, local=${localArr.length} (skip overwrite)`);
-            emptyFromFb.push({ col, localCount: localArr.length });
-            data[col] = localArr;
-            total += localArr.length;
-            continue;
+        const lsArr = lsLoad(col) || [];
+        colFbData[col] = { fbArr, lsArr };
+
+        if(fbArr.length === 0 && lsArr.length > 0) {
+          // Firebase ว่าง แต่ local มีข้อมูล → เก็บ local, รอถามผู้ใช้
+          console.log(`[AR] init: ${col} — remote=0, local=${lsArr.length} (keep local)`);
+          emptyFromFb.push({ col, localCount: lsArr.length });
+          sourceUsed[col] = 'local';
+        } else if(fbArr.length > 0 && lsArr.length > 0) {
+          // ทั้งคู่มีข้อมูล → เปรียบ updatedAt ล่าสุด
+          const fbMax = _maxUpdatedAt(fbArr);
+          const lsMax = _maxUpdatedAt(lsArr);
+          if(lsMax > fbMax) {
+            localNewerCols.push({ col, fbMax, lsMax });
+            sourceUsed[col] = 'pending';
+          } else {
+            sourceUsed[col] = 'firebase'; // Firebase ใหม่กว่าหรือเท่ากัน
           }
+        } else {
+          sourceUsed[col] = 'firebase';
         }
-        console.log(`[AR] init: ${col} — remote=${snap.docs.length}, loaded=${arr.length}`);
-        lsSave(col, arr);
-        data[col] = arr;
-        total += arr.length;
+      }
+
+      // ถามครั้งเดียวถ้ามี collection ที่ local ใหม่กว่า Firebase
+      if(localNewerCols.length > 0) {
+        const fmtISO = iso => iso ? iso.slice(0,16).replace('T',' ') : '?';
+        const details = localNewerCols.map(c =>
+          `• ${c.col}: เครื่องนี้ ${fmtISO(c.lsMax)} / Firebase ${fmtISO(c.fbMax)}`
+        ).join('\n');
+        setMsg('⚠️ ข้อมูลเครื่องนี้ใหม่กว่า Firebase', 'รอการยืนยัน...');
+        await new Promise(r => setTimeout(r, 200));
+        const useLocal = confirm(
+          `⚠️ ข้อมูลในเครื่องนี้ใหม่กว่า Firebase:\n${details}\n\n` +
+          `ต้องการใช้ข้อมูลจากเครื่องนี้แทน Firebase หรือไม่?\n` +
+          `(OK = ใช้เครื่องนี้ | Cancel = ใช้ Firebase)`
+        );
+        for(const { col } of localNewerCols) {
+          sourceUsed[col] = useLocal ? 'local' : 'firebase';
+        }
+      }
+
+      // 2nd pass: apply decisions
+      for(const col of COLS) {
+        const { fbArr, lsArr } = colFbData[col];
+        if(sourceUsed[col] === 'local') {
+          data[col] = lsArr;
+          total += lsArr.length;
+        } else {
+          if(fbArr.length > 0) lsSave(col, fbArr);
+          data[col] = fbArr;
+          total += fbArr.length;
+        }
+        console.log(`[AR] init: ${col} — source=${sourceUsed[col]}, count=${data[col].length}`);
       }
       companies = data.companies;
       // BUG #6: แจ้งเตือนและให้ user เลือก Restore ถ้า Firebase ว่างแต่ local มีข้อมูล
@@ -3345,6 +3406,7 @@ window.closeSidebar = closeSidebar;
       data.invoices   = lsLoad('invoices')   || [];
       data.billings   = lsLoad('billings')   || [];
       companies = data.companies;
+      sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local'};
       setMsg('⚠️ โหลดจาก localStorage', 'ไม่ได้เชื่อมต่อ Firebase');
     }
   } catch(e) {
@@ -3355,9 +3417,11 @@ window.closeSidebar = closeSidebar;
     data.invoices   = lsLoad('invoices')   || [];
     data.billings   = lsLoad('billings')   || [];
     companies = data.companies;
+    sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local'};
     console.warn('Firebase pull failed:', e);
   }
 
+  updateDataSourceLabel(sourceUsed);
   // รอ 400ms แล้ว fade out loading screen
   await new Promise(r => setTimeout(r, 400));
   screen.classList.add('fade-out');
