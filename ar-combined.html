@@ -1012,7 +1012,8 @@ async function storeUpdate(col, id, d) {
   }
 
   // Firebase update
-  await fbUpdate(col, id, updates);
+  const fbOk = await fbUpdate(col, id, updates);
+  if(_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase ตอบกลับผิดพลาด', 'err'); return false; }
   // localStorage + in-memory (ให้ syncLS() ที่ caller เรียกได้ updatedAt ถูกต้อง)
   const arr = lsLoad(col) || [];
   const i = arr.findIndex(x => x.id === id);
