@@ -675,8 +675,8 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <div id="toast"></div>
 
 <script>
-const BUILD_TIME="2026-05-02 18:00";
-const BUILD_LABEL="v2.9 · 2 พ.ค. 2569";
+const BUILD_TIME="2026-05-04 15:00";
+const BUILD_LABEL="v2.12 · 4 พ.ค. 2569";
 const MONTHS_TH=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const CATS={
   income:["รับชำระลูกค้า","มัดจำโครงการ","รับเงินสด/โอน","ดอกเบี้ยรับ","รายได้อื่น"],
@@ -723,6 +723,71 @@ let allSearch="",allTypeF="all",allPg=1,allShowAllMonths=false;
 const ALL_PER=25;
 let dynCats=null;
 let employees=[],payrollTypes=[];
+// ── MONTH LOCK (shared with advance-tracker via Firebase month_locks) ──────────
+let monthLocks_fin={};
+let auditLogs_fin=[];
+let rejectedSyncLog_fin=[];
+const ADMIN_PASSWORD_FIN='Jack@2026';
+function isMonthLocked_fin(monthKey){
+  return !!(monthLocks_fin[monthKey]&&monthLocks_fin[monthKey].locked===true);
+}
+function assertMonthEditable_fin(monthKey){
+  if(isMonthLocked_fin(monthKey)){
+    alert('🔒 เดือน '+moLabel_fin(monthKey)+' ปิดงวดแล้ว\nไม่สามารถเพิ่ม แก้ไข ลบ หรือ sync ข้อมูลได้');
+    return false;
+  }
+  return true;
+}
+function moLabel_fin(m){
+  const mn=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const p=m?m.split('-'):[];
+  return p.length>=2?mn[+p[1]-1]+' '+(+p[0]+543):m;
+}
+function addAuditLog_fin(action,monthKey,detail){
+  const entry={action,monthKey:monthKey||'',at:new Date().toISOString(),...(detail||{})};
+  auditLogs_fin.push(entry);
+  try{localStorage.setItem('fin_audit_logs',JSON.stringify(auditLogs_fin.slice(-500)));}catch(_){}
+  if(isOnline&&db) db.collection('audit_logs').add(entry).catch(()=>{});
+}
+async function loadMonthLocks_fin(){
+  try{const s=localStorage.getItem('fin_month_locks');if(s)monthLocks_fin=JSON.parse(s);}catch(_){}
+  if(!isOnline||!db) return;
+  try{
+    const snap=await db.collection('month_locks').get();
+    snap.docs.forEach(d=>{ monthLocks_fin[d.id]=d.data(); });
+    localStorage.setItem('fin_month_locks',JSON.stringify(monthLocks_fin));
+  }catch(e){console.warn('[monthLocks_fin] load:',e);}
+}
+async function lockMonth_fin(monthKey){
+  if(isMonthLocked_fin(monthKey)){toast_("🔒 เดือนนี้ถูกปิดอยู่แล้ว","#b45309");return;}
+  const reason=prompt('กรอกเหตุผลการปิดเดือน '+moLabel_fin(monthKey)+':');
+  if(!reason) return;
+  if(!confirm('⚠️ ยืนยันปิดเดือน '+moLabel_fin(monthKey)+'?\n\nหลังปิดแล้วจะไม่สามารถเพิ่ม แก้ไข ลบ หรือ sync ข้อมูลได้')) return;
+  const now=new Date().toISOString();
+  monthLocks_fin[monthKey]={locked:true,lockedAt:now,lockedBy:'admin',reason,payrollPaid:true};
+  localStorage.setItem('fin_month_locks',JSON.stringify(monthLocks_fin));
+  addAuditLog_fin('LOCK_MONTH',monthKey,{reason});
+  if(isOnline&&db) db.collection('month_locks').doc(monthKey).set(monthLocks_fin[monthKey]).catch(()=>{});
+  render(); toast_("🔒 ปิดเดือน "+moLabel_fin(monthKey)+" เรียบร้อย","#d97706");
+}
+async function unlockMonth_fin(monthKey){
+  if(!isMonthLocked_fin(monthKey)){toast_("เดือนนี้ยังไม่ถูกปิด","#6b7280");return;}
+  const pw=prompt('กรอกรหัส Admin เพื่อปลดล็อกเดือน '+moLabel_fin(monthKey)+':');
+  if(!pw) return;
+  if(pw!==ADMIN_PASSWORD_FIN){
+    addAuditLog_fin('UNLOCK_FAILED',monthKey,{reason:'รหัสผิด'});
+    alert('❌ รหัส Admin ไม่ถูกต้อง การพยายามปลดล็อกถูกบันทึกไว้แล้ว');
+    return;
+  }
+  const reason=prompt('กรอกเหตุผลในการปลดล็อก:');
+  if(!reason) return;
+  if(!confirm('ยืนยันปลดล็อกเดือน '+moLabel_fin(monthKey)+'?')) return;
+  addAuditLog_fin('UNLOCK_MONTH',monthKey,{reason});
+  delete monthLocks_fin[monthKey];
+  localStorage.setItem('fin_month_locks',JSON.stringify(monthLocks_fin));
+  if(isOnline&&db) db.collection('month_locks').doc(monthKey).delete().catch(()=>{});
+  render(); toast_("🔓 ปลดล็อกเดือน "+moLabel_fin(monthKey)+" เรียบร้อย","#16a34a");
+}
 
 // ─── FIREBASE STATUS UI ───────────────────────────────────────────────────────
 function setFbStatus(mode){
@@ -747,13 +812,16 @@ async function loadFromFirebase(){
     return;
   }
   try{
-    // 1. flush รายการที่บันทึกตอน offline ก่อน (local → Firebase)
+    // 1. โหลด month_locks ก่อนสุด เพื่อกรองได้ถูกต้องตั้งแต่ต้น
+    await loadMonthLocks_fin();
+
+    // 2. flush รายการที่บันทึกตอน offline ก่อน (local → Firebase)
     await flushPendingToFirebase();
 
-    // 2. โหลด transactions จาก Firebase แล้ว merge กับ local
+    // 3. โหลด transactions จาก Firebase แล้ว merge กับ local — ไม่ overwrite เดือนล็อก
     const txSnap=await db.collection("fin_transactions").get();
     if(!txSnap.empty){
-      const fbTxs=txSnap.docs.map(d=>{
+      const fbTxsRaw=txSnap.docs.map(d=>{
         const tx={...d.data(),id:d.id};
         // normalize Firestore Timestamp → YYYY-MM-DD string
         if(tx.date&&typeof tx.date==="object"&&tx.date.seconds)
@@ -762,10 +830,22 @@ async function loadFromFirebase(){
           tx.date=tx.date.toDate().toISOString().split("T")[0];
         return tx;
       });
-      // merge: ถ้า local มีรายการที่ Firebase ไม่มี (สร้างตอน offline) ให้เก็บไว้
+      // กรองเดือนล็อกออกจาก Firebase result
+      let lfRejCount=0;
+      const fbTxs=fbTxsRaw.filter(t=>{
+        const mk=getMonthKey(t);
+        if(mk&&isMonthLocked_fin(mk)){
+          rejectedSyncLog_fin.push({monthKey:mk,source:'loadFromFirebase',recordId:t.id,reason:'MONTH_LOCKED',rejectedAt:new Date().toISOString()});
+          lfRejCount++; return false;
+        }
+        return true;
+      });
+      if(lfRejCount>0) addAuditLog_fin('REJECT_PULL_LOCKED_MONTH','multiple',{count:lfRejCount,source:'loadFromFirebase'});
+      // merge: เก็บ local txs ของเดือนล็อกไว้, รวม Firebase txs ของเดือนปกติ + local-only (offline)
       const fbIds=new Set(fbTxs.map(t=>t.id));
-      const localOnly=(txs||[]).filter(t=>!fbIds.has(t.id));
-      txs=[...fbTxs,...localOnly];
+      const lockedLocal=(txs||[]).filter(t=>{ const mk=getMonthKey(t); return mk&&isMonthLocked_fin(mk); });
+      const localOnly=(txs||[]).filter(t=>!fbIds.has(t.id)&&!lockedLocal.find(l=>l.id===t.id));
+      txs=[...fbTxs,...lockedLocal,...localOnly.filter(t=>{ const mk=getMonthKey(t); return !mk||!isMonthLocked_fin(mk); })];
       localStorage.setItem("fin_txs",JSON.stringify(txs));
     } else {
       // ถ้า Firestore ว่าง → ใช้ข้อมูล localStorage หรือ seed
@@ -957,7 +1037,15 @@ window.onload=async()=>{
   refreshApiKeyStatus();
   // version badge
   const vb=document.getElementById("versionBadge");
-  if(vb){vb.textContent=BUILD_LABEL;vb.title=`Finance App ${BUILD_LABEL}\nBuild: ${BUILD_TIME}\nFirebase: advance-tracker-cadf5`;}
+  if(vb){
+    const mn=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    const now=new Date();
+    const hh=String(now.getHours()).padStart(2,'0');
+    const mm=String(now.getMinutes()).padStart(2,'0');
+    const thaiDt=now.getDate()+' '+mn[now.getMonth()]+' '+(now.getFullYear()+543)+' '+hh+':'+mm+' น.';
+    vb.textContent=BUILD_LABEL+' | อัปเดตล่าสุด: '+thaiDt;
+    vb.title=`Finance App ${BUILD_LABEL}\nBuild: ${BUILD_TIME}\nFirebase: advance-tracker-cadf5`;
+  }
   document.addEventListener('click', e=>{
     const drawer=document.getElementById('mob-more-drawer');
     const moreBtn=document.getElementById('mob-more-btn');
@@ -965,7 +1053,7 @@ window.onload=async()=>{
       drawer.style.display='none';
     }
   });
-  // โหลด Firebase ใน background แล้ว re-render
+  // โหลด Firebase ใน background แล้ว re-render (loadFromFirebase โหลด month_locks ก่อนสุดอยู่แล้ว)
   await loadFromFirebase();
   rForm=ef(); renderRightForm();
   render();
@@ -1061,6 +1149,13 @@ async function saveFinanceTransaction(tx){
 
 async function createAdvanceRequest(tx){
   if(!isOnline||!db) return;
+  const mkChk=getMonthKey(tx);
+  if(isMonthLocked_fin(mkChk)){
+    rejectedSyncLog_fin.push({monthKey:mkChk,source:'createAdvanceRequest',recordId:tx.id,amount:tx.amount,reason:'MONTH_LOCKED',rejectedAt:new Date().toISOString()});
+    addAuditLog_fin('REJECT_SYNC_LOCKED_MONTH',mkChk,{recordId:tx.id,source:'createAdvanceRequest'});
+    console.warn("[advance_requests] skip locked month:",mkChk,tx.id);
+    return;
+  }
   // guard: ห้าม sync รายการที่ไม่ใช่เบิกล่วงหน้าพนักงาน
   if(!shouldSyncAdvance(tx)){
     console.log("[advance_requests] Skip sync: not employee advance",tx.id,tx.type);
@@ -1127,6 +1222,13 @@ async function createAdvanceRequest(tx){
 // collection ใหม่สำหรับ query รายเดือนเร็ว ไม่ลบ advance_requests เดิม
 async function syncAdvance(tx){
   if(!isOnline||!db) return;
+  const mkSA=getMonthKey(tx);
+  if(isMonthLocked_fin(mkSA)){
+    rejectedSyncLog_fin.push({monthKey:mkSA,source:'syncAdvance',recordId:tx.id,amount:tx.amount,reason:'MONTH_LOCKED',rejectedAt:new Date().toISOString()});
+    addAuditLog_fin('REJECT_SYNC_LOCKED_MONTH',mkSA,{recordId:tx.id,source:'syncAdvance'});
+    console.warn("[advance_monthly] skip locked month:",mkSA,tx.id);
+    return;
+  }
   if(!shouldSyncAdvance(tx)){
     console.log("[advance_monthly] Skip: not advance",tx.id,tx.type);
     return;
@@ -1266,31 +1368,47 @@ async function logDriveImport(log){
 // ─── CROSS-APP SYNC (finance_app ↔ v2 advance-tracker) ───────────────────────
 // แปลง fin_transaction (payroll) → format transactions[] ของ v2
 function finTxToV2Tx(tx){
+  const d=getTxDate(tx)||normalizeDate(tx.date)||"";
   return{
-    id:tx.id,                          // ใช้ id เดียวกันเพื่อ track ว่า sync แล้ว
-    date:normalizeDate(tx.date)||"-",  // normalize ก่อนส่งไป v2 เสมอ
+    id:tx.id,
+    date:d||"-",
+    monthKey:d?d.slice(0,7):"",
     bank:tx.method||"-",
-    recipient:tx.party||"",
+    recipient:tx.party||tx.receiverName||"",
     amount:Number(tx.amount)||0,
-    ref:tx.category||"",
+    ref:tx.referenceNo||tx.ref||"",
+    category:tx.category||"",
+    referenceNo:tx.referenceNo||"",
     imgUrl:tx.slipUrl||"",
     note:tx.note||"",
     savedAt:tx.savedAt||new Date().toISOString(),
-    _source:"finance_app"              // mark ว่ามาจาก finance_app
+    _source:"finance_app",
+    sourceType:"employee_advance",
   };
 }
 
-// sync payroll transactions → employees.transactions[] ใน Firestore (finance_app → v2)
+// sync advance transactions → employees.transactions[] ใน Firestore (finance_app → v2)
+// เฉพาะ shouldSyncAdvance() เท่านั้น — ห้าม payroll ทั่วไป, travel, expense
 async function syncPayrollToV2(changedEmpIds){
   if(!isOnline||!db)return;
   try{
-    // รวบรวม payroll txs แยกตาม empId
     const byEmp={};
-    txs.filter(t=>t.type==="payroll"&&t.empId).forEach(t=>{
-      if(!byEmp[t.empId])byEmp[t.empId]=[];
-      byEmp[t.empId].push(finTxToV2Tx(t));
+    txs.filter(t=>shouldSyncAdvance(t)&&(t.employeeId||t.empId)).forEach(t=>{
+      const empId=t.employeeId||t.empId;
+      if(!empId){ console.warn("[CrossSync] skip: no empId",t.id); return; }
+      if(!(Number(t.amount)>0)){ console.warn("[CrossSync] skip: amount<=0",t.id); return; }
+      const d=getTxDate(t);
+      if(!d){ console.warn("[CrossSync] skip: no date",t.id); return; }
+      const mk=getMonthKey(t);
+      if(isMonthLocked_fin(mk)){
+        rejectedSyncLog_fin.push({monthKey:mk,source:'syncPayrollToV2',recordId:t.id,amount:t.amount,reason:'MONTH_LOCKED',rejectedAt:new Date().toISOString()});
+        addAuditLog_fin('REJECT_SYNC_LOCKED_MONTH',mk,{recordId:t.id,source:'syncPayrollToV2'});
+        console.warn("[CrossSync] skip locked month:",mk,t.id);
+        return;
+      }
+      if(!byEmp[empId])byEmp[empId]=[];
+      byEmp[empId].push(finTxToV2Tx(t));
     });
-    // อัพเดทเฉพาะ employee ที่มีการเปลี่ยนแปลง (หรือทั้งหมดถ้าไม่ระบุ)
     const empIds=changedEmpIds||Object.keys(byEmp);
     const batch=db.batch();
     empIds.forEach(empId=>{
@@ -1299,7 +1417,7 @@ async function syncPayrollToV2(changedEmpIds){
       batch.update(ref,{transactions:v2Txs});
     });
     await batch.commit();
-    console.log(`[CrossSync] finance_app → v2: synced ${empIds.length} employee(s)`);
+    console.log(`[CrossSync] finance_app → v2 (advance only): synced ${empIds.length} employee(s)`);
   }catch(e){
     console.warn("[CrossSync] finance_app → v2 failed:",e);
   }
@@ -1326,8 +1444,25 @@ function navMo(dir){
 
 function render(){
   const lbl=moLabel(curMo);
-  document.getElementById("topMo").textContent=lbl;
-  document.getElementById("moPicker").textContent=lbl;
+  const locked=isMonthLocked_fin(curMo);
+  document.getElementById("topMo").textContent=lbl+(locked?' 🔒':'');
+  document.getElementById("moPicker").textContent=lbl+(locked?' 🔒':'');
+  // แสดง/ซ่อน lock banner
+  let lockBanner=document.getElementById("fin-lock-banner");
+  if(!lockBanner){
+    lockBanner=document.createElement("div");
+    lockBanner.id="fin-lock-banner";
+    lockBanner.style.cssText="background:#FEF3C7;border-bottom:2px solid #F59E0B;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;color:#92400E;position:sticky;top:52px;z-index:97";
+    const nav=document.querySelector(".tabs")||document.querySelector("nav");
+    if(nav&&nav.parentNode) nav.parentNode.insertBefore(lockBanner,nav.nextSibling);
+  }
+  if(locked){
+    const li=monthLocks_fin[curMo];
+    lockBanner.style.display="flex";
+    lockBanner.innerHTML=`<span>🔒 เดือนนี้ปิดงวดแล้ว — ไม่สามารถเพิ่ม/แก้ไข/ลบรายการได้${li&&li.reason?' ('+li.reason+')':''}</span><button onclick="unlockMonth_fin('${curMo}')" style="background:#fff;border:1.5px solid #F59E0B;border-radius:6px;padding:3px 12px;color:#92400E;cursor:pointer;font-size:12px">🔓 ปลดล็อก</button>`;
+  } else {
+    lockBanner.style.display="none";
+  }
 
   const mTxs=getCurrentMonthTxs();
   console.log("[month]",curMo,"[current month txs]",mTxs.map(t=>({id:t.id,date:t.date,transferDate:t.transferDate,month:getTxMonth(t),type:t.type,amount:t.amount})));
@@ -1496,6 +1631,7 @@ function saveRight(){
   if(isEmpType(rForm.type)&&!rForm.empId){toast_("⚠️ กรุณาเลือกพนักงาน","#b45309");return;}
   if(!rForm.amount||!rForm.category){toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309");return;}
   if(!rForm.party&&!isEmpType(rForm.type)){ toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309"); return; }
+  if(!assertMonthEditable_fin(getMonthKey(rForm))) return;
   const emp=rForm.empId?employees.find(e=>e.id===rForm.empId):null;
   if(emp&&!rForm.party) rForm.party=emp.name;
   rForm.employeeId=rForm.empId||"";
@@ -1555,6 +1691,7 @@ function selTx(id){
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 function approveTx(id){
   const tx=txs.find(t=>t.id===id);
+  if(tx&&!assertMonthEditable_fin(getMonthKey(tx))) return;
   txs=txs.map(t=>t.id===id?{...t,status:"confirmed"}:t);
   saveTxs(); toast_("✅ อนุมัติแล้ว","#16a34a"); render();
   if(tx&&tx.type==="payroll"&&tx.empId) syncPayrollToV2([tx.empId]);
@@ -1568,8 +1705,9 @@ function approveTx(id){
   }
 }
 function delTx(id){
-  if(!confirm("ลบรายการนี้?"))return;
   const tx=txs.find(t=>t.id===id);
+  if(tx&&!assertMonthEditable_fin(getMonthKey(tx))) return;
+  if(!confirm("ลบรายการนี้?"))return;
   txs=txs.filter(t=>t.id!==id);
   if(selId===id)clearRight();
   saveTxs(); toast_("🗑 ลบแล้ว","#dc2626"); render();
@@ -1796,6 +1934,7 @@ function setMType(v){mForm.type=v;mForm.category="";mForm.empId="";mForm.payroll
 function saveForm(){
   if(isEmpType(mForm.type)&&!mForm.empId){toast_("⚠️ กรุณาเลือกพนักงาน","#b45309");return;}
   if(!mForm.amount||!mForm.category){toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309");return;}
+  if(!assertMonthEditable_fin(getMonthKey(mForm))) return;
   const emp=mForm.empId?employees.find(e=>e.id===mForm.empId):null;
   if(isEmpType(mForm.type)&&!mForm.party){
     if(emp) mForm.party=emp.name;
@@ -2800,12 +2939,15 @@ function mobNavDrawer(pg){
 // ─── MANUAL CROSS-SYNC ────────────────────────────────────────────────────────
 async function manualSync(){
   if(!isOnline||!db){toast_("⚠️ ต้องออนไลน์ก่อน Sync","#b45309");return;}
-  toast_("🔄 กำลัง Sync ไปยัง advance-tracker...","#0d9488");
+  toast_("🔄 กำลัง Sync เบิกล่วงหน้าไปยัง advance-tracker...","#0d9488");
   try{
-    // finance_app → v2 (ทางเดียว)
-    const empIds=[...new Set(txs.filter(t=>t.type==="payroll"&&t.empId).map(t=>t.empId))];
+    // finance_app → v2 เฉพาะ shouldSyncAdvance() เท่านั้น
+    const empIds=[...new Set(
+      txs.filter(t=>shouldSyncAdvance(t)&&(t.employeeId||t.empId))
+         .map(t=>t.employeeId||t.empId)
+    )];
     if(empIds.length>0) await syncPayrollToV2(empIds);
-    toast_("✅ Sync payroll ไป advance-tracker เสร็จแล้ว","#16a34a");
+    toast_("✅ Sync เบิกล่วงหน้าไป advance-tracker เสร็จแล้ว ("+empIds.length+" คน)","#16a34a");
     render();
   }catch(e){
     toast_("❌ Sync ล้มเหลว: "+e.message,"#dc2626");
@@ -2819,10 +2961,10 @@ async function pullFromFirebase(){
   try{
     // flush pending offline ก่อน แล้วค่อย pull
     await flushPendingToFirebase();
-    // โหลด transactions
+    // โหลด transactions — ไม่ overwrite เดือนที่ล็อก
     const txSnap=await db.collection("fin_transactions").get();
     if(!txSnap.empty){
-      txs=txSnap.docs.map(d=>{
+      const fbTxs=txSnap.docs.map(d=>{
         const tx={...d.data(),id:d.id};
         if(tx.date&&typeof tx.date==="object"&&tx.date.seconds)
           tx.date=new Date(tx.date.seconds*1000).toISOString().split("T")[0];
@@ -2830,6 +2972,25 @@ async function pullFromFirebase(){
           tx.date=tx.date.toDate().toISOString().split("T")[0];
         return tx;
       });
+      // แยก: เก็บ txs ของเดือนล็อกจาก local, ใช้ Firebase สำหรับเดือนที่ไม่ล็อก
+      let pullRejCount=0;
+      const lockedLocalTxs=txs.filter(t=>{
+        const mk=getMonthKey(t);
+        return mk&&isMonthLocked_fin(mk);
+      });
+      const filteredFbTxs=fbTxs.filter(t=>{
+        const mk=getMonthKey(t);
+        if(mk&&isMonthLocked_fin(mk)){
+          rejectedSyncLog_fin.push({monthKey:mk,source:'pullFromFirebase',recordId:t.id,reason:'MONTH_LOCKED',rejectedAt:new Date().toISOString()});
+          pullRejCount++; return false;
+        }
+        return true;
+      });
+      if(pullRejCount>0) addAuditLog_fin('REJECT_PULL_LOCKED_MONTH','multiple',{count:pullRejCount,source:'pullFromFirebase'});
+      // รวม: Firebase (เดือนไม่ล็อก) + local (เดือนล็อก)
+      const fbIds=new Set(filteredFbTxs.map(t=>t.id));
+      const mergedTxs=[...filteredFbTxs,...lockedLocalTxs.filter(t=>!fbIds.has(t.id))];
+      txs=mergedTxs;
       localStorage.setItem("fin_txs",JSON.stringify(txs));
     }
     // โหลด employees
