@@ -866,7 +866,7 @@ try {
     if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     _fbdb = firebase.firestore();
   }
-} catch(e) { console.warn('Firebase not available, using demo data'); }
+} catch(e) { console.warn('Firebase not available, using localStorage/empty data'); }
 
 // ══════════════════════════════════════════════════════
 // STORAGE LAYER  (Firebase → localStorage → [])
@@ -910,7 +910,7 @@ async function fbDelete(col, id) {
 }
 
 // ── Unified CRUD (Firebase first, localStorage fallback) ──
-async function storeLoad(col, demoFallback) {
+async function storeLoad(col) {
   // 1) Firebase
   const fbRes = await fbLoad(col);
   if(fbRes !== null) { lsSave(col, fbRes); return fbRes; }
@@ -1140,11 +1140,6 @@ async function syncPush() {
 }
 window.syncPush = syncPush;
 
-// @deprecated — ไม่ได้ถูกเรียกแล้ว; init() โหลด companies ผ่าน Firebase/localStorage โดยตรง
-// async function loadCompanies() {
-//   const res = await storeLoad('companies', DEMO.companies);
-//   data.companies = res; companies = res;
-// }
 
 // ══════════════════════════════════════════════════════
 // NAVIGATION
@@ -3741,6 +3736,7 @@ function admResetCol(col){
       _suppressAutoPush = true;
       ADM[col]=[]; admSaveCol(col); data[col]=[]; if(col==='companies') companies=[];
       admPageDanger(); admToast(`Cleared ${col} — backup ถูก download แล้ว`,'ok');
+      toast('⚠️ Auto Push ปิดชั่วคราว — กด Push เองเมื่อพร้อม เพื่อป้องกันข้อมูลว่างทับ Firebase', 'info');
     });
 }
 window.admResetCol=admResetCol;
@@ -3759,6 +3755,7 @@ function admResetAll(){
       companies=[];
       Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_')).forEach(k=>localStorage.removeItem(k));
       admPageDanger(); admToast('ล้างข้อมูลทั้งหมดเรียบร้อย — backup ถูก download แล้ว ✅','ok');
+      toast('⚠️ Auto Push ปิดชั่วคราว — กด Push เองเมื่อพร้อม เพื่อป้องกันข้อมูลว่างทับ Firebase', 'info');
     });
 }
 window.admResetAll=admResetAll;
