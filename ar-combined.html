@@ -958,23 +958,66 @@ async function fbGetDoc(col, id) {
   } catch(e) { return null; }
 }
 
-// ── Unified CRUD (Firebase first, localStorage fallback) ──
+// ── Unified CRUD — Data Source Priority Rule ──
 async function storeLoad(col) {
-  // 1) Firebase
-  const fbRes = await fbLoad(col);
-  if(fbRes !== null) { lsSave(col, fbRes); return fbRes; }
-  // 2) localStorage
-  const lsRes = lsLoad(col);
-  if(lsRes !== null) return lsRes;
-  // 3) empty — no demo data in production
-  return [];
+  const fbRes = await fbLoad(col); // null = Firebase offline/error
+  const lsRes = lsLoad(col) || [];
+
+  // Firebase unavailable
+  if(fbRes === null) {
+    _setDsLabel('💾 ใช้ข้อมูลจากเครื่องนี้');
+    return lsRes;
+  }
+
+  // Firebase empty, local has data → ห้ามทับ local
+  if(fbRes.length === 0 && lsRes.length > 0) {
+    _setDsLabel('⚠️ Firebase ว่าง ใช้ local');
+    return lsRes;
+  }
+
+  // ทั้งคู่มีข้อมูล → compare updatedAt
+  if(fbRes.length > 0 && lsRes.length > 0) {
+    const fbMax = _maxUpdatedAt(fbRes);
+    const lsMax = _maxUpdatedAt(lsRes);
+    if(lsMax > fbMax) {
+      // local ใหม่กว่า → ถามก่อน push
+      _setDsLabel('⏳ local ใหม่กว่า รอผู้ใช้ยืนยัน');
+      const fmtISO = iso => iso ? iso.slice(0,16).replace('T',' ') : '?';
+      const doPush = confirm(
+        `⚠️ ข้อมูลในเครื่องนี้ (${col}) ใหม่กว่า Firebase\n` +
+        `เครื่องนี้: ${fmtISO(lsMax)}\nFirebase:   ${fmtISO(fbMax)}\n\n` +
+        `ต้องการ Push ข้อมูลเครื่องนี้ขึ้น Firebase หรือไม่?\n` +
+        `(OK = Push | Cancel = ใช้ Firebase โดยไม่ Push)`
+      );
+      if(doPush && _fbdb) {
+        for(let i = 0; i < lsRes.length; i += 400) {
+          const batch = _fbdb.batch();
+          lsRes.slice(i, i+400).forEach(doc => {
+            const {id, ...rest} = doc;
+            batch.set(_fbdb.collection(col).doc(id), {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge:true});
+          });
+          await batch.commit();
+        }
+        toast(`Push ${col} สำเร็จ`, 'ok');
+        lsSave(col, lsRes);
+        _setDsLabel('☁️ ใช้ข้อมูลจาก Firebase');
+        return lsRes;
+      }
+    }
+  }
+
+  // Firebase ใหม่กว่าหรือเท่ากัน → ใช้ Firebase
+  if(fbRes.length > 0) lsSave(col, fbRes);
+  _setDsLabel('☁️ ใช้ข้อมูลจาก Firebase');
+  return fbRes;
 }
 
 async function storeAdd(col, d) {
   _lastLocalWrite = Date.now();
   const id = uid();
   const enriched = {...d, updatedAt: new Date().toISOString(), updatedBy: _deviceName};
-  await fbSet(col, id, enriched);
+  const fbOk = await fbSet(col, id, enriched);
+  if(_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase ตอบกลับผิดพลาด', 'err'); return null; }
   const arr = lsLoad(col) || [];
   arr.push({id, ...enriched});
   lsSave(col, arr);
@@ -1181,7 +1224,7 @@ async function syncPush() {
   syncUpdateUI('syncing', 'กำลัง Push...');
   try {
     saveLocalBackup(); // backup local ก่อนทุกครั้ง
-    let totalDocs = 0, skipped = [];
+    let totalDocs = 0, skipped = [], conflicts = 0;
     for(const col of SYNC_COLS) {
       const arr = lsLoad(col) || data[col] || [];
       // safety guard: ถ้า local ว่าง → ข้ามทั้ง collection ห้ามแตะ Firebase เด็ดขาด
@@ -1200,22 +1243,41 @@ async function syncPush() {
           skipped.push(col); continue;
         }
       }
-      // safe upsert: batch.set เฉพาะ doc ที่มีในเครื่อง — ไม่ delete doc ใดๆ บน Firebase
-      for(let i = 0; i < arr.length; i += 400) {
-        const chunk = arr.slice(i, i + 400);
+      // build remote updatedAt map: ห้ามเอา local เก่าทับ remote ใหม่
+      const remoteMap = {};
+      snapRemote.docs.forEach(d => {
+        const dd = d.data();
+        let at = dd.updatedAt;
+        if(at?.toDate) at = at.toDate().toISOString();
+        remoteMap[d.id] = at || '';
+      });
+      const toPush = arr.filter(doc => {
+        const remoteAt = remoteMap[doc.id] || '';
+        const localAt  = doc.updatedAt   || '';
+        if(remoteAt && remoteAt > localAt) {
+          console.log(`[AR] syncPush: conflict skip ${col}/${doc.id} — remote ${remoteAt} > local ${localAt}`);
+          conflicts++;
+          return false;
+        }
+        return true;
+      });
+      // safe upsert with merge:true — ไม่ delete doc ใดๆ บน Firebase
+      for(let i = 0; i < toPush.length; i += 400) {
+        const chunk = toPush.slice(i, i + 400);
         const batch = _fbdb.batch();
         chunk.forEach(doc => {
           const {id, ...rest} = doc;
-          batch.set(_fbdb.collection(col).doc(id), {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()});
+          batch.set(_fbdb.collection(col).doc(id), {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge: true});
         });
         await batch.commit();
       }
-      totalDocs += arr.length;
+      totalDocs += toPush.length;
     }
     const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
-    const skipMsg = skipped.length ? ` (ข้าม: ${skipped.join(', ')})` : '';
+    const skipMsg     = skipped.length   ? ` (ข้าม: ${skipped.join(', ')})`          : '';
+    const conflictMsg = conflicts > 0    ? ` ⚠️ ข้าม remote ใหม่กว่า: ${conflicts} doc` : '';
     syncUpdateUI('online', 'Push สำเร็จ ✅', now);
-    toast(`Push สำเร็จ — ${totalDocs} รายการ${skipMsg}`, 'ok');
+    toast(`Push สำเร็จ — ${totalDocs} รายการ${skipMsg}${conflictMsg}`, 'ok');
   } catch(e) {
     syncUpdateUI('error', 'Push ล้มเหลว ❌');
     toast('Push ล้มเหลว: ' + e.message, 'err');
@@ -3265,6 +3327,10 @@ window.closeSidebar = closeSidebar;
 // ── DATA SOURCE HELPERS ──
 function _maxUpdatedAt(arr) {
   return arr.reduce((max, d) => { const t = d.updatedAt || ''; return t > max ? t : max; }, '');
+}
+function _setDsLabel(text) {
+  const el = document.getElementById('data-source-label');
+  if(el) el.textContent = text;
 }
 function updateDataSourceLabel(sources) {
   const el = document.getElementById('data-source-label');
