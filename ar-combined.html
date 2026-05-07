@@ -432,7 +432,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.0 — 2026-04-28 03:41</div>
+    <div class="logo-sub">v2.1 — 2026-05-07</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1043,20 +1043,64 @@ async function syncPull() {
   syncUpdateUI('syncing', 'กำลัง Pull...');
   try {
     let totalDocs = 0;
+    const emptyFromFb = [];
     for(const col of SYNC_COLS) {
       const snap = await _fbdb.collection(col).get();
-      const arr = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      // remove Firestore timestamps (not serializable cleanly)
-      arr.forEach(doc => { if(doc.createdAt?.toDate) doc.createdAt = doc.createdAt.toDate().toISOString(); });
+      const remoteCount = snap.docs.length;
+      const arr = snap.docs.map(d => {
+        const dd = d.data();
+        if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
+        delete dd._syncedAt;
+        return {id: d.id, ...dd};
+      });
+      const localArr = lsLoad(col) || [];
+      console.log(`[AR] syncPull: ${col} — remote=${remoteCount}, local=${localArr.length}`);
+      // safety guard: ถ้า Firebase ว่างแต่ localStorage มีข้อมูล → ห้าม overwrite local ด้วย []
+      if(arr.length === 0 && localArr.length > 0) {
+        console.warn(`[AR] syncPull: skip ${col} — Firebase empty but local has ${localArr.length} docs`);
+        emptyFromFb.push({ col, localCount: localArr.length });
+        data[col] = localArr;
+        totalDocs += localArr.length;
+        continue;
+      }
       lsSave(col, arr);
       data[col] = arr;
       totalDocs += arr.length;
     }
     companies = data.companies;
     const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
-    syncUpdateUI('online', 'Pull สำเร็จ ✅', now);
-    toast(`Pull สำเร็จ — ${totalDocs} รายการ`, 'ok');
-    goPage(_currentPage); // refresh current page
+    if(emptyFromFb.length > 0) {
+      const details = emptyFromFb.map(w => `• ${w.col}: ${w.localCount} รายการใน localStorage`).join('\n');
+      const restore = confirm(
+        `⚠️ Firebase ว่าง แต่ localStorage มีข้อมูล:\n${details}\n\n` +
+        `ต้องการ Push ข้อมูลจาก localStorage กลับขึ้น Firebase หรือไม่?\n` +
+        `(กด Cancel เพื่อดูข้อมูลก่อน แล้วกด Push เองในภายหลัง)`
+      );
+      if(restore) {
+        syncUpdateUI('syncing', 'กำลัง Restore...');
+        for(const { col } of emptyFromFb) {
+          const localArr = lsLoad(col) || [];
+          for(let i = 0; i < localArr.length; i += 400) {
+            const chunk = localArr.slice(i, i + 400);
+            const batch = _fbdb.batch();
+            chunk.forEach(doc => {
+              const { id, ...rest } = doc;
+              batch.set(_fbdb.collection(col).doc(id), { ...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            });
+            await batch.commit();
+          }
+        }
+        syncUpdateUI('online', 'Pull + Restore สำเร็จ ✅', now);
+        toast(`Pull สำเร็จ — ${totalDocs} รายการ (Restore แล้ว)`, 'ok');
+      } else {
+        syncUpdateUI('online', 'Pull สำเร็จ ⚠️', now);
+        toast(`⚠️ Firebase ว่าง — ใช้ข้อมูล localStorage (${totalDocs} รายการ)`, 'info');
+      }
+    } else {
+      syncUpdateUI('online', 'Pull สำเร็จ ✅', now);
+      toast(`Pull สำเร็จ — ${totalDocs} รายการ`, 'ok');
+    }
+    goPage(_currentPage);
   } catch(e) {
     syncUpdateUI('error', 'Pull ล้มเหลว ❌');
     toast('Pull ล้มเหลว: ' + e.message, 'err');
@@ -1069,14 +1113,14 @@ window.syncPull = syncPull;
 // BUG #2 แก้: เพิ่ม safety guard — ถ้า local ว่าง หรือน้อยกว่า remote มากผิดปกติ → ข้าม/เตือน
 async function syncPush() {
   if(!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
-  if(!confirm('อัปโหลดข้อมูลในเครื่องทั้งหมดขึ้น Firebase?\nข้อมูลที่อยู่บน Firebase จะถูกแทนที่')) return;
+  if(!confirm('⬆ Push ข้อมูลในเครื่องขึ้น Firebase\n\nข้อมูลที่อยู่บน Firebase จะถูกแทนที่ด้วยข้อมูลในเครื่อง\nกระบวนการนี้ไม่สามารถย้อนกลับได้ — ตรวจสอบข้อมูลก่อนกด OK')) return;
   syncUpdateUI('syncing', 'กำลัง Push...');
   try {
-    saveLocalBackup(); // BUG #2: บันทึก backup ก่อน destructive sync เสมอ
+    saveLocalBackup(); // backup local ก่อนทุกครั้ง
     let totalDocs = 0, skipped = [];
     for(const col of SYNC_COLS) {
       const arr = lsLoad(col) || data[col] || [];
-      // BUG #2 safety guard: ถ้า local ว่าง → ข้ามทั้ง collection ห้ามแตะ Firebase
+      // safety guard: ถ้า local ว่าง → ข้ามทั้ง collection ห้ามแตะ Firebase เด็ดขาด
       if(arr.length === 0) {
         console.warn(`[AR] syncPush: skip ${col} — local array empty`);
         skipped.push(`${col}(ว่าง)`); continue;
@@ -1084,10 +1128,11 @@ async function syncPush() {
       // ตรวจ count ที่ผิดปกติ: local น้อยกว่า remote เกิน 80% และ remote มีมากกว่า 10 docs
       const snapOld = await _fbdb.collection(col).get();
       const remoteCount = snapOld.docs.length;
+      console.log(`[AR] syncPush: ${col} — local=${arr.length}, remote=${remoteCount}`);
       if(remoteCount > 10 && arr.length < remoteCount * 0.2) {
         const warn = `${col}: เครื่องมี ${arr.length} รายการ แต่ Firebase มี ${remoteCount} รายการ`;
         console.warn(`[AR] syncPush suspicious count: ${warn}`);
-        if(!confirm(`⚠️ ข้อมูลไม่สมดุล — ${warn}\n\nอาจทำให้ข้อมูล Firebase หายไปหากดำเนินต่อ\n\nยืนยัน Push ${col} ต่อหรือไม่?`)) {
+        if(!confirm(`⚠️ ข้อมูลไม่สมดุล — ${warn}\n\nการ Push จะแทนที่ข้อมูล Firebase ด้วยข้อมูลเครื่องที่น้อยกว่า\nอาจทำให้ข้อมูล Firebase หายไปได้\n\nยืนยัน Push ${col} ต่อหรือไม่?`)) {
           skipped.push(col); continue;
         }
       }
@@ -3021,20 +3066,21 @@ window.closeSidebar = closeSidebar;
         const arr = snap.docs.map(d => {
           const dd = d.data();
           if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
-          if(dd._syncedAt?.toDate) delete dd._syncedAt;
+          delete dd._syncedAt; // ลบทุกครั้งโดยไม่มีเงื่อนไข
           return {id: d.id, ...dd};
         });
-        // BUG #6 แก้: ถ้า Firebase ว่างแต่ localStorage มีข้อมูล → อย่า overwrite localStorage
-        // (ป้องกันกรณี Firebase ถูกลบโดยไม่ตั้งใจ แล้ว overwrite local ที่ยังดีอยู่ด้วย [])
+        // ถ้า Firebase ว่างแต่ localStorage มีข้อมูล → อย่า overwrite localStorage ด้วย []
         if(arr.length === 0) {
           const localArr = lsLoad(col);
           if(localArr && localArr.length > 0) {
+            console.log(`[AR] init: ${col} — remote=0, local=${localArr.length} (skip overwrite)`);
             emptyFromFb.push({ col, localCount: localArr.length });
             data[col] = localArr;
             total += localArr.length;
-            continue; // ข้าม lsSave เพื่อไม่ให้ [] ทับ localStorage
+            continue;
           }
         }
+        console.log(`[AR] init: ${col} — remote=${snap.docs.length}, loaded=${arr.length}`);
         lsSave(col, arr);
         data[col] = arr;
         total += arr.length;
