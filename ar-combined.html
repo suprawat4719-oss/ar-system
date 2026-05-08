@@ -1443,6 +1443,7 @@ window.goPage = goPage;
 // ══════════════════════════════════════════════════════
 function fmt(n) { return (n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtInt(n) { return (n||0).toLocaleString('th-TH'); }
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function today() { return new Date().toISOString().split('T')[0]; }
 function addDays(d,n) { const dt=new Date(d); dt.setDate(dt.getDate()+n); return dt.toISOString().split('T')[0]; }
 function daysDiff(a,b) { return Math.ceil((new Date(b)-new Date(a))/(1000*60*60*24)); }
@@ -3499,20 +3500,21 @@ window.editCustomer = editCustomer;
 
 function openCustomerModal(c) {
   const isEdit = !!c;
+  const e = escHtml; // shorthand
   document.getElementById('page-content').innerHTML += `
   <div class="overlay show" id="modal-customer">
     <div class="modal" style="width:700px;max-width:97vw">
-      <div class="modal-title">${isEdit ? '✏️ แก้ไขลูกค้า — '+c.name : '👤 เพิ่มลูกค้าใหม่'}</div>
+      <div class="modal-title">${isEdit ? '✏️ แก้ไขลูกค้า — '+e(c.name) : '👤 เพิ่มลูกค้าใหม่'}</div>
 
       <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink4);margin-bottom:8px">ข้อมูลหลัก</div>
       <div class="form-grid" style="gap:10px;margin-bottom:14px">
         <div class="field span2">
           <label>ชื่อลูกค้า / บริษัท <span style="color:var(--red)">*</span></label>
-          <input type="text" id="cust-name" value="${c?.name||''}" placeholder="บริษัท ตัวอย่าง จำกัด" required>
+          <input type="text" id="cust-name" value="${e(c?.name)}" placeholder="บริษัท ตัวอย่าง จำกัด" required>
         </div>
         <div class="field span2">
           <label>ชื่อภาษาอังกฤษ</label>
-          <input type="text" id="cust-name-en" value="${c?.nameEn||''}" placeholder="Example Company Ltd.">
+          <input type="text" id="cust-name-en" value="${e(c?.nameEn)}" placeholder="Example Company Ltd.">
         </div>
         <div class="field">
           <label>ประเภทลูกค้า</label>
@@ -3524,11 +3526,11 @@ function openCustomerModal(c) {
         </div>
         <div class="field">
           <label>เลขประจำตัวผู้เสียภาษี</label>
-          <input type="text" id="cust-tax" value="${c?.taxId||''}" placeholder="0000000000000" maxlength="13">
+          <input type="text" id="cust-tax" value="${e(c?.taxId)}" placeholder="0000000000000" maxlength="13">
         </div>
         <div class="field span2">
           <label>ที่อยู่</label>
-          <textarea id="cust-address" style="min-height:72px">${c?.address||''}</textarea>
+          <textarea id="cust-address" style="min-height:72px">${e(c?.address)}</textarea>
         </div>
       </div>
 
@@ -3536,27 +3538,27 @@ function openCustomerModal(c) {
       <div class="form-grid" style="gap:10px;margin-bottom:14px">
         <div class="field">
           <label>โทรศัพท์บริษัท</label>
-          <input type="text" id="cust-phone" value="${c?.phone||''}" placeholder="02-xxx-xxxx">
+          <input type="text" id="cust-phone" value="${e(c?.phone)}" placeholder="02-xxx-xxxx">
         </div>
         <div class="field">
           <label>อีเมลบริษัท</label>
-          <input type="email" id="cust-email" value="${c?.email||''}" placeholder="info@company.com">
+          <input type="email" id="cust-email" value="${e(c?.email)}" placeholder="info@company.com">
         </div>
         <div class="field span2">
           <label>เว็บไซต์</label>
-          <input type="text" id="cust-website" value="${c?.website||''}" placeholder="www.example.com">
+          <input type="text" id="cust-website" value="${e(c?.website)}" placeholder="www.example.com">
         </div>
         <div class="field">
           <label>ชื่อผู้ติดต่อ</label>
-          <input type="text" id="cust-contact-name" value="${c?.contactPerson||''}" placeholder="คุณ...">
+          <input type="text" id="cust-contact-name" value="${e(c?.contactPerson)}" placeholder="คุณ...">
         </div>
         <div class="field">
           <label>เบอร์ผู้ติดต่อ</label>
-          <input type="text" id="cust-contact-phone" value="${c?.contactPhone||''}" placeholder="08x-xxx-xxxx">
+          <input type="text" id="cust-contact-phone" value="${e(c?.contactPhone)}" placeholder="08x-xxx-xxxx">
         </div>
         <div class="field span2">
           <label>อีเมลผู้ติดต่อ</label>
-          <input type="email" id="cust-contact-email" value="${c?.contactEmail||''}" placeholder="contact@company.com">
+          <input type="email" id="cust-contact-email" value="${e(c?.contactEmail)}" placeholder="contact@company.com">
         </div>
       </div>
 
@@ -3576,7 +3578,7 @@ function openCustomerModal(c) {
       <div class="form-grid" style="gap:10px;margin-bottom:14px">
         <div class="field span2">
           <label>หมายเหตุ</label>
-          <textarea id="cust-note" style="min-height:56px">${c?.note||''}</textarea>
+          <textarea id="cust-note" style="min-height:56px">${e(c?.note)}</textarea>
         </div>
         <div class="field">
           <label>สถานะ</label>
@@ -3599,11 +3601,13 @@ window.openCustomerModal = openCustomerModal;
 async function saveCustomer(id) {
   const name = document.getElementById('cust-name')?.value?.trim();
   if(!name) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
+  const taxId = document.getElementById('cust-tax')?.value?.trim() || '';
+  if(taxId && !/^\d{13}$/.test(taxId)) { toast('เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก','err'); return; }
   const d = {
     name,
     nameEn: document.getElementById('cust-name-en')?.value?.trim() || '',
     customerType: document.getElementById('cust-type')?.value || 'นิติบุคคล',
-    taxId: document.getElementById('cust-tax')?.value?.trim() || '',
+    taxId,
     address: document.getElementById('cust-address')?.value?.trim() || '',
     phone: document.getElementById('cust-phone')?.value?.trim() || '',
     email: document.getElementById('cust-email')?.value?.trim() || '',
@@ -3625,6 +3629,7 @@ async function saveCustomer(id) {
     toast('แก้ไขข้อมูลลูกค้าเรียบร้อย','ok');
   } else {
     const newId = await storeAdd('customers', d);
+    if(!newId) return; // Firebase error — storeAdd already showed toast
     data.customers.push({id: newId, ...d});
     toast('เพิ่มลูกค้าเรียบร้อย','ok');
   }
@@ -3859,13 +3864,14 @@ function importData(event) {
       if(!payload.companies||!payload.quotations||!payload.invoices||!payload.billings) {
         toast('❌ ไฟล์ไม่ถูกต้อง — ไม่พบข้อมูลที่คาดหวัง','err'); return;
       }
-      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length}`)) return;
+      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length} | ลูกค้า: ${(payload.customers||[]).length}`)) return;
       data.companies=payload.companies;
       data.quotations=payload.quotations;
       data.invoices=payload.invoices;
       data.billings=payload.billings;
+      data.customers=payload.customers||[];
       companies=data.companies;
-      ['companies','quotations','invoices','billings'].forEach(col=>syncLS(col,data[col]));
+      ['companies','quotations','invoices','billings','customers'].forEach(col=>syncLS(col,data[col]));
       toast(`Import สำเร็จ — ${payload.companies.length} บริษัท, ${payload.invoices.length} INV ✅`,'ok');
       goPage(_currentPage);
     } catch(err) { toast('❌ ไม่สามารถอ่านไฟล์ได้: '+err.message,'err'); }
@@ -4572,7 +4578,7 @@ function admPageRaw(){
   document.getElementById('adm-page-content').innerHTML=`
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
     ${ADM_COLS.map(c=>`<button class="adm-btn adm-btn-ghost" style="flex-direction:column;padding:16px;height:auto;justify-content:center" onclick="admOpenRaw('${c}')">
-      <div style="font-size:20px;margin-bottom:4px">${{companies:'🏢',quotations:'📋',invoices:'🧾',billings:'📬'}[c]}</div>
+      <div style="font-size:20px;margin-bottom:4px">${{companies:'🏢',quotations:'📋',invoices:'🧾',billings:'📬',customers:'👤'}[c]}</div>
       <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700">${c}</div>
       <div style="font-size:10px;color:#606078;font-family:'IBM Plex Mono',monospace">${ADM[c].length} records</div>
     </button>`).join('')}
@@ -4808,7 +4814,7 @@ function admShowRestore(){
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid #2a2a38">
       <div>
         <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a0a0b8">${new Date(b.savedAt).toLocaleString('th-TH')}</div>
-        <div style="font-size:12px">บริษัท:${(b.companies||[]).length} QT:${(b.quotations||[]).length} INV:${(b.invoices||[]).length} BL:${(b.billings||[]).length} · ${b.sizeKB} KB</div>
+        <div style="font-size:12px">บริษัท:${(b.companies||[]).length} QT:${(b.quotations||[]).length} INV:${(b.invoices||[]).length} BL:${(b.billings||[]).length} ลูกค้า:${(b.customers||[]).length} · ${b.sizeKB} KB</div>
       </div>
       <button class="adm-btn adm-btn-warn" style="font-size:11px;padding:4px 10px" onclick="admRestoreFromKey('${b.key}')">♻️ Restore</button>
     </div>
