@@ -2520,6 +2520,20 @@ function viewDoc(type, id) {
     </div>`;
   } else if(pm?.method==='เงินสด') {
     body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)">💵 ชำระเป็น <b>เงินสด</b></div>`;
+  } else {
+    // fallback: แสดงบัญชีธนาคารของบริษัทเมื่อไม่มี payMethod
+    const coBanks=(co.banks||[]).filter(b=>b.bankName||b.accNo);
+    if(coBanks.length){
+      body+=`<div class="divider"></div>
+      <div style="background:var(--accent-light);border:1px solid var(--accent-mid);border-radius:var(--r);padding:12px;font-size:12px">
+        <div style="font-weight:700;color:var(--accent);margin-bottom:8px">💳 ชำระเงินโดยการโอน</div>
+        ${coBanks.map(b=>`<div style="margin-bottom:6px">
+          <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType||''}${b.branch?' | สาขา: '+b.branch:''}</div>
+          <div>ชื่อบัญชี: <b>${b.accName||''}</b></div>
+          <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--accent)">${b.accNo}</span></div>
+        </div>`).join('<hr style="border:none;border-top:1px dashed var(--border);margin:6px 0">')}
+      </div>`;
+    }
   }
   document.getElementById('modal-doc-body').innerHTML=body;
   document.getElementById('modal-doc').classList.add('show');
@@ -2692,15 +2706,37 @@ function printCurrentDoc() {
     </div>`:''}
 
     <!-- BANK INFO -->
-    ${src.payMethod?.bankInfo?`
-    <div class="bank-box">
-      <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
-      <div>
-        <div style="font-size:13px;font-weight:600;margin-bottom:2px">${src.payMethod.bankInfo.bankName} — ${src.payMethod.bankInfo.accType}${src.payMethod.bankInfo.branch?' สาขา '+src.payMethod.bankInfo.branch:''}</div>
-        <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${src.payMethod.bankInfo.accName}</b></div>
-        <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${src.payMethod.bankInfo.accNo}</span></div>
-      </div>
-    </div>`:src.payMethod?.method==='เงินสด'?`<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>`:''}
+    ${(()=>{
+      // กรณี 1: เลือก payMethod เป็น bankInfo ไว้ชัดเจน
+      if(src.payMethod?.bankInfo){
+        const b=src.payMethod.bankInfo;
+        return `<div class="bank-box">
+          <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType}${b.branch?' สาขา '+b.branch:''}</div>
+            <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${b.accName}</b></div>
+            <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
+          </div>
+        </div>`;
+      }
+      // กรณี 2: เงินสด
+      if(src.payMethod?.method==='เงินสด'){
+        return `<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>`;
+      }
+      // กรณี 3 (fallback): ไม่มี payMethod หรือไม่ได้เลือก → แสดงบัญชีธนาคารทุกบัญชีของบริษัท
+      const coBanks=(co.banks||[]).filter(b=>b.bankName||b.accNo);
+      if(coBanks.length){
+        return `<div class="bank-box">
+          <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
+          ${coBanks.map(b=>`<div style="margin-bottom:${coBanks.length>1?'10px':'0'}">
+            <div style="font-size:13px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType||''}${b.branch?' สาขา '+b.branch:''}</div>
+            <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${b.accName||''}</b></div>
+            <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
+          </div>`).join('<hr style="border:none;border-top:1px dashed #ddd;margin:6px 0">')}
+        </div>`;
+      }
+      return '';
+    })()}
 
     <!-- NOTE -->
     ${src.note?`<div class="note-box"><b>หมายเหตุ:</b> ${src.note}</div>`:''}
