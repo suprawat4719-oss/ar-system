@@ -1,5 +1,8 @@
-<!-- AR SYSTEM v2.1 — 2026-05-07
-     changelog: แก้บั๊ก data loss — ถอด autoPush ออกจาก exit events, เพิ่ม safety guard (skip empty array),
+<!-- AR SYSTEM v2.2 — 2026-05-08
+     changelog v2.2: เพิ่มระบบฐานข้อมูลลูกค้า (Customers) — collection แยกอิสระ,
+     Firebase Firestore + localStorage sync เหมือน collections อื่น,
+     autofill ข้อมูลลูกค้าในฟอร์มสร้างเอกสาร, ไม่กระทบโครงสร้างเดิม
+     changelog v2.1: แก้บั๊ก data loss — ถอด autoPush ออกจาก exit events, เพิ่ม safety guard (skip empty array),
      เปลี่ยนเป็น safe upsert (ไม่ delete-all), auto backup ก่อน clear, เตือนเมื่อ Firebase ว่าง+local มีข้อมูล
 -->
 <!DOCTYPE html>
@@ -7,7 +10,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.1 — 2026-05-07</title>
+<title>AR System | v2.2 — 2026-05-08</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -432,7 +435,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.1 — 2026-05-07</div>
+    <div class="logo-sub">v2.2 — 2026-05-08</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -440,6 +443,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <button class="nav-item" onclick="goPage('invoices')" id="nav-invoices"><span class="nav-icon">🧾</span>ใบแจ้งหนี้</button>
   <button class="nav-item" onclick="goPage('billing')" id="nav-billing"><span class="nav-icon">📬</span>ใบวางบิล</button>
   <button class="nav-item" onclick="goPage('payments')" id="nav-payments"><span class="nav-icon">💰</span>รับชำระ</button>
+  <button class="nav-item" onclick="goPage('customers')" id="nav-customers"><span class="nav-icon">👤</span>ลูกค้า</button>
   <div class="nav-section">รายงาน</div>
   <button class="nav-item" onclick="goPage('report-ar')" id="nav-report-ar"><span class="nav-icon">👥</span>ค้างชำระรายลูกค้า</button>
   <button class="nav-item" onclick="goPage('report-co')" id="nav-report-co"><span class="nav-icon">🏢</span>ค้างชำระรายบริษัท</button>
@@ -876,6 +880,7 @@ let data = {
   quotations: [],
   invoices: [],
   billings: [],
+  customers: [],
 };
 
 // ══════════════════════════════════════════════════════
@@ -1095,9 +1100,10 @@ function saveLocalBackup() {
       companies: data.companies || [],
       quotations: data.quotations || [],
       invoices: data.invoices || [],
-      billings: data.billings || []
+      billings: data.billings || [],
+      customers: data.customers || []
     };
-    const total = payload.companies.length + payload.quotations.length + payload.invoices.length + payload.billings.length;
+    const total = payload.companies.length + payload.quotations.length + payload.invoices.length + payload.billings.length + payload.customers.length;
     if (total === 0) return; // ไม่ backup ถ้าข้อมูลว่างอยู่แล้ว
     localStorage.setItem(LS_BACKUP_PREFIX + ts, JSON.stringify(payload));
     // ตัด backup เก่าออก เหลือไว้แค่ MAX_LOCAL_BACKUPS ชุด
@@ -1120,7 +1126,7 @@ function listLocalBackups() {
 // ══════════════════════════════════════════════════════
 // SYNC ENGINE — Firebase ↔ localStorage
 // ══════════════════════════════════════════════════════
-const SYNC_COLS = ['companies','quotations','invoices','billings'];
+const SYNC_COLS = ['companies','quotations','invoices','billings','customers'];
 
 function syncUpdateUI(state, msg, lastTime) {
   const dot = document.getElementById('sync-dot');
@@ -1296,7 +1302,7 @@ let _lastLocalWrite = 0;        // ms — suppress echo re-render within 2.5s of
 
 // Pages safe to re-render without losing user input
 const _LIVE_PAGES = new Set(['dashboard','quotations','invoices','billing',
-  'payments','report-ar','report-co','report-aging','report-receipt','companies']);
+  'payments','report-ar','report-co','report-aging','report-receipt','companies','customers']);
 
 function _applySnapshot(col, snap) {
   const arr = snap.docs.map(d => {
@@ -1408,7 +1414,7 @@ function goPage(p) {
   if(navEl) navEl.classList.add('active');
   const titles = {
     dashboard:'Dashboard',quotations:'ใบเสนอราคา',invoices:'ใบแจ้งหนี้',
-    billing:'ใบวางบิล',payments:'บันทึกรับชำระ',
+    billing:'ใบวางบิล',payments:'บันทึกรับชำระ',customers:'ฐานข้อมูลลูกค้า',
     'report-ar':'ค้างชำระรายลูกค้า','report-co':'ค้างชำระรายบริษัท',
     'report-aging':'Aging Report','report-receipt':'เงินรับรายเดือน',
     companies:'จัดการบริษัท',settings:'ตั้งค่าระบบ','new-qt':'สร้างใบเสนอราคา',
@@ -1422,7 +1428,7 @@ function goPage(p) {
     dashboard: renderDashboard, quotations: renderQuotations,
     invoices: renderInvoices, billing: renderBilling,
     payments: renderPayments, companies: renderCompanies,
-    settings: renderSettings,
+    customers: renderCustomers, settings: renderSettings,
     'report-ar': renderReportAR, 'report-co': renderReportCO,
     'report-aging': renderReportAging, 'report-receipt': renderReportReceipt,
     'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
@@ -1437,6 +1443,7 @@ window.goPage = goPage;
 // ══════════════════════════════════════════════════════
 function fmt(n) { return (n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtInt(n) { return (n||0).toLocaleString('th-TH'); }
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function today() { return new Date().toISOString().split('T')[0]; }
 function addDays(d,n) { const dt=new Date(d); dt.setDate(dt.getDate()+n); return dt.toISOString().split('T')[0]; }
 function daysDiff(a,b) { return Math.ceil((new Date(b)-new Date(a))/(1000*60*60*24)); }
@@ -1653,10 +1660,20 @@ window.deleteQT=deleteQT;
 // ── Edit Quotation ──
 function editQT(id) {
   const q=data.quotations.find(x=>x.id===id); if(!q) return;
+  const itemsHtml=(q.items||[]).map((r,i)=>`<tr id="eqt-r${i}">
+    <td style="color:var(--ink4);font-size:11px;text-align:center">${i+1}</td>
+    <td><input class="item-inp" type="text" placeholder="รายละเอียด" value="${r.desc||''}" oninput="eqtCalc()"></td>
+    <td><input class="item-inp r" type="number" value="${r.qty||1}" min="0" step="any" oninput="eqtCalc()"></td>
+    <td><input class="item-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
+    <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="eqtCalc()"></td>
+    <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
+    <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>
+  </tr>`).join('');
   document.getElementById('page-content').innerHTML += `
   <div class="overlay show" id="modal-edit-qt">
-    <div class="modal modal-lg">
+    <div class="modal" style="width:780px;max-width:97vw">
       <div class="modal-title">✏️ แก้ไขใบเสนอราคา — ${q.docNumber}</div>
+
       <div class="form-grid-4" style="gap:10px;margin-bottom:12px">
         <div class="field"><label>วันที่</label><input type="date" id="eqt-date" value="${q.docDate}"></div>
         <div class="field"><label>ใช้ได้ถึง</label><input type="date" id="eqt-valid" value="${q.docValid||''}"></div>
@@ -1669,30 +1686,121 @@ function editQT(id) {
           </select>
         </div>
       </div>
+
       <div class="form-grid" style="gap:10px;margin-bottom:12px">
         <div class="field span2"><label>ชื่อลูกค้า</label><input type="text" id="eqt-cust" value="${q.custName||''}"></div>
         <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="eqt-tax" value="${q.custTax||''}"></div>
         <div class="field"><label>ผู้ติดต่อ</label><input type="text" id="eqt-contact" value="${q.custContact||''}"></div>
-        <div class="field span2"><label>ที่อยู่</label><textarea id="eqt-addr" style="min-height:56px">${q.custAddress||''}</textarea></div>
+        <div class="field span2"><label>ที่อยู่</label><textarea id="eqt-addr" style="min-height:50px">${q.custAddress||''}</textarea></div>
       </div>
+
+      <!-- รายการสินค้า/บริการ -->
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px">📋 รายการสินค้า / บริการ</div>
+      <div style="overflow-x:auto;margin-bottom:8px">
+        <table class="items-tbl" style="min-width:560px">
+          <thead><tr>
+            <th style="width:28px">#</th>
+            <th>รายการ</th>
+            <th class="r" style="width:70px">จำนวน</th>
+            <th style="width:60px">หน่วย</th>
+            <th class="r" style="width:100px">ราคา/หน่วย</th>
+            <th class="r" style="width:100px">รวม</th>
+            <th style="width:30px"></th>
+          </tr></thead>
+          <tbody id="eqt-items-body">${itemsHtml}</tbody>
+        </table>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="eqtAddRow()" style="margin-bottom:12px">+ เพิ่มรายการ</button>
+
+      <!-- VAT / WHT -->
+      <div style="display:flex;gap:16px;margin-bottom:10px">
+        <label class="tog-wrap"><label class="tog"><input type="checkbox" id="eqt-vat" onchange="eqtCalc()" ${q.hasVat?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></label>
+        <label class="tog-wrap"><label class="tog"><input type="checkbox" id="eqt-wht" onchange="eqtCalc()" ${q.hasWht?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></label>
+      </div>
+
+      <!-- Summary -->
+      <div class="summary-box" style="margin-bottom:12px">
+        <div class="s-row"><span>ก่อน VAT</span><span class="val" id="eqt-s-sub">0.00</span></div>
+        <div class="s-row" id="eqt-s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="eqt-s-vat">0.00</span></div>
+        <div class="s-row" id="eqt-s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย 3%</span><span class="val" style="color:var(--red)" id="eqt-s-wht">0.00</span></div>
+        <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="eqt-s-total">0.00</span></div>
+      </div>
+
       <div class="form-grid" style="gap:10px">
-        <div class="field span2"><label>หมายเหตุ</label><textarea id="eqt-note" style="min-height:56px">${q.note||''}</textarea></div>
+        <div class="field span2"><label>หมายเหตุ</label><textarea id="eqt-note" style="min-height:50px">${q.note||''}</textarea></div>
       </div>
+
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-qt').remove()">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditQT('${id}')">💾 บันทึก</button>
       </div>
     </div>
   </div>`;
+  eqtCalc();
 }
 window.editQT=editQT;
 
+function eqtAddRow() {
+  const tbody=document.getElementById('eqt-items-body'); if(!tbody) return;
+  const idx=tbody.rows.length;
+  const tr=document.createElement('tr'); tr.id='eqt-r'+Date.now();
+  tr.innerHTML=`<td style="color:var(--ink4);font-size:11px;text-align:center">${idx+1}</td>
+    <td><input class="item-inp" type="text" placeholder="รายละเอียด" oninput="eqtCalc()"></td>
+    <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="eqtCalc()"></td>
+    <td><input class="item-inp" type="text" placeholder="ชิ้น"></td>
+    <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="eqtCalc()"></td>
+    <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
+    <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>`;
+  tbody.appendChild(tr); eqtCalc();
+}
+window.eqtAddRow=eqtAddRow;
+
+function eqtCalc() {
+  const rows=[...document.querySelectorAll('#eqt-items-body tr')];
+  let sub=0;
+  rows.forEach(tr=>{
+    const nums=tr.querySelectorAll('input[type=number]');
+    const t=(parseFloat(nums[0]?.value)||0)*(parseFloat(nums[1]?.value)||0);
+    sub+=t; const el=tr.querySelector('.eqt-row-total'); if(el) el.textContent=fmt(t);
+  });
+  const hasVat=document.getElementById('eqt-vat')?.checked;
+  const hasWht=document.getElementById('eqt-wht')?.checked;
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v);};
+  set('eqt-s-sub',sub); set('eqt-s-vat',vat); set('eqt-s-wht',wht); set('eqt-s-total',sub+vat-wht);
+  const vr=document.getElementById('eqt-s-vat-row'); if(vr) vr.style.display=vat?'':'none';
+  const wr=document.getElementById('eqt-s-wht-row'); if(wr) wr.style.display=wht?'':'none';
+}
+window.eqtCalc=eqtCalc;
+
+function eqtGetItems() {
+  return [...document.querySelectorAll('#eqt-items-body tr')].map(tr=>{
+    const txtIns=tr.querySelectorAll('input[type=text]');
+    const numIns=tr.querySelectorAll('input[type=number]');
+    const desc=txtIns[0]?.value||''; const unit=txtIns[1]?.value||'';
+    const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
+    return {desc,qty,unit,price,total:qty*price};
+  }).filter(r=>r.desc||r.price>0);
+}
+
 async function saveEditQT(id) {
   const q=data.quotations.find(x=>x.id===id); if(!q) return;
-  const d={docDate:document.getElementById('eqt-date').value,docValid:document.getElementById('eqt-valid').value,
-    status:document.getElementById('eqt-status').value,custName:document.getElementById('eqt-cust').value,
-    custTax:document.getElementById('eqt-tax').value,custContact:document.getElementById('eqt-contact').value,
-    custAddress:document.getElementById('eqt-addr').value,note:document.getElementById('eqt-note').value};
+  const items=eqtGetItems();
+  const hasVat=document.getElementById('eqt-vat')?.checked;
+  const hasWht=document.getElementById('eqt-wht')?.checked;
+  const sub=items.reduce((s,r)=>s+r.total,0);
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const d={
+    docDate:document.getElementById('eqt-date').value,
+    docValid:document.getElementById('eqt-valid').value,
+    status:document.getElementById('eqt-status').value,
+    custName:document.getElementById('eqt-cust').value,
+    custTax:document.getElementById('eqt-tax').value,
+    custContact:document.getElementById('eqt-contact').value,
+    custAddress:document.getElementById('eqt-addr').value,
+    note:document.getElementById('eqt-note').value,
+    items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht
+  };
   const ok=await storeUpdate('quotations',id,d); if(!ok) return;
   Object.assign(q,d); syncLS('quotations',data.quotations);
   document.getElementById('modal-edit-qt')?.remove();
@@ -1759,39 +1867,142 @@ window.refreshINVTable=refreshINVTable;
 // ── Edit Invoice ──
 function editINV(id) {
   const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
+  const itemsHtml=(inv.items||[]).map((r,i)=>`<tr id="einv-r${i}">
+    <td style="color:var(--ink4);font-size:11px;text-align:center">${i+1}</td>
+    <td><input class="item-inp" type="text" placeholder="รายละเอียด" value="${r.desc||''}" oninput="einvCalc()"></td>
+    <td><input class="item-inp r" type="number" value="${r.qty||1}" min="0" step="any" oninput="einvCalc()"></td>
+    <td><input class="item-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
+    <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="einvCalc()"></td>
+    <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
+    <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>
+  </tr>`).join('');
   document.getElementById('page-content').innerHTML += `
   <div class="overlay show" id="modal-edit-inv">
-    <div class="modal modal-lg">
+    <div class="modal" style="width:780px;max-width:97vw">
       <div class="modal-title">✏️ แก้ไขใบแจ้งหนี้ — ${inv.docNumber}</div>
+
       <div class="form-grid-4" style="gap:10px;margin-bottom:12px">
         <div class="field"><label>วันที่</label><input type="date" id="einv-date" value="${inv.docDate}"></div>
         <div class="field"><label>ครบกำหนด</label><input type="date" id="einv-due" value="${inv.docDue||''}"></div>
         <div class="field span2"></div>
       </div>
+
       <div class="form-grid" style="gap:10px;margin-bottom:12px">
         <div class="field span2"><label>ชื่อลูกค้า</label><input type="text" id="einv-cust" value="${inv.custName||''}"></div>
         <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="einv-tax" value="${inv.custTax||''}"></div>
         <div class="field"><label>ผู้ติดต่อ</label><input type="text" id="einv-contact" value="${inv.custContact||''}"></div>
-        <div class="field span2"><label>ที่อยู่</label><textarea id="einv-addr" style="min-height:56px">${inv.custAddress||''}</textarea></div>
+        <div class="field span2"><label>ที่อยู่</label><textarea id="einv-addr" style="min-height:50px">${inv.custAddress||''}</textarea></div>
       </div>
+
+      <!-- รายการสินค้า/บริการ -->
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px">📋 รายการสินค้า / บริการ</div>
+      <div style="overflow-x:auto;margin-bottom:8px">
+        <table class="items-tbl" style="min-width:560px">
+          <thead><tr>
+            <th style="width:28px">#</th>
+            <th>รายการ</th>
+            <th class="r" style="width:70px">จำนวน</th>
+            <th style="width:60px">หน่วย</th>
+            <th class="r" style="width:100px">ราคา/หน่วย</th>
+            <th class="r" style="width:100px">รวม</th>
+            <th style="width:30px"></th>
+          </tr></thead>
+          <tbody id="einv-items-body">${itemsHtml}</tbody>
+        </table>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="einvAddRow()" style="margin-bottom:12px">+ เพิ่มรายการ</button>
+
+      <!-- VAT / WHT -->
+      <div style="display:flex;gap:16px;margin-bottom:10px">
+        <label class="tog-wrap"><label class="tog"><input type="checkbox" id="einv-vat" onchange="einvCalc()" ${inv.hasVat?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></label>
+        <label class="tog-wrap"><label class="tog"><input type="checkbox" id="einv-wht" onchange="einvCalc()" ${inv.hasWht?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></label>
+      </div>
+
+      <!-- Summary -->
+      <div class="summary-box" style="margin-bottom:12px">
+        <div class="s-row"><span>ก่อน VAT</span><span class="val" id="einv-s-sub">0.00</span></div>
+        <div class="s-row" id="einv-s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="einv-s-vat">0.00</span></div>
+        <div class="s-row" id="einv-s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย 3%</span><span class="val" style="color:var(--red)" id="einv-s-wht">0.00</span></div>
+        <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="einv-s-total">0.00</span></div>
+      </div>
+
       <div class="form-grid" style="gap:10px">
-        <div class="field span2"><label>หมายเหตุ</label><textarea id="einv-note" style="min-height:56px">${inv.note||''}</textarea></div>
+        <div class="field span2"><label>หมายเหตุ</label><textarea id="einv-note" style="min-height:50px">${inv.note||''}</textarea></div>
       </div>
+
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-inv').remove()">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditINV('${id}')">💾 บันทึก</button>
       </div>
     </div>
   </div>`;
+  einvCalc();
 }
 window.editINV=editINV;
 
+function einvAddRow() {
+  const tbody=document.getElementById('einv-items-body'); if(!tbody) return;
+  const idx=tbody.rows.length;
+  const tr=document.createElement('tr'); tr.id='einv-r'+Date.now();
+  tr.innerHTML=`<td style="color:var(--ink4);font-size:11px;text-align:center">${idx+1}</td>
+    <td><input class="item-inp" type="text" placeholder="รายละเอียด" oninput="einvCalc()"></td>
+    <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="einvCalc()"></td>
+    <td><input class="item-inp" type="text" placeholder="ชิ้น"></td>
+    <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="einvCalc()"></td>
+    <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
+    <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>`;
+  tbody.appendChild(tr); einvCalc();
+}
+window.einvAddRow=einvAddRow;
+
+function einvCalc() {
+  const rows=[...document.querySelectorAll('#einv-items-body tr')];
+  let sub=0;
+  rows.forEach(tr=>{
+    const nums=tr.querySelectorAll('input[type=number]');
+    const t=(parseFloat(nums[0]?.value)||0)*(parseFloat(nums[1]?.value)||0);
+    sub+=t; const el=tr.querySelector('.einv-row-total'); if(el) el.textContent=fmt(t);
+  });
+  const hasVat=document.getElementById('einv-vat')?.checked;
+  const hasWht=document.getElementById('einv-wht')?.checked;
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v);};
+  set('einv-s-sub',sub); set('einv-s-vat',vat); set('einv-s-wht',wht); set('einv-s-total',sub+vat-wht);
+  const vr=document.getElementById('einv-s-vat-row'); if(vr) vr.style.display=vat?'':'none';
+  const wr=document.getElementById('einv-s-wht-row'); if(wr) wr.style.display=wht?'':'none';
+}
+window.einvCalc=einvCalc;
+
+function einvGetItems() {
+  return [...document.querySelectorAll('#einv-items-body tr')].map(tr=>{
+    const txtIns=tr.querySelectorAll('input[type=text]');
+    const numIns=tr.querySelectorAll('input[type=number]');
+    const desc=txtIns[0]?.value||''; const unit=txtIns[1]?.value||'';
+    const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
+    return {desc,qty,unit,price,total:qty*price};
+  }).filter(r=>r.desc||r.price>0);
+}
+
 async function saveEditINV(id) {
   const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
-  const d={docDate:document.getElementById('einv-date').value,docDue:document.getElementById('einv-due').value,
-    custName:document.getElementById('einv-cust').value,custTax:document.getElementById('einv-tax').value,
-    custContact:document.getElementById('einv-contact').value,custAddress:document.getElementById('einv-addr').value,
-    note:document.getElementById('einv-note').value};
+  const items=einvGetItems();
+  const hasVat=document.getElementById('einv-vat')?.checked;
+  const hasWht=document.getElementById('einv-wht')?.checked;
+  const sub=items.reduce((s,r)=>s+r.total,0);
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const newTotal=sub+vat-wht;
+  // คำนวณ paidAmount ใหม่ให้ไม่เกิน total
+  const paidAmount=Math.min(inv.paidAmount||0, newTotal);
+  const d={
+    docDate:document.getElementById('einv-date').value,
+    docDue:document.getElementById('einv-due').value,
+    custName:document.getElementById('einv-cust').value,
+    custTax:document.getElementById('einv-tax').value,
+    custContact:document.getElementById('einv-contact').value,
+    custAddress:document.getElementById('einv-addr').value,
+    note:document.getElementById('einv-note').value,
+    items, hasVat, hasWht, subtotal:sub, vat, wht, total:newTotal, paidAmount
+  };
   const ok=await storeUpdate('invoices',id,d); if(!ok) return;
   Object.assign(inv,d); syncLS('invoices',data.invoices);
   document.getElementById('modal-edit-inv')?.remove();
@@ -2059,7 +2270,13 @@ function buildDocForm(type) {
     <div class="card-header"><div class="card-title">ข้อมูลลูกค้า</div></div>
     <div class="card-body">
       <div class="form-grid">
-        <div class="field span2"><label>ชื่อบริษัท/ลูกค้า</label><input type="text" id="f-cust-name" placeholder="บริษัท ตัวอย่าง จำกัด"></div>
+        <div class="field span2"><label>ชื่อบริษัท/ลูกค้า</label>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="f-cust-name" placeholder="บริษัท ตัวอย่าง จำกัด" list="cust-datalist" oninput="autofillCustomer()" style="flex:1">
+            <datalist id="cust-datalist"></datalist>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="openPickCustomer()" title="เลือกจากฐานข้อมูลลูกค้า">👤 เลือก</button>
+          </div>
+        </div>
         <div class="field span2"><label>ที่อยู่</label><textarea id="f-cust-addr" placeholder="ที่อยู่ออกเอกสาร"></textarea></div>
         <div class="field"><label>เลขผู้เสียภาษี</label><input type="text" id="f-cust-tax" placeholder="0000000000000"></div>
         <div class="field"><label>ผู้ติดต่อลูกค้า / โทร</label><input type="text" id="f-cust-contact"></div>
@@ -2107,6 +2324,7 @@ function initDocForm(type) {
     if(validEl) validEl.value = addDays(today(), 30);
   }
   if(type==='bl') renderBLInvList();
+  buildCustDatalist();
 }
 
 function selectCo(id, type) {
@@ -2520,20 +2738,6 @@ function viewDoc(type, id) {
     </div>`;
   } else if(pm?.method==='เงินสด') {
     body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)">💵 ชำระเป็น <b>เงินสด</b></div>`;
-  } else {
-    // fallback: แสดงบัญชีธนาคารของบริษัทเมื่อไม่มี payMethod
-    const coBanks=(co.banks||[]).filter(b=>b.bankName||b.accNo);
-    if(coBanks.length){
-      body+=`<div class="divider"></div>
-      <div style="background:var(--accent-light);border:1px solid var(--accent-mid);border-radius:var(--r);padding:12px;font-size:12px">
-        <div style="font-weight:700;color:var(--accent);margin-bottom:8px">💳 ชำระเงินโดยการโอน</div>
-        ${coBanks.map(b=>`<div style="margin-bottom:6px">
-          <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType||''}${b.branch?' | สาขา: '+b.branch:''}</div>
-          <div>ชื่อบัญชี: <b>${b.accName||''}</b></div>
-          <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--accent)">${b.accNo}</span></div>
-        </div>`).join('<hr style="border:none;border-top:1px dashed var(--border);margin:6px 0">')}
-      </div>`;
-    }
   }
   document.getElementById('modal-doc-body').innerHTML=body;
   document.getElementById('modal-doc').classList.add('show');
@@ -2706,37 +2910,15 @@ function printCurrentDoc() {
     </div>`:''}
 
     <!-- BANK INFO -->
-    ${(()=>{
-      // กรณี 1: เลือก payMethod เป็น bankInfo ไว้ชัดเจน
-      if(src.payMethod?.bankInfo){
-        const b=src.payMethod.bankInfo;
-        return `<div class="bank-box">
-          <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
-          <div>
-            <div style="font-size:13px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType}${b.branch?' สาขา '+b.branch:''}</div>
-            <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${b.accName}</b></div>
-            <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
-          </div>
-        </div>`;
-      }
-      // กรณี 2: เงินสด
-      if(src.payMethod?.method==='เงินสด'){
-        return `<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>`;
-      }
-      // กรณี 3 (fallback): ไม่มี payMethod หรือไม่ได้เลือก → แสดงบัญชีธนาคารทุกบัญชีของบริษัท
-      const coBanks=(co.banks||[]).filter(b=>b.bankName||b.accNo);
-      if(coBanks.length){
-        return `<div class="bank-box">
-          <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
-          ${coBanks.map(b=>`<div style="margin-bottom:${coBanks.length>1?'10px':'0'}">
-            <div style="font-size:13px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType||''}${b.branch?' สาขา '+b.branch:''}</div>
-            <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${b.accName||''}</b></div>
-            <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
-          </div>`).join('<hr style="border:none;border-top:1px dashed #ddd;margin:6px 0">')}
-        </div>`;
-      }
-      return '';
-    })()}
+    ${src.payMethod?.bankInfo?`
+    <div class="bank-box">
+      <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
+      <div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px">${src.payMethod.bankInfo.bankName} — ${src.payMethod.bankInfo.accType}${src.payMethod.bankInfo.branch?' สาขา '+src.payMethod.bankInfo.branch:''}</div>
+        <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${src.payMethod.bankInfo.accName}</b></div>
+        <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${src.payMethod.bankInfo.accNo}</span></div>
+      </div>
+    </div>`:src.payMethod?.method==='เงินสด'?`<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>`:''}
 
     <!-- NOTE -->
     ${src.note?`<div class="note-box"><b>หมายเหตุ:</b> ${src.note}</div>`:''}
@@ -3231,6 +3413,360 @@ async function deleteCo(id) {
 window.deleteCo=deleteCo;
 
 // ══════════════════════════════════════════════════════
+// CUSTOMERS
+// ══════════════════════════════════════════════════════
+function renderCustomers() {
+  document.getElementById('topbar-actions').innerHTML =
+    `<button class="btn btn-primary" onclick="openNewCustomer()">+ เพิ่มลูกค้า</button>`;
+  document.getElementById('page-content').innerHTML = `
+    <div class="filters">
+      <input type="text" id="f-cust-search" placeholder="🔍 ค้นหาชื่อ / เลขภาษี / ผู้ติดต่อ..."
+        style="min-width:260px" oninput="refreshCustomerTable()">
+      <select id="f-cust-type" onchange="refreshCustomerTable()">
+        <option value="">— ทุกประเภท —</option>
+        <option value="นิติบุคคล">นิติบุคคล</option>
+        <option value="บุคคลธรรมดา">บุคคลธรรมดา</option>
+        <option value="อื่นๆ">อื่นๆ</option>
+      </select>
+      <select id="f-cust-active" onchange="refreshCustomerTable()">
+        <option value="">— ทุกสถานะ —</option>
+        <option value="1">ใช้งานอยู่</option>
+        <option value="0">ปิดใช้งาน</option>
+      </select>
+    </div>
+    <div class="card">
+      <table class="tbl">
+        <thead><tr>
+          <th>ชื่อลูกค้า</th>
+          <th>ประเภท</th>
+          <th>เลขภาษี</th>
+          <th>ผู้ติดต่อ</th>
+          <th>โทร</th>
+          <th>เครดิต (วัน)</th>
+          <th>สถานะ</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="customers-tbody"></tbody>
+      </table>
+    </div>`;
+  refreshCustomerTable();
+}
+window.renderCustomers = renderCustomers;
+
+function refreshCustomerTable() {
+  const search = (document.getElementById('f-cust-search')?.value || '').toLowerCase();
+  const typeF = document.getElementById('f-cust-type')?.value || '';
+  const activeF = document.getElementById('f-cust-active')?.value || '';
+  let rows = [...(data.customers || [])];
+  if(search) rows = rows.filter(c =>
+    (c.name||'').toLowerCase().includes(search) ||
+    (c.taxId||'').includes(search) ||
+    (c.contactPerson||'').toLowerCase().includes(search) ||
+    (c.phone||'').includes(search)
+  );
+  if(typeF) rows = rows.filter(c => c.customerType === typeF);
+  if(activeF !== '') rows = rows.filter(c => activeF === '1' ? c.isActive !== false : c.isActive === false);
+  const tbody = document.getElementById('customers-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = rows.length ? rows.map(c => `<tr>
+    <td>
+      <div style="font-weight:700">${c.name}</div>
+      ${c.nameEn ? `<div style="font-size:11px;color:var(--ink4)">${c.nameEn}</div>` : ''}
+    </td>
+    <td><span class="badge badge-draft">${c.customerType||'—'}</span></td>
+    <td class="mono" style="font-size:12px">${c.taxId||'—'}</td>
+    <td style="font-size:13px">${c.contactPerson||'—'}</td>
+    <td style="font-size:12px">${c.phone||c.contactPhone||'—'}</td>
+    <td class="r mono">${c.creditTerms ? c.creditTerms+' วัน' : '—'}</td>
+    <td><span class="badge ${c.isActive===false?'badge-cancelled':'badge-paid'}">${c.isActive===false?'ปิด':'ใช้งาน'}</span></td>
+    <td style="white-space:nowrap">
+      <button class="btn btn-xs btn-outline" onclick="viewCustomer('${c.id}')">ดู</button>
+      <button class="btn btn-xs btn-outline" onclick="editCustomer('${c.id}')">✏️</button>
+      <button class="btn btn-xs btn-danger" onclick="deleteCustomer('${c.id}')">🗑</button>
+    </td>
+  </tr>`).join('') :
+  '<tr><td colspan="8"><div class="empty"><div class="empty-icon">👤</div><p>ยังไม่มีข้อมูลลูกค้า</p></div></td></tr>';
+}
+window.refreshCustomerTable = refreshCustomerTable;
+
+function openNewCustomer() { openCustomerModal(null); }
+window.openNewCustomer = openNewCustomer;
+
+function editCustomer(id) {
+  const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
+  openCustomerModal(c);
+}
+window.editCustomer = editCustomer;
+
+function openCustomerModal(c) {
+  const isEdit = !!c;
+  const e = escHtml; // shorthand
+  document.getElementById('page-content').innerHTML += `
+  <div class="overlay show" id="modal-customer">
+    <div class="modal" style="width:700px;max-width:97vw">
+      <div class="modal-title">${isEdit ? '✏️ แก้ไขลูกค้า — '+e(c.name) : '👤 เพิ่มลูกค้าใหม่'}</div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink4);margin-bottom:8px">ข้อมูลหลัก</div>
+      <div class="form-grid" style="gap:10px;margin-bottom:14px">
+        <div class="field span2">
+          <label>ชื่อลูกค้า / บริษัท <span style="color:var(--red)">*</span></label>
+          <input type="text" id="cust-name" value="${e(c?.name)}" placeholder="บริษัท ตัวอย่าง จำกัด" required>
+        </div>
+        <div class="field span2">
+          <label>ชื่อภาษาอังกฤษ</label>
+          <input type="text" id="cust-name-en" value="${e(c?.nameEn)}" placeholder="Example Company Ltd.">
+        </div>
+        <div class="field">
+          <label>ประเภทลูกค้า</label>
+          <select id="cust-type">
+            <option value="นิติบุคคล"${(c?.customerType||'นิติบุคคล')==='นิติบุคคล'?' selected':''}>นิติบุคคล</option>
+            <option value="บุคคลธรรมดา"${c?.customerType==='บุคคลธรรมดา'?' selected':''}>บุคคลธรรมดา</option>
+            <option value="อื่นๆ"${c?.customerType==='อื่นๆ'?' selected':''}>อื่นๆ</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>เลขประจำตัวผู้เสียภาษี</label>
+          <input type="text" id="cust-tax" value="${e(c?.taxId)}" placeholder="0000000000000" maxlength="13">
+        </div>
+        <div class="field span2">
+          <label>ที่อยู่</label>
+          <textarea id="cust-address" style="min-height:72px">${e(c?.address)}</textarea>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink4);margin-bottom:8px;border-top:1px solid var(--border);padding-top:10px">ข้อมูลติดต่อ</div>
+      <div class="form-grid" style="gap:10px;margin-bottom:14px">
+        <div class="field">
+          <label>โทรศัพท์บริษัท</label>
+          <input type="text" id="cust-phone" value="${e(c?.phone)}" placeholder="02-xxx-xxxx">
+        </div>
+        <div class="field">
+          <label>อีเมลบริษัท</label>
+          <input type="email" id="cust-email" value="${e(c?.email)}" placeholder="info@company.com">
+        </div>
+        <div class="field span2">
+          <label>เว็บไซต์</label>
+          <input type="text" id="cust-website" value="${e(c?.website)}" placeholder="www.example.com">
+        </div>
+        <div class="field">
+          <label>ชื่อผู้ติดต่อ</label>
+          <input type="text" id="cust-contact-name" value="${e(c?.contactPerson)}" placeholder="คุณ...">
+        </div>
+        <div class="field">
+          <label>เบอร์ผู้ติดต่อ</label>
+          <input type="text" id="cust-contact-phone" value="${e(c?.contactPhone)}" placeholder="08x-xxx-xxxx">
+        </div>
+        <div class="field span2">
+          <label>อีเมลผู้ติดต่อ</label>
+          <input type="email" id="cust-contact-email" value="${e(c?.contactEmail)}" placeholder="contact@company.com">
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink4);margin-bottom:8px;border-top:1px solid var(--border);padding-top:10px">เงื่อนไขเครดิต</div>
+      <div class="form-grid" style="gap:10px;margin-bottom:14px">
+        <div class="field">
+          <label>เครดิต (วัน)</label>
+          <input type="number" id="cust-credit-terms" value="${c?.creditTerms||30}" min="0" placeholder="30">
+        </div>
+        <div class="field">
+          <label>วงเงินเครดิต (บาท)</label>
+          <input type="number" id="cust-credit-limit" value="${c?.creditLimit||0}" min="0" step="1000">
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink4);margin-bottom:8px;border-top:1px solid var(--border);padding-top:10px">อื่นๆ</div>
+      <div class="form-grid" style="gap:10px;margin-bottom:14px">
+        <div class="field span2">
+          <label>หมายเหตุ</label>
+          <textarea id="cust-note" style="min-height:56px">${e(c?.note)}</textarea>
+        </div>
+        <div class="field">
+          <label>สถานะ</label>
+          <select id="cust-active">
+            <option value="1"${c?.isActive!==false?' selected':''}>ใช้งานอยู่</option>
+            <option value="0"${c?.isActive===false?' selected':''}>ปิดใช้งาน</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-customer').remove()">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveCustomer(${isEdit ? `'${c.id}'` : 'null'})">💾 บันทึก</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.openCustomerModal = openCustomerModal;
+
+async function saveCustomer(id) {
+  const name = document.getElementById('cust-name')?.value?.trim();
+  if(!name) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
+  const taxId = document.getElementById('cust-tax')?.value?.trim() || '';
+  if(taxId && !/^\d{13}$/.test(taxId)) { toast('เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก','err'); return; }
+  const d = {
+    name,
+    nameEn: document.getElementById('cust-name-en')?.value?.trim() || '',
+    customerType: document.getElementById('cust-type')?.value || 'นิติบุคคล',
+    taxId,
+    address: document.getElementById('cust-address')?.value?.trim() || '',
+    phone: document.getElementById('cust-phone')?.value?.trim() || '',
+    email: document.getElementById('cust-email')?.value?.trim() || '',
+    website: document.getElementById('cust-website')?.value?.trim() || '',
+    contactPerson: document.getElementById('cust-contact-name')?.value?.trim() || '',
+    contactPhone: document.getElementById('cust-contact-phone')?.value?.trim() || '',
+    contactEmail: document.getElementById('cust-contact-email')?.value?.trim() || '',
+    creditTerms: parseInt(document.getElementById('cust-credit-terms')?.value) || 0,
+    creditLimit: parseFloat(document.getElementById('cust-credit-limit')?.value) || 0,
+    note: document.getElementById('cust-note')?.value?.trim() || '',
+    isActive: document.getElementById('cust-active')?.value === '1',
+  };
+  if(!data.customers) data.customers = [];
+  if(id && id !== 'null') {
+    const ok = await storeUpdate('customers', id, d);
+    if(!ok) return;
+    const idx = data.customers.findIndex(x=>x.id===id);
+    if(idx>=0) Object.assign(data.customers[idx], d);
+    toast('แก้ไขข้อมูลลูกค้าเรียบร้อย','ok');
+  } else {
+    const newId = await storeAdd('customers', d);
+    if(!newId) return; // Firebase error — storeAdd already showed toast
+    data.customers.push({id: newId, ...d});
+    toast('เพิ่มลูกค้าเรียบร้อย','ok');
+  }
+  syncLS('customers', data.customers);
+  document.getElementById('modal-customer')?.remove();
+  if(_currentPage === 'customers') refreshCustomerTable();
+}
+window.saveCustomer = saveCustomer;
+
+function viewCustomer(id) {
+  const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
+  const qtCount = data.quotations.filter(q=>q.custName===c.name).length;
+  const invCount = data.invoices.filter(i=>i.custName===c.name).length;
+  document.getElementById('page-content').innerHTML += `
+  <div class="overlay show" id="modal-view-customer">
+    <div class="modal" style="width:620px;max-width:97vw">
+      <div class="modal-title">👤 ${c.name}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;margin-bottom:16px">
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px">ข้อมูลหลัก</div>
+          ${c.nameEn?`<div style="color:var(--ink4);font-size:12px">${c.nameEn}</div>`:''}
+          <div><span style="color:var(--ink4)">ประเภท:</span> ${c.customerType||'—'}</div>
+          <div><span style="color:var(--ink4)">เลขภาษี:</span> <span style="font-family:monospace;font-weight:700">${c.taxId||'—'}</span></div>
+          <div style="margin-top:6px;color:var(--ink3);font-size:12px">${(c.address||'').replace(/\n/g,'<br>')}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px">ติดต่อ</div>
+          <div>📞 ${c.phone||c.contactPhone||'—'}</div>
+          <div>✉️ ${c.email||'—'}</div>
+          ${c.website?`<div>🌐 ${c.website}</div>`:''}
+          ${c.contactPerson?`<div style="margin-top:6px;font-weight:600">👤 ${c.contactPerson}</div>`:''}
+          ${c.contactPhone&&c.contactPhone!==c.phone?`<div style="font-size:12px">📞 ${c.contactPhone}</div>`:''}
+          ${c.contactEmail?`<div style="font-size:12px">✉️ ${c.contactEmail}</div>`:''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+        <div style="background:var(--bg2);border-radius:var(--r);padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--ink4);text-transform:uppercase;font-weight:700">เครดิต</div>
+          <div style="font-size:20px;font-weight:700;font-family:'IBM Plex Mono',monospace">${c.creditTerms||0} <span style="font-size:13px;font-weight:400">วัน</span></div>
+        </div>
+        <div style="background:var(--bg2);border-radius:var(--r);padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--ink4);text-transform:uppercase;font-weight:700">ใบเสนอราคา</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">${qtCount}</div>
+        </div>
+        <div style="background:var(--bg2);border-radius:var(--r);padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--ink4);text-transform:uppercase;font-weight:700">ใบแจ้งหนี้</div>
+          <div style="font-size:20px;font-weight:700;color:var(--orange)">${invCount}</div>
+        </div>
+      </div>
+      ${c.note?`<div style="background:var(--yellow-light);border:1px solid var(--yellow-mid);border-radius:var(--r);padding:10px 14px;font-size:13px"><b>หมายเหตุ:</b> ${c.note}</div>`:''}
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-view-customer').remove()">ปิด</button>
+        <button class="btn btn-outline" onclick="document.getElementById('modal-view-customer').remove();editCustomer('${c.id}')">✏️ แก้ไข</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.viewCustomer = viewCustomer;
+
+async function deleteCustomer(id) {
+  const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
+  if(!confirm(`ลบข้อมูลลูกค้า "${c.name}" ?\nการลบไม่สามารถย้อนกลับได้`)) return;
+  await storeDelete('customers', id);
+  data.customers = data.customers.filter(x=>x.id!==id);
+  syncLS('customers', data.customers);
+  refreshCustomerTable();
+  toast('ลบลูกค้าเรียบร้อย','ok');
+}
+window.deleteCustomer = deleteCustomer;
+
+function buildCustDatalist() {
+  const dl = document.getElementById('cust-datalist'); if(!dl) return;
+  dl.innerHTML = (data.customers||[])
+    .filter(c=>c.isActive!==false)
+    .map(c=>`<option value="${c.name}">`)
+    .join('');
+}
+
+function autofillCustomer() {
+  const name = document.getElementById('f-cust-name')?.value?.trim();
+  const c = (data.customers||[]).find(x=>x.name===name);
+  if(!c) return;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('f-cust-tax', c.taxId);
+  set('f-cust-addr', c.address);
+  set('f-cust-contact', c.contactPerson||c.contactPhone);
+}
+window.autofillCustomer = autofillCustomer;
+
+function openPickCustomer() {
+  const custs = (data.customers||[]).filter(c=>c.isActive!==false);
+  document.getElementById('page-content').innerHTML += `
+  <div class="overlay show" id="modal-pick-customer">
+    <div class="modal" style="width:560px;max-width:97vw">
+      <div class="modal-title">👤 เลือกลูกค้า</div>
+      <input type="text" placeholder="🔍 ค้นหา..." style="width:100%;margin-bottom:12px;border:1.5px solid var(--border);border-radius:var(--r);padding:8px 12px;font-family:'Sarabun',sans-serif;font-size:13px"
+        oninput="filterPickList(this.value)">
+      <div id="pick-list" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+        ${custs.map(c=>`
+          <div onclick="pickCustomer('${c.id}')" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .15s"
+            onmouseover="this.style.background='var(--accent-light)';this.style.borderColor='var(--accent)'"
+            onmouseout="this.style.background='';this.style.borderColor='var(--border)'">
+            <div style="font-weight:700">${c.name}</div>
+            <div style="font-size:12px;color:var(--ink4)">${c.taxId?'เลขภาษี: '+c.taxId:''} ${c.contactPerson?'| ผู้ติดต่อ: '+c.contactPerson:''}</div>
+          </div>`).join('')}
+        ${custs.length===0?'<div style="text-align:center;color:var(--ink4);padding:24px">ยังไม่มีข้อมูลลูกค้า</div>':''}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-pick-customer').remove()">ยกเลิก</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.openPickCustomer = openPickCustomer;
+
+function filterPickList(q) {
+  const ql = q.toLowerCase();
+  document.querySelectorAll('#pick-list > div[onclick]').forEach(el => {
+    const txt = el.textContent.toLowerCase();
+    el.style.display = txt.includes(ql) ? '' : 'none';
+  });
+}
+window.filterPickList = filterPickList;
+
+function pickCustomer(id) {
+  const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
+  const set = (el_id, val) => { const el=document.getElementById(el_id); if(el) el.value=val||''; };
+  set('f-cust-name', c.name);
+  set('f-cust-tax', c.taxId);
+  set('f-cust-addr', c.address);
+  set('f-cust-contact', c.contactPerson||c.contactPhone);
+  document.getElementById('modal-pick-customer')?.remove();
+  toast(`เลือกลูกค้า: ${c.name}`,'ok');
+}
+window.pickCustomer = pickCustomer;
+
+// ══════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ══════════════════════════════════════════════════════
 function renderSettings() {
@@ -3328,13 +3864,14 @@ function importData(event) {
       if(!payload.companies||!payload.quotations||!payload.invoices||!payload.billings) {
         toast('❌ ไฟล์ไม่ถูกต้อง — ไม่พบข้อมูลที่คาดหวัง','err'); return;
       }
-      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length}`)) return;
+      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length} | ลูกค้า: ${(payload.customers||[]).length}`)) return;
       data.companies=payload.companies;
       data.quotations=payload.quotations;
       data.invoices=payload.invoices;
       data.billings=payload.billings;
+      data.customers=payload.customers||[];
       companies=data.companies;
-      ['companies','quotations','invoices','billings'].forEach(col=>syncLS(col,data[col]));
+      ['companies','quotations','invoices','billings','customers'].forEach(col=>syncLS(col,data[col]));
       toast(`Import สำเร็จ — ${payload.companies.length} บริษัท, ${payload.invoices.length} INV ✅`,'ok');
       goPage(_currentPage);
     } catch(err) { toast('❌ ไม่สามารถอ่านไฟล์ได้: '+err.message,'err'); }
@@ -3590,8 +4127,8 @@ setInterval(() => {
 // ADMIN PANEL — กด A ค้าง 3 วินาที เพื่อเปิด
 // ══════════════════════════════════════════════════════
 const ADM_PASS = '1234';
-const ADM_COLS = ['companies','quotations','invoices','billings'];
-let ADM = { companies:[], quotations:[], invoices:[], billings:[] };
+const ADM_COLS = ['companies','quotations','invoices','billings','customers'];
+let ADM = { companies:[], quotations:[], invoices:[], billings:[], customers:[] };
 let _admCurrentPage = 'overview';
 let _admEditInvId = null;
 let _admPmtInvId = null;
@@ -4041,7 +4578,7 @@ function admPageRaw(){
   document.getElementById('adm-page-content').innerHTML=`
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
     ${ADM_COLS.map(c=>`<button class="adm-btn adm-btn-ghost" style="flex-direction:column;padding:16px;height:auto;justify-content:center" onclick="admOpenRaw('${c}')">
-      <div style="font-size:20px;margin-bottom:4px">${{companies:'🏢',quotations:'📋',invoices:'🧾',billings:'📬'}[c]}</div>
+      <div style="font-size:20px;margin-bottom:4px">${{companies:'🏢',quotations:'📋',invoices:'🧾',billings:'📬',customers:'👤'}[c]}</div>
       <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700">${c}</div>
       <div style="font-size:10px;color:#606078;font-family:'IBM Plex Mono',monospace">${ADM[c].length} records</div>
     </button>`).join('')}
@@ -4238,10 +4775,11 @@ window.admImportAll=admImportAll;
 function admAutoBackupDownload(){
   // ใช้ data[] เป็น fallback ถ้า ADM[] ยังไม่ได้โหลด (เช่น Firebase-only, localStorage ว่าง)
   const src={
-    companies: ADM.companies.length ? ADM.companies : (data.companies||[]),
+    companies:  ADM.companies.length  ? ADM.companies  : (data.companies||[]),
     quotations: ADM.quotations.length ? ADM.quotations : (data.quotations||[]),
     invoices:   ADM.invoices.length   ? ADM.invoices   : (data.invoices||[]),
-    billings:   ADM.billings.length   ? ADM.billings   : (data.billings||[])
+    billings:   ADM.billings.length   ? ADM.billings   : (data.billings||[]),
+    customers:  ADM.customers.length  ? ADM.customers  : (data.customers||[])
   };
   const total=ADM_COLS.reduce((s,c)=>s+src[c].length,0);
   if(total===0){
@@ -4276,7 +4814,7 @@ function admShowRestore(){
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid #2a2a38">
       <div>
         <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a0a0b8">${new Date(b.savedAt).toLocaleString('th-TH')}</div>
-        <div style="font-size:12px">บริษัท:${(b.companies||[]).length} QT:${(b.quotations||[]).length} INV:${(b.invoices||[]).length} BL:${(b.billings||[]).length} · ${b.sizeKB} KB</div>
+        <div style="font-size:12px">บริษัท:${(b.companies||[]).length} QT:${(b.quotations||[]).length} INV:${(b.invoices||[]).length} BL:${(b.billings||[]).length} ลูกค้า:${(b.customers||[]).length} · ${b.sizeKB} KB</div>
       </div>
       <button class="adm-btn adm-btn-warn" style="font-size:11px;padding:4px 10px" onclick="admRestoreFromKey('${b.key}')">♻️ Restore</button>
     </div>
