@@ -1,4 +1,7 @@
-<!-- AR SYSTEM v2.2 — 2026-05-08
+<!-- AR SYSTEM v2.4 — 2026-05-09
+     changelog v2.4: ระบบ Customer ID ถูกต้องแบบบัญชีจริง — customerCode (CUS-XXXX), normalizeCustomerName,
+     ตรวจชื่อซ้ำ/taxId ซ้ำก่อนบันทึก, customerId ผูกกับเอกสารทุกชนิด, รายงานค้างชำระ group by customerId,
+     ปุ่มตรวจลูกค้าซ้ำ + Merge, migration อัตโนมัติข้อมูลเก่า, export/import ครบ customers
      changelog v2.2: เพิ่มระบบฐานข้อมูลลูกค้า (Customers) — collection แยกอิสระ,
      Firebase Firestore + localStorage sync เหมือน collections อื่น,
      autofill ข้อมูลลูกค้าในฟอร์มสร้างเอกสาร, ไม่กระทบโครงสร้างเดิม
@@ -10,7 +13,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.2 — 2026-05-08</title>
+<title>AR System | v2.4 — 2026-05-09</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -435,7 +438,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.2 — 2026-05-08</div>
+    <div class="logo-sub">v2.4 — 2026-05-09</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -2483,6 +2486,12 @@ async function saveDoc(type) {
   if(!_selectedCo) { toast('กรุณาเลือกบริษัทก่อน','err'); return; }
   const custName = document.getElementById('f-cust-name')?.value?.trim();
   if(!custName) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
+  const custTaxInput = document.getElementById('f-cust-tax')?.value?.trim()||'';
+
+  // resolve customerId จาก store.customers
+  const custObj = findDuplicateCustomer({name: custName, taxId: custTaxInput});
+  const resolvedCustomerId   = custObj?.id || null;
+  const resolvedCustomerCode = custObj?.customerCode || '';
 
   if(type==='bl') {
     if(!_blSelected.length) { toast('กรุณาเลือกใบแจ้งหนี้อย่างน้อย 1 ใบ','err'); return; }
@@ -2492,8 +2501,10 @@ async function saveDoc(type) {
       docNumber:genDocNo(_selectedCo.prefix||'X','BL'),
       docDate:document.getElementById('f-date')?.value,
       companyId:_selectedCo.id, companyName:_selectedCo.name,
-      custName, custAddress:document.getElementById('f-cust-addr')?.value,
-      custTax:document.getElementById('f-cust-tax')?.value,
+      customerId:resolvedCustomerId, customerCode:resolvedCustomerCode,
+      custName, customerName:custName,
+      custAddress:document.getElementById('f-cust-addr')?.value,
+      custTax:custTaxInput,
       invoiceIds:_blSelected, total, status:'sent',
       note:document.getElementById('f-note')?.value,
       payMethod:getSelectedPayMethod(),
@@ -2514,8 +2525,10 @@ async function saveDoc(type) {
     docNumber:genDocNo(_selectedCo.prefix||'X', type==='qt'?'QT':'INV'),
     docDate:document.getElementById('f-date')?.value,
     companyId:_selectedCo.id, companyName:_selectedCo.name,
-    custName, custAddress:document.getElementById('f-cust-addr')?.value,
-    custTax:document.getElementById('f-cust-tax')?.value,
+    customerId:resolvedCustomerId, customerCode:resolvedCustomerCode,
+    custName, customerName:custName,
+    custAddress:document.getElementById('f-cust-addr')?.value,
+    custTax:custTaxInput,
     custContact:document.getElementById('f-cust-contact')?.value,
     preparedBy:document.getElementById('f-prepared-by')?.value,
     preparedPhone:document.getElementById('f-prepared-phone')?.value,
@@ -2527,8 +2540,8 @@ async function saveDoc(type) {
   };
   const col=type==='qt'?'quotations':'invoices';
   docData.id=await storeAdd(col,docData);
-  data[col==='quotations'?'quotations':'invoices'].push(docData);
-  syncLS(col, data[col==='quotations'?'quotations':'invoices']);
+  data[col].push(docData);
+  syncLS(col, data[col]);
   toast(`บันทึก${type==='qt'?'ใบเสนอราคา':'ใบแจ้งหนี้'}เรียบร้อย`,'ok');
   goPage(type==='qt'?'quotations':'invoices');
 }
@@ -2567,7 +2580,10 @@ async function confirmConvert() {
       docNumber:genDocNo(co.prefix||'X','INV'),
       docDate:cvDate, docDue:document.getElementById('cv-due')?.value||addDays(cvDate,30),
       companyId:qt.companyId, companyName:qt.companyName,
-      custName:qt.custName, custAddress:qt.custAddress, custTax:qt.custTax,
+      customerId:qt.customerId||resolveCustomerIdForDoc(qt)||null,
+      customerCode:qt.customerCode||(data.customers||[]).find(c=>c.id===(qt.customerId||resolveCustomerIdForDoc(qt)))?.customerCode||'',
+      custName:qt.custName, customerName:qt.custName||qt.customerName||'',
+      custAddress:qt.custAddress, custTax:qt.custTax,
       items:qt.items, hasVat:qt.hasVat, hasWht:qt.hasWht,
       subtotal:qt.subtotal, vat:qt.vat, wht:qt.wht, total:qt.total,
       paidAmount:0, status:'sent', payments:[], linkedQt:qt.id, linkedBilling:null, note:qt.note,
@@ -2585,7 +2601,10 @@ async function confirmConvert() {
     const bl={
       docNumber:genDocNo(co.prefix||'X','BL'),
       docDate:cvDate, companyId:inv.companyId, companyName:inv.companyName,
-      custName:inv.custName, invoiceIds:[inv.id], total:remainAmount(inv), status:'sent',
+      customerId:inv.customerId||resolveCustomerIdForDoc(inv)||null,
+      customerCode:inv.customerCode||(data.customers||[]).find(c=>c.id===(inv.customerId||resolveCustomerIdForDoc(inv)))?.customerCode||'',
+      custName:inv.custName, customerName:inv.custName||inv.customerName||'',
+      invoiceIds:[inv.id], total:remainAmount(inv), status:'sent',
     };
     bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
@@ -2966,7 +2985,9 @@ window.printNewDoc=printNewDoc;
 function renderReportAR() {
   const byCust={};
   data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
-    const k=i.custName; if(!byCust[k]) byCust[k]={name:k,total:0,paid:0,remain:0,invs:[]};
+    const k = i.customerId || resolveCustomerIdForDoc(i) || normalizeCustomerName(i.custName||i.customerName);
+    const displayName = i.custName||i.customerName||k;
+    if(!byCust[k]) byCust[k]={name:displayName,total:0,paid:0,remain:0,invs:[]};
     byCust[k].total+=i.total; byCust[k].paid+=(i.paidAmount||0);
     byCust[k].remain+=remainAmount(i); byCust[k].invs.push(i);
   });
@@ -3413,11 +3434,66 @@ async function deleteCo(id) {
 window.deleteCo=deleteCo;
 
 // ══════════════════════════════════════════════════════
+// CUSTOMER HELPERS — v2.4
+// ══════════════════════════════════════════════════════
+
+function normalizeCustomerName(name) {
+  return (name || '').toString().trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeTaxId(taxId) {
+  return (taxId || '').toString().replace(/\D/g, '').trim();
+}
+
+function getCustomerDisplayName(customer) {
+  return customer?.name || customer?.customerName || '';
+}
+
+function generateCustomerCode() {
+  const customers = data.customers || [];
+  let maxNo = 0;
+  customers.forEach(c => {
+    const code = c.customerCode || '';
+    const m = code.match(/^CUS-(\d+)$/);
+    if(m) maxNo = Math.max(maxNo, parseInt(m[1], 10));
+  });
+  return 'CUS-' + String(maxNo + 1).padStart(4, '0');
+}
+
+function findDuplicateCustomer(inputCustomer, excludeId = null) {
+  const customers = data.customers || [];
+  const inputNameNorm = normalizeCustomerName(inputCustomer.name || inputCustomer.customerName);
+  const inputTaxNorm  = normalizeTaxId(inputCustomer.taxId || inputCustomer.taxID);
+  if(!inputNameNorm && !inputTaxNorm) return null;
+  return customers.find(c => {
+    if(excludeId && c.id === excludeId) return false;
+    const cNameNorm = normalizeCustomerName(c.name || c.customerName);
+    const cTaxNorm  = normalizeTaxId(c.taxId || c.taxID);
+    const sameName = inputNameNorm && cNameNorm && inputNameNorm === cNameNorm;
+    const sameTax  = inputTaxNorm  && cTaxNorm  && inputTaxNorm  === cTaxNorm;
+    return sameName || sameTax;
+  }) || null;
+}
+
+function resolveCustomerIdForDoc(doc) {
+  if(doc.customerId) return doc.customerId;
+  const nameNorm = normalizeCustomerName(doc.customerName || doc.custName || doc.customer || doc.clientName);
+  const taxNorm  = normalizeTaxId(doc.taxId || doc.custTax || doc.customerTaxId);
+  const found = (data.customers || []).find(c => {
+    const sameName = nameNorm && normalizeCustomerName(c.name || c.customerName) === nameNorm;
+    const sameTax  = taxNorm  && normalizeTaxId(c.taxId || c.taxID) === taxNorm;
+    return sameName || sameTax;
+  });
+  return found ? found.id : null;
+}
+
+// ══════════════════════════════════════════════════════
 // CUSTOMERS
 // ══════════════════════════════════════════════════════
 function renderCustomers() {
   document.getElementById('topbar-actions').innerHTML =
-    `<button class="btn btn-primary" onclick="openNewCustomer()">+ เพิ่มลูกค้า</button>`;
+    `<button class="btn btn-outline" onclick="openCustomerDuplicates()">🔍 ตรวจลูกค้าซ้ำ</button>
+     <button class="btn btn-primary" onclick="openNewCustomer()">+ เพิ่มลูกค้า</button>`;
   document.getElementById('page-content').innerHTML = `
     <div class="filters">
       <input type="text" id="f-cust-search" placeholder="🔍 ค้นหาชื่อ / เลขภาษี / ผู้ติดต่อ..."
@@ -3437,6 +3513,7 @@ function renderCustomers() {
     <div class="card">
       <table class="tbl">
         <thead><tr>
+          <th>รหัส</th>
           <th>ชื่อลูกค้า</th>
           <th>ประเภท</th>
           <th>เลขภาษี</th>
@@ -3469,6 +3546,7 @@ function refreshCustomerTable() {
   const tbody = document.getElementById('customers-tbody');
   if(!tbody) return;
   tbody.innerHTML = rows.length ? rows.map(c => `<tr>
+    <td class="mono" style="font-size:11px;color:var(--ink4)">${c.customerCode||'—'}</td>
     <td>
       <div style="font-weight:700">${c.name}</div>
       ${c.nameEn ? `<div style="font-size:11px;color:var(--ink4)">${c.nameEn}</div>` : ''}
@@ -3485,7 +3563,7 @@ function refreshCustomerTable() {
       <button class="btn btn-xs btn-danger" onclick="deleteCustomer('${c.id}')">🗑</button>
     </td>
   </tr>`).join('') :
-  '<tr><td colspan="8"><div class="empty"><div class="empty-icon">👤</div><p>ยังไม่มีข้อมูลลูกค้า</p></div></td></tr>';
+  '<tr><td colspan="9"><div class="empty"><div class="empty-icon">👤</div><p>ยังไม่มีข้อมูลลูกค้า</p></div></td></tr>';
 }
 window.refreshCustomerTable = refreshCustomerTable;
 
@@ -3603,6 +3681,14 @@ async function saveCustomer(id) {
   if(!name) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
   const taxId = document.getElementById('cust-tax')?.value?.trim() || '';
   if(taxId && !/^\d{13}$/.test(taxId)) { toast('เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก','err'); return; }
+
+  const editId = (id && id !== 'null') ? id : null;
+  const dup = findDuplicateCustomer({name, taxId}, editId);
+  if(dup) {
+    toast(`ไม่สามารถบันทึกได้: พบลูกค้าซ้ำ (${dup.customerCode||dup.id}) ${dup.name}`, 'err');
+    return;
+  }
+
   const d = {
     name,
     nameEn: document.getElementById('cust-name-en')?.value?.trim() || '',
@@ -3619,19 +3705,26 @@ async function saveCustomer(id) {
     creditLimit: parseFloat(document.getElementById('cust-credit-limit')?.value) || 0,
     note: document.getElementById('cust-note')?.value?.trim() || '',
     isActive: document.getElementById('cust-active')?.value === '1',
+    customerNameNorm: normalizeCustomerName(name),
+    taxIdNorm: normalizeTaxId(taxId),
   };
   if(!data.customers) data.customers = [];
-  if(id && id !== 'null') {
-    const ok = await storeUpdate('customers', id, d);
+  if(editId) {
+    const existing = data.customers.find(x=>x.id===editId);
+    d.customerCode = existing?.customerCode || '';
+    d.customerId = editId;
+    const ok = await storeUpdate('customers', editId, d);
     if(!ok) return;
-    const idx = data.customers.findIndex(x=>x.id===id);
+    const idx = data.customers.findIndex(x=>x.id===editId);
     if(idx>=0) Object.assign(data.customers[idx], d);
     toast('แก้ไขข้อมูลลูกค้าเรียบร้อย','ok');
   } else {
+    d.customerCode = generateCustomerCode();
     const newId = await storeAdd('customers', d);
-    if(!newId) return; // Firebase error — storeAdd already showed toast
+    if(!newId) return;
+    d.customerId = newId;
     data.customers.push({id: newId, ...d});
-    toast('เพิ่มลูกค้าเรียบร้อย','ok');
+    toast(`เพิ่มลูกค้าเรียบร้อย (${d.customerCode})`,'ok');
   }
   syncLS('customers', data.customers);
   document.getElementById('modal-customer')?.remove();
@@ -3641,8 +3734,9 @@ window.saveCustomer = saveCustomer;
 
 function viewCustomer(id) {
   const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
-  const qtCount = data.quotations.filter(q=>q.custName===c.name).length;
-  const invCount = data.invoices.filter(i=>i.custName===c.name).length;
+  const nameNorm = normalizeCustomerName(c.name||c.customerName);
+  const qtCount  = data.quotations.filter(q=>q.customerId===c.id||normalizeCustomerName(q.custName||q.customerName)===nameNorm).length;
+  const invCount = data.invoices.filter(i=>i.customerId===c.id||normalizeCustomerName(i.custName||i.customerName)===nameNorm).length;
   document.getElementById('page-content').innerHTML += `
   <div class="overlay show" id="modal-view-customer">
     <div class="modal" style="width:620px;max-width:97vw">
@@ -3699,6 +3793,108 @@ async function deleteCustomer(id) {
   toast('ลบลูกค้าเรียบร้อย','ok');
 }
 window.deleteCustomer = deleteCustomer;
+
+function openCustomerDuplicates() {
+  const customers = data.customers || [];
+  // ตรวจหากลุ่มที่ซ้ำ (name หรือ taxId ตรงกัน)
+  const groups = new Map(); // key → [customer, ...]
+  customers.forEach(c => {
+    const nameKey = normalizeCustomerName(c.name || c.customerName);
+    const taxKey  = normalizeTaxId(c.taxId || c.taxID);
+    const key = taxKey || nameKey;
+    if(!key) return;
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  });
+  const dupGroups = [...groups.values()].filter(g => g.length > 1);
+
+  const countDocs = (custId, name) => {
+    const nameNorm = normalizeCustomerName(name);
+    const cols = ['quotations','invoices','billings'];
+    return cols.reduce((sum, col) => sum + (data[col]||[]).filter(d =>
+      d.customerId === custId || normalizeCustomerName(d.custName||d.customerName) === nameNorm
+    ).length, 0);
+  };
+
+  const e = escHtml;
+  const body = dupGroups.length === 0
+    ? `<div class="empty" style="padding:32px"><div class="empty-icon">✅</div><p>ไม่พบลูกค้าซ้ำ</p></div>`
+    : dupGroups.map((group, gi) => `
+      <div style="border:1.5px solid var(--orange);border-radius:var(--r);margin-bottom:14px;overflow:hidden">
+        <div style="background:var(--orange);color:#fff;padding:8px 14px;font-size:12px;font-weight:700">
+          กลุ่มซ้ำ #${gi+1} — ${group.length} รายการ
+        </div>
+        ${group.map((c,ci) => {
+          const docCount = countDocs(c.id, c.name);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;${ci>0?'border-top:1px solid var(--border)':''}">
+            <div style="flex:1">
+              <span class="mono" style="font-size:11px;color:var(--ink4)">${e(c.customerCode||'—')}</span>
+              <span style="font-weight:700;margin-left:8px">${e(c.name||c.customerName||'—')}</span>
+              ${c.taxId?`<span style="font-size:11px;color:var(--ink3);margin-left:8px">เลขภาษี: ${e(c.taxId)}</span>`:''}
+              <span style="font-size:11px;color:var(--ink4);margin-left:8px">(เอกสาร: ${docCount})</span>
+            </div>
+            <button class="btn btn-xs btn-primary" onclick="mergeIntoCustomer('${group[0].id}','${c.id}',${gi})">
+              ${ci===0?'⭐ Master':'→ Merge เข้า Master'}
+            </button>
+          </div>`;
+        }).join('')}
+      </div>`).join('');
+
+  document.getElementById('page-content').innerHTML += `
+  <div class="overlay show" id="modal-dup-customers">
+    <div class="modal" style="width:700px;max-width:97vw">
+      <div class="modal-title">🔍 ตรวจสอบลูกค้าซ้ำ</div>
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:14px">
+        พบ <strong>${dupGroups.length}</strong> กลุ่มที่มีชื่อหรือเลขภาษีซ้ำกัน
+        — กด "Merge เข้า Master" เพื่อรวมเป็นลูกค้าเดียวกัน (backup จะสร้างอัตโนมัติ)
+      </p>
+      <div style="max-height:420px;overflow-y:auto">${body}</div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-dup-customers').remove()">ปิด</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.openCustomerDuplicates = openCustomerDuplicates;
+
+async function mergeIntoCustomer(masterId, dupeId, groupIdx) {
+  if(masterId === dupeId) { toast('ลูกค้าตัวเดียวกัน ไม่ต้อง merge','info'); return; }
+  if(!confirm('รวมลูกค้าซ้ำเข้า Master? เอกสารทั้งหมดของลูกค้าซ้ำจะถูกย้ายไปหา Master (backup จะสร้างก่อน)')) return;
+
+  saveLocalBackup();
+
+  const master = (data.customers||[]).find(c=>c.id===masterId);
+  const dupe   = (data.customers||[]).find(c=>c.id===dupeId);
+  if(!master||!dupe) { toast('ไม่พบข้อมูลลูกค้า','err'); return; }
+
+  const nameNorm = normalizeCustomerName(dupe.name||dupe.customerName);
+  const cols = ['quotations','invoices','billings'];
+  for(const col of cols) {
+    for(const doc of (data[col]||[])) {
+      const match = doc.customerId===dupeId ||
+        normalizeCustomerName(doc.custName||doc.customerName||'')===nameNorm;
+      if(match) {
+        doc.customerId   = master.id;
+        doc.customerCode = master.customerCode||'';
+        doc.custName     = master.name||master.customerName||'';
+        doc.customerName = master.name||master.customerName||'';
+        doc.updatedAt    = new Date().toISOString();
+        await storeUpdate(col, doc.id, {customerId:master.id, customerCode:master.customerCode||'', custName:doc.custName, updatedAt:doc.updatedAt});
+      }
+    }
+    syncLS(col, data[col]);
+  }
+
+  // ลบ dupe ออกจาก collection
+  await storeDelete('customers', dupeId);
+  data.customers = data.customers.filter(c=>c.id!==dupeId);
+  syncLS('customers', data.customers);
+
+  toast(`Merge สำเร็จ — ${dupe.name} → ${master.name} (${master.customerCode||master.id})`,'ok');
+  document.getElementById('modal-dup-customers')?.remove();
+  if(_currentPage==='customers') refreshCustomerTable();
+}
+window.mergeIntoCustomer = mergeIntoCustomer;
 
 function buildCustDatalist() {
   const dl = document.getElementById('cust-datalist'); if(!dl) return;
@@ -3839,11 +4035,12 @@ document.querySelectorAll('.overlay').forEach(ov=>{
 function exportData() {
   const payload = {
     exportedAt: new Date().toISOString(),
-    version: 2,
+    version: 3,
     companies: data.companies,
     quotations: data.quotations,
     invoices: data.invoices,
     billings: data.billings,
+    customers: data.customers || [],
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -3918,6 +4115,79 @@ function updateDataSourceLabel(sources) {
 }
 
 // ── INIT — Auto Pull จาก Firebase ทุกครั้งที่เปิด ──
+// ══════════════════════════════════════════════════════
+// MIGRATION v2.3 → v2.4 — เติม customerCode/norms, รวมซ้ำ, อัปเดตเอกสาร
+// ══════════════════════════════════════════════════════
+function migrateCustomersV23() {
+  const flagKey = 'AR_MIGRATED_CUSTOMERS_V23';
+  if(localStorage.getItem(flagKey) === '1') return;
+
+  saveLocalBackup();
+
+  const customers = data.customers || [];
+  if(customers.length === 0) { localStorage.setItem(flagKey,'1'); return; }
+
+  const seen  = new Map(); // key → master customer
+  const idMap = new Map(); // old id → master id
+  const result = [];
+  let maxCode = 0;
+
+  // หา maxCode จากที่มีอยู่แล้ว
+  customers.forEach(c => {
+    const m = (c.customerCode||'').match(/^CUS-(\d+)$/);
+    if(m) maxCode = Math.max(maxCode, parseInt(m[1],10));
+  });
+
+  customers.forEach(c => {
+    if(!c.id) c.id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now()+Math.random()+'';
+    if(!c.customerId) c.customerId = c.id;
+    c.name = c.name || c.customerName || '';
+    c.customerNameNorm = normalizeCustomerName(c.name);
+    c.taxIdNorm = normalizeTaxId(c.taxId || c.taxID || '');
+    c.updatedAt = c.updatedAt || new Date().toISOString();
+
+    const key = c.taxIdNorm || c.customerNameNorm;
+    if(key && seen.has(key)) {
+      const master = seen.get(key);
+      idMap.set(c.id, master.id);
+      idMap.set(c.customerId, master.id);
+    } else {
+      if(!c.customerCode) { maxCode++; c.customerCode = 'CUS-' + String(maxCode).padStart(4,'0'); }
+      if(key) seen.set(key, c);
+      result.push(c);
+      idMap.set(c.id, c.id);
+      idMap.set(c.customerId, c.id);
+    }
+  });
+
+  data.customers = result;
+
+  ['quotations','invoices','billings','payments'].forEach(col => {
+    (data[col] || []).forEach(doc => {
+      const oldId = doc.customerId;
+      const resolved = (oldId && idMap.has(oldId))
+        ? idMap.get(oldId)
+        : resolveCustomerIdForDoc(doc);
+      if(resolved) {
+        const cust = data.customers.find(c => c.id === resolved);
+        doc.customerId   = resolved;
+        doc.customerCode = cust?.customerCode || doc.customerCode || '';
+        doc.customerName = cust?.name || doc.customerName || doc.custName || '';
+        doc.custName     = doc.custName || doc.customerName;
+        doc.updatedAt    = new Date().toISOString();
+      }
+    });
+    syncLS(col, data[col] || []);
+  });
+
+  syncLS('customers', data.customers);
+  localStorage.setItem(flagKey, '1');
+
+  const removed = customers.length - result.length;
+  if(removed > 0) toast(`Migrate v2.4: รวมลูกค้าซ้ำ ${removed} รายการ, เติม customerCode เรียบร้อย`, 'ok');
+  else toast('Migrate v2.4: เติม customerCode และ customerId เรียบร้อย', 'ok');
+}
+
 (async function init() {
   const msgEl  = document.getElementById('loading-msg');
   const subEl  = document.getElementById('loading-sub');
@@ -3933,7 +4203,7 @@ function updateDataSourceLabel(sources) {
     if(_fbdb) {
       // ── มี Firebase → Pull ก่อนเสมอ ──
       setMsg('เชื่อมต่อ Firebase สำเร็จ', 'กำลังดึงข้อมูล...');
-      const COLS = ['companies','quotations','invoices','billings'];
+      const COLS = ['companies','quotations','invoices','billings','customers'];
       let total = 0;
       const emptyFromFb    = []; // collection ที่ Firebase ว่างแต่ local มีข้อมูล
       const colFbData      = {}; // col → { fbArr, lsArr }
@@ -4044,8 +4314,9 @@ function updateDataSourceLabel(sources) {
       data.quotations = lsLoad('quotations') || [];
       data.invoices   = lsLoad('invoices')   || [];
       data.billings   = lsLoad('billings')   || [];
+      data.customers  = lsLoad('customers')  || [];
       companies = data.companies;
-      sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local'};
+      sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local',customers:'local'};
       setMsg('⚠️ โหลดจาก localStorage', 'ไม่ได้เชื่อมต่อ Firebase');
     }
   } catch(e) {
@@ -4055,8 +4326,9 @@ function updateDataSourceLabel(sources) {
     data.quotations = lsLoad('quotations') || [];
     data.invoices   = lsLoad('invoices')   || [];
     data.billings   = lsLoad('billings')   || [];
+    data.customers  = lsLoad('customers')  || [];
     companies = data.companies;
-    sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local'};
+    sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local',customers:'local'};
     console.warn('Firebase pull failed:', e);
   }
 
@@ -4066,6 +4338,7 @@ function updateDataSourceLabel(sources) {
   screen.classList.add('fade-out');
   setTimeout(() => { screen.style.display = 'none'; }, 450);
 
+  migrateCustomersV23(); // เติม customerCode/norms และรวมลูกค้าซ้ำ (ครั้งเดียว)
   startRealtimeListeners(); // เริ่ม onSnapshot — ครอบคลุม syncCheckConnection ด้วย
   goPage('dashboard');
 })();
