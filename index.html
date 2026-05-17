@@ -1,4 +1,12 @@
-<!-- AR SYSTEM v2.2 — 2026-05-08
+<!-- AR SYSTEM v2.7 — 2026-05-10
+     changelog v2.7: เพิ่ม syncARPaymentToFinance() — รับชำระ AR sync อัตโนมัติไป fin_transactions (collection หลักที่ Finance app อ่าน), duplicate guard ด้วย payment.id, month lock check ก่อน sync, financeTransactionId ใน payments[]
+     changelog v2.7 — 2026-05-10
+     changelog v2.6: แก้บั๊ก form หายเมื่อมี snapshot จากเครื่องอื่น — ตรวจ modal เปิดอยู่ก่อน re-render,
+     pending refresh queue จะ refresh หลังปิด form แทน, ป้องกัน data loss ระหว่างแก้ไขเอกสาร
+     changelog v2.5: แก้ due date ใบแจ้งหนี้ให้สัมพันธ์กับเงื่อนไขชำระเงินจากใบเสนอราคา/ฟอร์มเอกสาร, เก็บ paymentTerms/paymentDays, แก้ date helper ไม่ให้ timezone เพี้ยน
+     changelog v2.4: ระบบ Customer ID ถูกต้องแบบบัญชีจริง — customerCode (CUS-XXXX), normalizeCustomerName,
+     ตรวจชื่อซ้ำ/taxId ซ้ำก่อนบันทึก, customerId ผูกกับเอกสารทุกชนิด, รายงานค้างชำระ group by customerId,
+     ปุ่มตรวจลูกค้าซ้ำ + Merge, migration อัตโนมัติข้อมูลเก่า, export/import ครบ customers
      changelog v2.2: เพิ่มระบบฐานข้อมูลลูกค้า (Customers) — collection แยกอิสระ,
      Firebase Firestore + localStorage sync เหมือน collections อื่น,
      autofill ข้อมูลลูกค้าในฟอร์มสร้างเอกสาร, ไม่กระทบโครงสร้างเดิม
@@ -10,7 +18,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.2 — 2026-05-08</title>
+<title>AR System | v2.7 — 2026-05-10</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -435,7 +443,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.2 — 2026-05-08</div>
+    <div class="logo-sub">v2.7 — 2026-05-10</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1338,10 +1346,32 @@ function _applySnapshot(col, snap) {
   if(!isFirst && fromServer && !isEcho) {
     const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
     syncUpdateUI('online', '🔄 Live sync ✅', now);
-    toast(`🔄 ${col} อัปเดตจากเครื่องอื่น`, 'info');
-    if(_LIVE_PAGES.has(_currentPage)) goPage(_currentPage);
+
+    // ตรวจว่ามี modal/form แก้ไขเปิดอยู่หรือไม่
+    const editModalIds = [
+      'modal-edit-qt','modal-edit-inv','modal-edit-bl',
+      'modal-payment','modal-convert','modal-co',
+      'modal-customer','adm-modal-edit-inv'
+    ];
+    const isFormOpen = editModalIds.some(id => {
+      const el = document.getElementById(id);
+      return el && (el.classList.contains('show') || el.classList.contains('adm-show'));
+    });
+
+    if(isFormOpen) {
+      // มี form เปิดอยู่ → แจ้งเตือนแต่ไม่ re-render (ป้องกัน data loss)
+      toast(`⚠️ ${col} อัปเดตจากเครื่องอื่น — จะโหลดใหม่เมื่อปิดฟอร์ม`, 'warn');
+      _pendingRefreshCols = _pendingRefreshCols || new Set();
+      _pendingRefreshCols.add(col);
+    } else {
+      toast(`🔄 ${col} อัปเดตจากเครื่องอื่น`, 'info');
+      if(_LIVE_PAGES.has(_currentPage)) goPage(_currentPage);
+    }
   }
 }
+
+// ตรวจ pending refresh เมื่อ modal ถูกปิด
+let _pendingRefreshCols = new Set();
 
 function startRealtimeListeners() {
   if(!_fbdb) return;
@@ -1444,25 +1474,120 @@ window.goPage = goPage;
 function fmt(n) { return (n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtInt(n) { return (n||0).toLocaleString('th-TH'); }
 function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function today() { return new Date().toISOString().split('T')[0]; }
-function addDays(d,n) { const dt=new Date(d); dt.setDate(dt.getDate()+n); return dt.toISOString().split('T')[0]; }
-function daysDiff(a,b) { return Math.ceil((new Date(b)-new Date(a))/(1000*60*60*24)); }
-function uid() { return 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,7); }
-// ── Running-number sequence (never resets on delete) ──
-// Key format: ar_seq_{TYPE}_{PREFIX}_{YYYYMM}  → integer
-function genDocNo(prefix, type) {
-  const y=new Date().getFullYear()+543, m=String(new Date().getMonth()+1).padStart(2,'0'), ym=`${y}${m}`;
-  const key=`ar_seq_${type}_${prefix}_${ym}`;
-  let seq=1; try{const s=localStorage.getItem(key);if(s)seq=parseInt(s,10)+1;}catch(e){}
-  try{localStorage.setItem(key,seq);}catch(e){}
-  return `${type}-${prefix}-${ym}-${String(seq).padStart(3,'0')}`;
+function toISODateLocal(dt) {
+  const d = dt instanceof Date ? dt : new Date(dt);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
-// peekDocNo — แสดง preview เลขถัดไป โดยไม่ increment จริง
-function peekDocNo(prefix, type) {
-  const y=new Date().getFullYear()+543, m=String(new Date().getMonth()+1).padStart(2,'0'), ym=`${y}${m}`;
-  const key=`ar_seq_${type}_${prefix}_${ym}`;
-  let seq=1; try{const s=localStorage.getItem(key);if(s)seq=parseInt(s,10)+1;}catch(e){}
-  return `${type}-${prefix}-${ym}-${String(seq).padStart(3,'0')}`;
+function today() { return toISODateLocal(new Date()); }
+function parseISODateLocal(v) {
+  if(!v) return new Date();
+  const [y,m,d] = String(v).split('-').map(Number);
+  if(!y || !m || !d) return new Date(v);
+  return new Date(y, m - 1, d);
+}
+function addDays(d,n) {
+  const dt = parseISODateLocal(d);
+  dt.setDate(dt.getDate() + (parseInt(n,10) || 0));
+  return toISODateLocal(dt);
+}
+function daysDiff(a,b) {
+  const da = parseISODateLocal(a);
+  const db = parseISODateLocal(b);
+  return Math.ceil((db - da)/(1000*60*60*24));
+}
+function getPaymentTermDays(term) {
+  const t = String(term || '').trim();
+  if(!t || /ชำระทันที|ทันที|cash|เงินสด/i.test(t)) return 0;
+  const m = t.match(/(\d+)/);
+  return m ? Math.max(0, parseInt(m[1], 10) || 0) : 0;
+}
+function calcDueDateByTerms(docDate, term) { return addDays(docDate || today(), getPaymentTermDays(term)); }
+function getSelectedPaymentTerms() { return document.getElementById('f-terms')?.value || '30 วัน'; }
+function syncDueFromTerms() {
+  const dueEl = document.getElementById('f-due');
+  if(!dueEl) return;
+  const dateVal = document.getElementById('f-date')?.value || today();
+  dueEl.value = calcDueDateByTerms(dateVal, getSelectedPaymentTerms());
+}
+function syncConvertDueFromTerms() {
+  const dueEl = document.getElementById('cv-due');
+  if(!dueEl) return;
+  const dateVal = document.getElementById('cv-date')?.value || today();
+  const term = dueEl.dataset.term || '30 วัน';
+  dueEl.value = calcDueDateByTerms(dateVal, term);
+}
+window.syncDueFromTerms=syncDueFromTerms;
+window.syncConvertDueFromTerms=syncConvertDueFromTerms;
+
+function uid() { return 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,7); }
+
+// ══════════════════════════════════════════════════════
+// RUNNING-NUMBER SEQUENCE — Firestore transaction + localStorage fallback
+// Collection: ar_config  Document: sequences
+// Field: {TYPE}_{PREFIX}_{YYYYMM}  → integer (เพิ่มทีละ 1 ด้วย transaction)
+// iPad Safari ไม่รองรับ localStorage ใน Private/ITP mode → ใช้ Firestore เป็นหลัก
+// ══════════════════════════════════════════════════════
+const SEQ_COL = 'ar_config';
+const SEQ_DOC = 'sequences';
+
+// genDocNo — async, ใช้ Firestore transaction (ถ้ามี) หรือ localStorage fallback
+async function genDocNo(prefix, type) {
+  const y = new Date().getFullYear() + 543;
+  const m = String(new Date().getMonth() + 1).padStart(2, '0');
+  const ym = `${y}${m}`;
+  const field = `${type}_${prefix}_${ym}`;
+  const lsKey = `ar_seq_${type}_${prefix}_${ym}`;
+
+  // ── Firestore transaction (primary) ──
+  if (_fbdb) {
+    try {
+      const ref = _fbdb.collection(SEQ_COL).doc(SEQ_DOC);
+      let seq = 1;
+      await _fbdb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        seq = snap.exists ? ((snap.data()[field] || 0) + 1) : 1;
+        tx.set(ref, { [field]: seq }, { merge: true });
+      });
+      // mirror to localStorage เพื่อ offline fallback
+      try { localStorage.setItem(lsKey, seq); } catch(e) {}
+      return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
+    } catch(e) {
+      console.warn('[AR] genDocNo Firestore transaction failed, falling back to localStorage:', e);
+    }
+  }
+
+  // ── localStorage fallback (ใช้เมื่อ offline หรือ Firestore ไม่พร้อม) ──
+  let seq = 1;
+  try { const s = localStorage.getItem(lsKey); if (s) seq = parseInt(s, 10) + 1; } catch(e) {}
+  try { localStorage.setItem(lsKey, seq); } catch(e) {}
+  return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
+}
+
+// peekDocNo — async, แสดง preview เลขถัดไป โดยไม่ increment จริง
+async function peekDocNo(prefix, type) {
+  const y = new Date().getFullYear() + 543;
+  const m = String(new Date().getMonth() + 1).padStart(2, '0');
+  const ym = `${y}${m}`;
+  const field = `${type}_${prefix}_${ym}`;
+  const lsKey = `ar_seq_${type}_${prefix}_${ym}`;
+
+  if (_fbdb) {
+    try {
+      const snap = await _fbdb.collection(SEQ_COL).doc(SEQ_DOC).get();
+      const seq = snap.exists ? ((snap.data()[field] || 0) + 1) : 1;
+      return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
+    } catch(e) {
+      console.warn('[AR] peekDocNo Firestore read failed, falling back to localStorage:', e);
+    }
+  }
+
+  let seq = 1;
+  try { const s = localStorage.getItem(lsKey); if (s) seq = parseInt(s, 10) + 1; } catch(e) {}
+  return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
 }
 function invStatus(inv) {
   if(inv.status==='cancelled') return 'cancelled';
@@ -1677,7 +1802,16 @@ function editQT(id) {
       <div class="form-grid-4" style="gap:10px;margin-bottom:12px">
         <div class="field"><label>วันที่</label><input type="date" id="eqt-date" value="${q.docDate}"></div>
         <div class="field"><label>ใช้ได้ถึง</label><input type="date" id="eqt-valid" value="${q.docValid||''}"></div>
-        <div class="field span2"><label>สถานะ</label>
+        <div class="field"><label>เงื่อนไขชำระ</label>
+          <select id="eqt-terms">
+            <option${(q.paymentTerms||q.terms)==='ชำระทันที'?' selected':''}>ชำระทันที</option>
+            <option${(q.paymentTerms||q.terms)==='7 วัน'?' selected':''}>7 วัน</option>
+            <option${(q.paymentTerms||q.terms)==='15 วัน'?' selected':''}>15 วัน</option>
+            <option${(!q.paymentTerms&&!q.terms)||(q.paymentTerms||q.terms)==='30 วัน'?' selected':''}>30 วัน</option>
+            <option${(q.paymentTerms||q.terms)==='60 วัน'?' selected':''}>60 วัน</option>
+          </select>
+        </div>
+        <div class="field"><label>สถานะ</label>
           <select id="eqt-status">
             <option value="draft"${q.status==='draft'?' selected':''}>ร่าง</option>
             <option value="sent"${q.status==='sent'?' selected':''}>ส่งแล้ว</option>
@@ -1731,7 +1865,7 @@ function editQT(id) {
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-qt').remove()">ยกเลิก</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-qt').remove(); if(typeof _checkPendingRefresh==='function') _checkPendingRefresh();">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditQT('${id}')">💾 บันทึก</button>
       </div>
     </div>
@@ -1790,6 +1924,8 @@ async function saveEditQT(id) {
   const hasWht=document.getElementById('eqt-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
   const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const paymentTerms = document.getElementById('eqt-terms')?.value || q.paymentTerms || q.terms || '30 วัน';
+  const paymentDays = getPaymentTermDays(paymentTerms);
   const d={
     docDate:document.getElementById('eqt-date').value,
     docValid:document.getElementById('eqt-valid').value,
@@ -1799,6 +1935,7 @@ async function saveEditQT(id) {
     custContact:document.getElementById('eqt-contact').value,
     custAddress:document.getElementById('eqt-addr').value,
     note:document.getElementById('eqt-note').value,
+    paymentTerms, terms:paymentTerms, paymentDays,
     items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht
   };
   const ok=await storeUpdate('quotations',id,d); if(!ok) return;
@@ -1931,7 +2068,7 @@ function editINV(id) {
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-inv').remove()">ยกเลิก</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-inv').remove(); if(typeof _checkPendingRefresh==='function') _checkPendingRefresh();">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditINV('${id}')">💾 บันทึก</button>
       </div>
     </div>
@@ -2131,7 +2268,7 @@ function editBL(id) {
         <div class="field span2"><label>หมายเหตุ</label><textarea id="ebl-note" style="min-height:60px">${bl.note||''}</textarea></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-bl').remove()">ยกเลิก</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-bl').remove(); if(typeof _checkPendingRefresh==='function') _checkPendingRefresh();">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditBL('${id}')">💾 บันทึก</button>
       </div>
     </div>
@@ -2259,10 +2396,10 @@ function buildDocForm(type) {
     <div class="card-body">
       <div class="form-grid-4">
         <div class="field"><label>เลขที่เอกสาร</label><input type="text" id="f-docno" readonly></div>
-        <div class="field"><label>วันที่</label><input type="date" id="f-date" value="${today()}"></div>
+        <div class="field"><label>วันที่</label><input type="date" id="f-date" value="${today()}" onchange="syncDueFromTerms()"></div>
         ${extraFields}
         <div class="field"><label>เงื่อนไขการชำระ</label>
-          <select id="f-terms"><option>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option selected>30 วัน</option><option>60 วัน</option></select></div>
+          <select id="f-terms" onchange="syncDueFromTerms()"><option>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option selected>30 วัน</option><option>60 วัน</option></select></div>
       </div>
     </div>
   </div>
@@ -2316,8 +2453,7 @@ let _selectedCo = null;
 function initDocForm(type) {
   _selectedCo = null;
   if(type==='inv') {
-    const dueEl = document.getElementById('f-due');
-    if(dueEl) dueEl.value = addDays(today(), 30);
+    syncDueFromTerms();
   }
   if(type==='qt') {
     const validEl = document.getElementById('f-valid');
@@ -2327,14 +2463,14 @@ function initDocForm(type) {
   buildCustDatalist();
 }
 
-function selectCo(id, type) {
+async function selectCo(id, type) {
   _selectedCo = companies.find(c=>c.id===id)||null;
   document.querySelectorAll('.co-card').forEach(el=>el.classList.remove('sel'));
   document.getElementById('co-'+id)?.classList.add('sel');
   if(_selectedCo) {
     const prefix = _selectedCo.prefix||'XX';
     const typeMap = {qt:'QT',inv:'INV',bl:'BL'};
-    document.getElementById('f-docno').value = peekDocNo(prefix,typeMap[type]);
+    document.getElementById('f-docno').value = await peekDocNo(prefix,typeMap[type]);
     const vatEl = document.getElementById('f-vat');
     if(vatEl) vatEl.checked = _selectedCo.hasVat;
     calcDoc(type);
@@ -2483,20 +2619,29 @@ async function saveDoc(type) {
   if(!_selectedCo) { toast('กรุณาเลือกบริษัทก่อน','err'); return; }
   const custName = document.getElementById('f-cust-name')?.value?.trim();
   if(!custName) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
+  const custTaxInput = document.getElementById('f-cust-tax')?.value?.trim()||'';
+
+  // resolve customerId จาก store.customers
+  const custObj = findDuplicateCustomer({name: custName, taxId: custTaxInput});
+  const resolvedCustomerId   = custObj?.id || null;
+  const resolvedCustomerCode = custObj?.customerCode || '';
 
   if(type==='bl') {
     if(!_blSelected.length) { toast('กรุณาเลือกใบแจ้งหนี้อย่างน้อย 1 ใบ','err'); return; }
     const invs=data.invoices.filter(i=>_blSelected.includes(i.id));
     const total=invs.reduce((s,i)=>s+remainAmount(i),0);
     const bl={
-      docNumber:genDocNo(_selectedCo.prefix||'X','BL'),
-      docDate:document.getElementById('f-date')?.value,
+      docNumber:await genDocNo(_selectedCo.prefix||'X','BL'),
+      docDate:docDateValue,
       companyId:_selectedCo.id, companyName:_selectedCo.name,
-      custName, custAddress:document.getElementById('f-cust-addr')?.value,
-      custTax:document.getElementById('f-cust-tax')?.value,
+      customerId:resolvedCustomerId, customerCode:resolvedCustomerCode,
+      custName, customerName:custName,
+      custAddress:document.getElementById('f-cust-addr')?.value,
+      custTax:custTaxInput,
       invoiceIds:_blSelected, total, status:'sent',
       note:document.getElementById('f-note')?.value,
       payMethod:getSelectedPayMethod(),
+      paymentTerms:getSelectedPaymentTerms(), terms:getSelectedPaymentTerms(), paymentDays:getPaymentTermDays(getSelectedPaymentTerms()),
     };
     bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
@@ -2510,25 +2655,31 @@ async function saveDoc(type) {
   const hasWht=document.getElementById('f-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
   const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const paymentTerms = getSelectedPaymentTerms();
+  const paymentDays = getPaymentTermDays(paymentTerms);
+  const docDateValue = document.getElementById('f-date')?.value || today();
   const docData={
-    docNumber:genDocNo(_selectedCo.prefix||'X', type==='qt'?'QT':'INV'),
+    docNumber:await genDocNo(_selectedCo.prefix||'X', type==='qt'?'QT':'INV'),
     docDate:document.getElementById('f-date')?.value,
     companyId:_selectedCo.id, companyName:_selectedCo.name,
-    custName, custAddress:document.getElementById('f-cust-addr')?.value,
-    custTax:document.getElementById('f-cust-tax')?.value,
+    customerId:resolvedCustomerId, customerCode:resolvedCustomerCode,
+    custName, customerName:custName,
+    custAddress:document.getElementById('f-cust-addr')?.value,
+    custTax:custTaxInput,
     custContact:document.getElementById('f-cust-contact')?.value,
     preparedBy:document.getElementById('f-prepared-by')?.value,
     preparedPhone:document.getElementById('f-prepared-phone')?.value,
     items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht,
     status:'sent', note:document.getElementById('f-note')?.value,
     payMethod:getSelectedPayMethod(),
-    ...(type==='inv'?{docDue:document.getElementById('f-due')?.value,paidAmount:0,payments:[],linkedQt:null,linkedBilling:null}:{}),
+    paymentTerms, terms:paymentTerms, paymentDays,
+    ...(type==='inv'?{docDue:document.getElementById('f-due')?.value || calcDueDateByTerms(docDateValue,paymentTerms),paidAmount:0,payments:[],linkedQt:null,linkedBilling:null}:{}),
     ...(type==='qt'?{docValid:document.getElementById('f-valid')?.value,linkedInvoice:null}:{}),
   };
   const col=type==='qt'?'quotations':'invoices';
   docData.id=await storeAdd(col,docData);
-  data[col==='quotations'?'quotations':'invoices'].push(docData);
-  syncLS(col, data[col==='quotations'?'quotations':'invoices']);
+  data[col].push(docData);
+  syncLS(col, data[col]);
   toast(`บันทึก${type==='qt'?'ใบเสนอราคา':'ใบแจ้งหนี้'}เรียบร้อย`,'ok');
   goPage(type==='qt'?'quotations':'invoices');
 }
@@ -2543,14 +2694,16 @@ function convertDoc(action, srcId) {
   const titles = {qt2inv:`แปลง QT → ใบแจ้งหนี้\n${src?.docNumber}`, inv2bl:`แปลง INV → ใบวางบิล\n${src?.docNumber}`};
   document.getElementById('convert-title').textContent = titles[action]||'แปลงเอกสาร';
   const co=companies.find(c=>c.id===src?.companyId)||{};
+  const srcTerms = src?.paymentTerms || src?.terms || '30 วัน';
+  const defaultDue = calcDueDateByTerms(today(), srcTerms);
   document.getElementById('convert-body').innerHTML=`
     <div style="background:var(--bg2);padding:14px;border-radius:var(--r);font-size:13px;margin-bottom:12px">
       <div style="font-weight:700">${src?.docNumber}</div>
       <div style="color:var(--ink4)">${src?.custName} — ${fmt(src?.total)} บาท</div>
     </div>
     <div class="form-grid" style="gap:10px">
-      <div class="field"><label>วันที่เอกสาร</label><input type="date" id="cv-date" value="${today()}"></div>
-      ${action==='qt2inv'?`<div class="field"><label>ครบกำหนดชำระ</label><input type="date" id="cv-due" value="${addDays(today(),30)}"></div>`:''}
+      <div class="field"><label>วันที่เอกสาร</label><input type="date" id="cv-date" value="${today()}" onchange="syncConvertDueFromTerms()"></div>
+      ${action==='qt2inv'?`<div class="field"><label>ครบกำหนดชำระ (${srcTerms})</label><input type="date" id="cv-due" data-term="${srcTerms}" value="${defaultDue}"></div>`:''}
     </div>`;
   document.getElementById('convert-confirm-btn').onclick = confirmConvert;
   document.getElementById('modal-convert').classList.add('show');
@@ -2563,14 +2716,20 @@ async function confirmConvert() {
   if(action==='qt2inv') {
     const qt=data.quotations.find(q=>q.id===srcId); if(!qt) return;
     const co=companies.find(c=>c.id===qt.companyId)||{};
+    const paymentTerms = qt.paymentTerms || qt.terms || '30 วัน';
+    const paymentDays = getPaymentTermDays(paymentTerms);
     const inv={
-      docNumber:genDocNo(co.prefix||'X','INV'),
-      docDate:cvDate, docDue:document.getElementById('cv-due')?.value||addDays(cvDate,30),
+      docNumber:await genDocNo(co.prefix||'X','INV'),
+      docDate:cvDate, docDue:document.getElementById('cv-due')?.value||calcDueDateByTerms(cvDate,paymentTerms),
       companyId:qt.companyId, companyName:qt.companyName,
-      custName:qt.custName, custAddress:qt.custAddress, custTax:qt.custTax,
+      customerId:qt.customerId||resolveCustomerIdForDoc(qt)||null,
+      customerCode:qt.customerCode||(data.customers||[]).find(c=>c.id===(qt.customerId||resolveCustomerIdForDoc(qt)))?.customerCode||'',
+      custName:qt.custName, customerName:qt.custName||qt.customerName||'',
+      custAddress:qt.custAddress, custTax:qt.custTax,
       items:qt.items, hasVat:qt.hasVat, hasWht:qt.hasWht,
       subtotal:qt.subtotal, vat:qt.vat, wht:qt.wht, total:qt.total,
       paidAmount:0, status:'sent', payments:[], linkedQt:qt.id, linkedBilling:null, note:qt.note,
+      payMethod:qt.payMethod||null, paymentTerms, terms:paymentTerms, paymentDays,
     };
     inv.id=await storeAdd('invoices',inv);
     data.invoices.push(inv);
@@ -2583,9 +2742,12 @@ async function confirmConvert() {
     const inv=data.invoices.find(i=>i.id===srcId); if(!inv) return;
     const co=companies.find(c=>c.id===inv.companyId)||{};
     const bl={
-      docNumber:genDocNo(co.prefix||'X','BL'),
+      docNumber:await genDocNo(co.prefix||'X','BL'),
       docDate:cvDate, companyId:inv.companyId, companyName:inv.companyName,
-      custName:inv.custName, invoiceIds:[inv.id], total:remainAmount(inv), status:'sent',
+      customerId:inv.customerId||resolveCustomerIdForDoc(inv)||null,
+      customerCode:inv.customerCode||(data.customers||[]).find(c=>c.id===(inv.customerId||resolveCustomerIdForDoc(inv)))?.customerCode||'',
+      custName:inv.custName, customerName:inv.custName||inv.customerName||'',
+      invoiceIds:[inv.id], total:remainAmount(inv), status:'sent',
     };
     bl.id=await storeAdd('billings',bl);
     data.billings.push(bl);
@@ -2626,15 +2788,175 @@ function updateRemainPreview() {
   else el.innerHTML=`<span style="color:var(--orange)">⚠️ ยังคงเหลือ ${fmt(afterRem)} บาท (ชำระบางส่วน)</span>`;
 }
 
+// ── AR → Finance Sync (v2.7-db-unified) ──────────────────────────────────────
+// sync payment ไป fin_transactions (collection หลักที่ Finance app อ่าน)
+async function syncARPaymentToFinance(invoice, payment) {
+  if (!_fbdb) return null;
+  const monthKey = (payment.date || '').slice(0, 7);
+  // duplicate guard: ตรวจก่อนว่ามีแล้วหรือยัง
+  try {
+    const existing = await _fbdb.collection('fin_transactions').doc(payment.id).get();
+    if (existing.exists) {
+      console.log('[AR→Finance] already synced, skip:', payment.id);
+      return payment.id;
+    }
+  } catch(e) { /* ถ้าตรวจไม่ได้ให้ผ่าน */ }
+  // ตรวจ month lock (ใช้ collection เดิมที่ share กัน)
+  try {
+    const lockDoc = await _fbdb.collection('month_locks').doc(monthKey).get();
+    if (lockDoc.exists && lockDoc.data().locked === true) {
+      console.warn('[AR→Finance] month locked:', monthKey, '— ไม่ sync');
+      toast(`⚠️ เดือน ${monthKey} ปิดงวดแล้ว — รายรับไม่ถูก sync ไป Finance`, 'warn');
+      return null;
+    }
+  } catch(e) { /* ถ้าตรวจไม่ได้ให้ผ่าน */ }
+  const customerCode = invoice.customerCode ||
+    (data.customers||[]).find(c=>c.id===invoice.customerId)?.customerCode || '';
+  const txDoc = {
+    id:           payment.id,
+    type:         'income',
+    sourceModule: 'ar',
+    sourceRefId:  invoice.id,
+    date:         payment.date,
+    transferDate: payment.date,
+    monthKey:     monthKey,
+    party:        invoice.custName || invoice.customerName || '',
+    customerId:   invoice.customerId || '',
+    customerCode: customerCode,
+    category:     'รับชำระลูกค้า',
+    amount:       Number(payment.amount) || 0,
+    method:       payment.method || 'โอนธนาคาร',
+    referenceNo:  invoice.docNumber || '',
+    note:         payment.note || '',
+    status:       'confirmed',
+    syncStatus:   'linked',
+    createdAt:    payment.createdAt || new Date().toISOString(),
+    updatedAt:    new Date().toISOString(),
+    createdBy:    'ar_app'
+  };
+  try {
+    await _fbdb.collection('fin_transactions').doc(txDoc.id).set(txDoc);
+    console.log('[AR→Finance] synced to fin_transactions:', txDoc.id, '฿'+txDoc.amount);
+    // audit log
+    _fbdb.collection('audit_logs').add({
+      action: 'AR_PAYMENT_SYNCED',
+      app: 'ar', monthKey,
+      at: new Date().toISOString(),
+      detail: { invoiceId: invoice.id, paymentId: payment.id,
+                amount: txDoc.amount, docNumber: invoice.docNumber }
+    }).catch(()=>{});
+    return txDoc.id;
+  } catch(err) {
+    console.error('[AR→Finance] sync failed:', err);
+    return null;
+  }
+}
+window.syncARPaymentToFinance = syncARPaymentToFinance;
+
+// ── BACKFILL: sync payment เก่าทั้งหมดจาก AR invoices → fin_transactions ────
+async function backfillARPaymentsToFinance() {
+  if (!_fbdb) { toast('ไม่ได้เชื่อมต่อ Firebase', 'err'); return; }
+  const btn = document.getElementById('backfill-btn');
+  const statusEl = document.getElementById('backfill-status');
+  if (btn) btn.disabled = true;
+  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+
+  const invoices = data.invoices || [];
+  const allPayments = [];
+  invoices.forEach(inv => {
+    (inv.payments || []).forEach(pmt => {
+      if (pmt.id && pmt.amount > 0) allPayments.push({ inv, pmt });
+    });
+  });
+
+  if (allPayments.length === 0) {
+    toast('ไม่พบ payment ใดใน AR', 'warn');
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  setStatus('กำลังตรวจสอบ ' + allPayments.length + ' รายการ...');
+  let synced = 0, skipped = 0, lockedSkip = 0, errors = 0;
+
+  for (let i = 0; i < allPayments.length; i++) {
+    const { inv, pmt } = allPayments[i];
+    setStatus('(' + (i+1) + '/' + allPayments.length + ') กำลัง sync ' + (inv.docNumber||inv.id) + '...');
+
+    const monthKey = (pmt.date || '').slice(0, 7);
+    // ตรวจ month lock
+    try {
+      const lockDoc = await _fbdb.collection('month_locks').doc(monthKey).get();
+      if (lockDoc.exists && lockDoc.data().locked === true) {
+        lockedSkip++;
+        continue;
+      }
+    } catch(e) {}
+
+    // duplicate guard
+    try {
+      const existing = await _fbdb.collection('fin_transactions').doc(pmt.id).get();
+      if (existing.exists) { skipped++; continue; }
+    } catch(e) {}
+
+    // sync
+    const customerCode = inv.customerCode ||
+      (data.customers||[]).find(c => c.id === inv.customerId)?.customerCode || '';
+    const txDoc = {
+      id:           pmt.id,
+      type:         'income',
+      sourceModule: 'ar',
+      sourceRefId:  inv.id,
+      date:         pmt.date,
+      transferDate: pmt.date,
+      monthKey:     monthKey,
+      party:        inv.custName || inv.customerName || '',
+      customerId:   inv.customerId || '',
+      customerCode: customerCode,
+      category:     'รับชำระลูกค้า',
+      amount:       Number(pmt.amount) || 0,
+      method:       pmt.method || 'โอนธนาคาร',
+      referenceNo:  inv.docNumber || '',
+      note:         pmt.note || '',
+      status:       'confirmed',
+      syncStatus:   'linked',
+      createdAt:    pmt.createdAt || pmt.date + 'T00:00:00.000Z',
+      updatedAt:    new Date().toISOString(),
+      createdBy:    'ar_backfill'
+    };
+    try {
+      await _fbdb.collection('fin_transactions').doc(txDoc.id).set(txDoc);
+      synced++;
+    } catch(e) {
+      console.error('[backfill] failed:', pmt.id, e);
+      errors++;
+    }
+  }
+
+  const msg = 'Sync เสร็จ: ✅ ' + synced + ' รายการ | ข้ามซ้ำ: ' + skipped +
+    ' | เดือนปิดงวด: ' + lockedSkip +
+    (errors ? ' | ❌ ผิดพลาด: ' + errors : '');
+  setStatus(msg);
+  toast(msg, synced > 0 ? 'ok' : 'warn');
+  console.log('[backfillARPaymentsToFinance]', { synced, skipped, lockedSkip, errors });
+  if (btn) btn.disabled = false;
+}
+window.backfillARPaymentsToFinance = backfillARPaymentsToFinance;
+
 async function confirmPayment() {
   if(!_payingInvoice) return;
   const amt=parseFloat(document.getElementById('pmt-amount').value)||0;
   if(amt<=0) { toast('กรุณากรอกจำนวนเงิน','err'); return; }
   const rem=remainAmount(_payingInvoice);
   if(amt>rem+0.01) { toast(`จำนวนเกินยอดคงเหลือ (${fmt(rem)} บาท)`,'err'); return; }
-  const pmt={ id:uid(), date:document.getElementById('pmt-date').value,
-    amount:amt, method:document.getElementById('pmt-method').value,
-    note:document.getElementById('pmt-note').value };
+  const pmt={
+    id: uid(),
+    date: document.getElementById('pmt-date').value,
+    amount: amt,
+    method: document.getElementById('pmt-method').value,
+    note: document.getElementById('pmt-note').value,
+    createdAt: new Date().toISOString(),
+    financeTransactionId: null
+  };
   const newPayments=[...(_payingInvoice.payments||[]),pmt];
   const newPaidAmount=(_payingInvoice.paidAmount||0)+amt;
   const tempInv={..._payingInvoice,payments:newPayments,paidAmount:newPaidAmount};
@@ -2645,6 +2967,17 @@ async function confirmPayment() {
   syncLS('invoices', data.invoices);
   closeModal('modal-payment');
   toast(`บันทึกรับชำระ ${fmt(amt)} บาท เรียบร้อย`,'ok');
+  // ── NEW: sync ไป fin_transactions (Finance app อ่าน collection นี้) ──────────
+  syncARPaymentToFinance(_payingInvoice, pmt).then(txId => {
+    if (txId) {
+      // อัปเดต financeTransactionId กลับเข้า payments array
+      const finalPayments = (_payingInvoice.payments||[]).map(p =>
+        p.id === pmt.id ? {...p, financeTransactionId: txId} : p
+      );
+      storeUpdate('invoices', _payingInvoice.id, {payments: finalPayments}).catch(()=>{});
+    }
+  }).catch(e => console.warn('[AR→Finance] background sync error:', e));
+  // ─────────────────────────────────────────────────────────────────────────────
   if(_currentPage==='invoices') refreshINVTable();
   else if(_currentPage==='dashboard') renderDashboard();
   else if(_currentPage==='payments') renderPayments();
@@ -2966,7 +3299,9 @@ window.printNewDoc=printNewDoc;
 function renderReportAR() {
   const byCust={};
   data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
-    const k=i.custName; if(!byCust[k]) byCust[k]={name:k,total:0,paid:0,remain:0,invs:[]};
+    const k = i.customerId || resolveCustomerIdForDoc(i) || normalizeCustomerName(i.custName||i.customerName);
+    const displayName = i.custName||i.customerName||k;
+    if(!byCust[k]) byCust[k]={name:displayName,total:0,paid:0,remain:0,invs:[]};
     byCust[k].total+=i.total; byCust[k].paid+=(i.paidAmount||0);
     byCust[k].remain+=remainAmount(i); byCust[k].invs.push(i);
   });
@@ -3413,11 +3748,66 @@ async function deleteCo(id) {
 window.deleteCo=deleteCo;
 
 // ══════════════════════════════════════════════════════
+// CUSTOMER HELPERS — v2.4
+// ══════════════════════════════════════════════════════
+
+function normalizeCustomerName(name) {
+  return (name || '').toString().trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeTaxId(taxId) {
+  return (taxId || '').toString().replace(/\D/g, '').trim();
+}
+
+function getCustomerDisplayName(customer) {
+  return customer?.name || customer?.customerName || '';
+}
+
+function generateCustomerCode() {
+  const customers = data.customers || [];
+  let maxNo = 0;
+  customers.forEach(c => {
+    const code = c.customerCode || '';
+    const m = code.match(/^CUS-(\d+)$/);
+    if(m) maxNo = Math.max(maxNo, parseInt(m[1], 10));
+  });
+  return 'CUS-' + String(maxNo + 1).padStart(4, '0');
+}
+
+function findDuplicateCustomer(inputCustomer, excludeId = null) {
+  const customers = data.customers || [];
+  const inputNameNorm = normalizeCustomerName(inputCustomer.name || inputCustomer.customerName);
+  const inputTaxNorm  = normalizeTaxId(inputCustomer.taxId || inputCustomer.taxID);
+  if(!inputNameNorm && !inputTaxNorm) return null;
+  return customers.find(c => {
+    if(excludeId && c.id === excludeId) return false;
+    const cNameNorm = normalizeCustomerName(c.name || c.customerName);
+    const cTaxNorm  = normalizeTaxId(c.taxId || c.taxID);
+    const sameName = inputNameNorm && cNameNorm && inputNameNorm === cNameNorm;
+    const sameTax  = inputTaxNorm  && cTaxNorm  && inputTaxNorm  === cTaxNorm;
+    return sameName || sameTax;
+  }) || null;
+}
+
+function resolveCustomerIdForDoc(doc) {
+  if(doc.customerId) return doc.customerId;
+  const nameNorm = normalizeCustomerName(doc.customerName || doc.custName || doc.customer || doc.clientName);
+  const taxNorm  = normalizeTaxId(doc.taxId || doc.custTax || doc.customerTaxId);
+  const found = (data.customers || []).find(c => {
+    const sameName = nameNorm && normalizeCustomerName(c.name || c.customerName) === nameNorm;
+    const sameTax  = taxNorm  && normalizeTaxId(c.taxId || c.taxID) === taxNorm;
+    return sameName || sameTax;
+  });
+  return found ? found.id : null;
+}
+
+// ══════════════════════════════════════════════════════
 // CUSTOMERS
 // ══════════════════════════════════════════════════════
 function renderCustomers() {
   document.getElementById('topbar-actions').innerHTML =
-    `<button class="btn btn-primary" onclick="openNewCustomer()">+ เพิ่มลูกค้า</button>`;
+    `<button class="btn btn-outline" onclick="openCustomerDuplicates()">🔍 ตรวจลูกค้าซ้ำ</button>
+     <button class="btn btn-primary" onclick="openNewCustomer()">+ เพิ่มลูกค้า</button>`;
   document.getElementById('page-content').innerHTML = `
     <div class="filters">
       <input type="text" id="f-cust-search" placeholder="🔍 ค้นหาชื่อ / เลขภาษี / ผู้ติดต่อ..."
@@ -3437,6 +3827,7 @@ function renderCustomers() {
     <div class="card">
       <table class="tbl">
         <thead><tr>
+          <th>รหัส</th>
           <th>ชื่อลูกค้า</th>
           <th>ประเภท</th>
           <th>เลขภาษี</th>
@@ -3469,6 +3860,7 @@ function refreshCustomerTable() {
   const tbody = document.getElementById('customers-tbody');
   if(!tbody) return;
   tbody.innerHTML = rows.length ? rows.map(c => `<tr>
+    <td class="mono" style="font-size:11px;color:var(--ink4)">${c.customerCode||'—'}</td>
     <td>
       <div style="font-weight:700">${c.name}</div>
       ${c.nameEn ? `<div style="font-size:11px;color:var(--ink4)">${c.nameEn}</div>` : ''}
@@ -3485,7 +3877,7 @@ function refreshCustomerTable() {
       <button class="btn btn-xs btn-danger" onclick="deleteCustomer('${c.id}')">🗑</button>
     </td>
   </tr>`).join('') :
-  '<tr><td colspan="8"><div class="empty"><div class="empty-icon">👤</div><p>ยังไม่มีข้อมูลลูกค้า</p></div></td></tr>';
+  '<tr><td colspan="9"><div class="empty"><div class="empty-icon">👤</div><p>ยังไม่มีข้อมูลลูกค้า</p></div></td></tr>';
 }
 window.refreshCustomerTable = refreshCustomerTable;
 
@@ -3603,6 +3995,14 @@ async function saveCustomer(id) {
   if(!name) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
   const taxId = document.getElementById('cust-tax')?.value?.trim() || '';
   if(taxId && !/^\d{13}$/.test(taxId)) { toast('เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก','err'); return; }
+
+  const editId = (id && id !== 'null') ? id : null;
+  const dup = findDuplicateCustomer({name, taxId}, editId);
+  if(dup) {
+    toast(`ไม่สามารถบันทึกได้: พบลูกค้าซ้ำ (${dup.customerCode||dup.id}) ${dup.name}`, 'err');
+    return;
+  }
+
   const d = {
     name,
     nameEn: document.getElementById('cust-name-en')?.value?.trim() || '',
@@ -3619,19 +4019,26 @@ async function saveCustomer(id) {
     creditLimit: parseFloat(document.getElementById('cust-credit-limit')?.value) || 0,
     note: document.getElementById('cust-note')?.value?.trim() || '',
     isActive: document.getElementById('cust-active')?.value === '1',
+    customerNameNorm: normalizeCustomerName(name),
+    taxIdNorm: normalizeTaxId(taxId),
   };
   if(!data.customers) data.customers = [];
-  if(id && id !== 'null') {
-    const ok = await storeUpdate('customers', id, d);
+  if(editId) {
+    const existing = data.customers.find(x=>x.id===editId);
+    d.customerCode = existing?.customerCode || '';
+    d.customerId = editId;
+    const ok = await storeUpdate('customers', editId, d);
     if(!ok) return;
-    const idx = data.customers.findIndex(x=>x.id===id);
+    const idx = data.customers.findIndex(x=>x.id===editId);
     if(idx>=0) Object.assign(data.customers[idx], d);
     toast('แก้ไขข้อมูลลูกค้าเรียบร้อย','ok');
   } else {
+    d.customerCode = generateCustomerCode();
     const newId = await storeAdd('customers', d);
-    if(!newId) return; // Firebase error — storeAdd already showed toast
+    if(!newId) return;
+    d.customerId = newId;
     data.customers.push({id: newId, ...d});
-    toast('เพิ่มลูกค้าเรียบร้อย','ok');
+    toast(`เพิ่มลูกค้าเรียบร้อย (${d.customerCode})`,'ok');
   }
   syncLS('customers', data.customers);
   document.getElementById('modal-customer')?.remove();
@@ -3641,8 +4048,9 @@ window.saveCustomer = saveCustomer;
 
 function viewCustomer(id) {
   const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
-  const qtCount = data.quotations.filter(q=>q.custName===c.name).length;
-  const invCount = data.invoices.filter(i=>i.custName===c.name).length;
+  const nameNorm = normalizeCustomerName(c.name||c.customerName);
+  const qtCount  = data.quotations.filter(q=>q.customerId===c.id||normalizeCustomerName(q.custName||q.customerName)===nameNorm).length;
+  const invCount = data.invoices.filter(i=>i.customerId===c.id||normalizeCustomerName(i.custName||i.customerName)===nameNorm).length;
   document.getElementById('page-content').innerHTML += `
   <div class="overlay show" id="modal-view-customer">
     <div class="modal" style="width:620px;max-width:97vw">
@@ -3699,6 +4107,108 @@ async function deleteCustomer(id) {
   toast('ลบลูกค้าเรียบร้อย','ok');
 }
 window.deleteCustomer = deleteCustomer;
+
+function openCustomerDuplicates() {
+  const customers = data.customers || [];
+  // ตรวจหากลุ่มที่ซ้ำ (name หรือ taxId ตรงกัน)
+  const groups = new Map(); // key → [customer, ...]
+  customers.forEach(c => {
+    const nameKey = normalizeCustomerName(c.name || c.customerName);
+    const taxKey  = normalizeTaxId(c.taxId || c.taxID);
+    const key = taxKey || nameKey;
+    if(!key) return;
+    if(!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  });
+  const dupGroups = [...groups.values()].filter(g => g.length > 1);
+
+  const countDocs = (custId, name) => {
+    const nameNorm = normalizeCustomerName(name);
+    const cols = ['quotations','invoices','billings'];
+    return cols.reduce((sum, col) => sum + (data[col]||[]).filter(d =>
+      d.customerId === custId || normalizeCustomerName(d.custName||d.customerName) === nameNorm
+    ).length, 0);
+  };
+
+  const e = escHtml;
+  const body = dupGroups.length === 0
+    ? `<div class="empty" style="padding:32px"><div class="empty-icon">✅</div><p>ไม่พบลูกค้าซ้ำ</p></div>`
+    : dupGroups.map((group, gi) => `
+      <div style="border:1.5px solid var(--orange);border-radius:var(--r);margin-bottom:14px;overflow:hidden">
+        <div style="background:var(--orange);color:#fff;padding:8px 14px;font-size:12px;font-weight:700">
+          กลุ่มซ้ำ #${gi+1} — ${group.length} รายการ
+        </div>
+        ${group.map((c,ci) => {
+          const docCount = countDocs(c.id, c.name);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;${ci>0?'border-top:1px solid var(--border)':''}">
+            <div style="flex:1">
+              <span class="mono" style="font-size:11px;color:var(--ink4)">${e(c.customerCode||'—')}</span>
+              <span style="font-weight:700;margin-left:8px">${e(c.name||c.customerName||'—')}</span>
+              ${c.taxId?`<span style="font-size:11px;color:var(--ink3);margin-left:8px">เลขภาษี: ${e(c.taxId)}</span>`:''}
+              <span style="font-size:11px;color:var(--ink4);margin-left:8px">(เอกสาร: ${docCount})</span>
+            </div>
+            <button class="btn btn-xs btn-primary" onclick="mergeIntoCustomer('${group[0].id}','${c.id}',${gi})">
+              ${ci===0?'⭐ Master':'→ Merge เข้า Master'}
+            </button>
+          </div>`;
+        }).join('')}
+      </div>`).join('');
+
+  document.getElementById('page-content').innerHTML += `
+  <div class="overlay show" id="modal-dup-customers">
+    <div class="modal" style="width:700px;max-width:97vw">
+      <div class="modal-title">🔍 ตรวจสอบลูกค้าซ้ำ</div>
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:14px">
+        พบ <strong>${dupGroups.length}</strong> กลุ่มที่มีชื่อหรือเลขภาษีซ้ำกัน
+        — กด "Merge เข้า Master" เพื่อรวมเป็นลูกค้าเดียวกัน (backup จะสร้างอัตโนมัติ)
+      </p>
+      <div style="max-height:420px;overflow-y:auto">${body}</div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-dup-customers').remove()">ปิด</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.openCustomerDuplicates = openCustomerDuplicates;
+
+async function mergeIntoCustomer(masterId, dupeId, groupIdx) {
+  if(masterId === dupeId) { toast('ลูกค้าตัวเดียวกัน ไม่ต้อง merge','info'); return; }
+  if(!confirm('รวมลูกค้าซ้ำเข้า Master? เอกสารทั้งหมดของลูกค้าซ้ำจะถูกย้ายไปหา Master (backup จะสร้างก่อน)')) return;
+
+  saveLocalBackup();
+
+  const master = (data.customers||[]).find(c=>c.id===masterId);
+  const dupe   = (data.customers||[]).find(c=>c.id===dupeId);
+  if(!master||!dupe) { toast('ไม่พบข้อมูลลูกค้า','err'); return; }
+
+  const nameNorm = normalizeCustomerName(dupe.name||dupe.customerName);
+  const cols = ['quotations','invoices','billings'];
+  for(const col of cols) {
+    for(const doc of (data[col]||[])) {
+      const match = doc.customerId===dupeId ||
+        normalizeCustomerName(doc.custName||doc.customerName||'')===nameNorm;
+      if(match) {
+        doc.customerId   = master.id;
+        doc.customerCode = master.customerCode||'';
+        doc.custName     = master.name||master.customerName||'';
+        doc.customerName = master.name||master.customerName||'';
+        doc.updatedAt    = new Date().toISOString();
+        await storeUpdate(col, doc.id, {customerId:master.id, customerCode:master.customerCode||'', custName:doc.custName, updatedAt:doc.updatedAt});
+      }
+    }
+    syncLS(col, data[col]);
+  }
+
+  // ลบ dupe ออกจาก collection
+  await storeDelete('customers', dupeId);
+  data.customers = data.customers.filter(c=>c.id!==dupeId);
+  syncLS('customers', data.customers);
+
+  toast(`Merge สำเร็จ — ${dupe.name} → ${master.name} (${master.customerCode||master.id})`,'ok');
+  document.getElementById('modal-dup-customers')?.remove();
+  if(_currentPage==='customers') refreshCustomerTable();
+}
+window.mergeIntoCustomer = mergeIntoCustomer;
 
 function buildCustDatalist() {
   const dl = document.getElementById('cust-datalist'); if(!dl) return;
@@ -3798,6 +4308,22 @@ function renderSettings() {
         ${Object.keys(_listeners).length?'กำลัง listen '+Object.keys(_listeners).length+' collections':'ไม่ได้ listen'}</strong></div>
       <div>Device name: <strong>${_deviceName}</strong></div>
     </div>
+  </div>
+  <div class="card" style="max-width:560px;border:1.5px solid #f59e0b">
+    <div class="card-header" style="background:rgba(245,158,11,.08)">
+      <span class="card-title">&#x1F504; Sync รายรับเก่าจาก AR &#x2192; Finance</span>
+    </div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
+        ย้ายข้อมูลการรับชำระที่มีอยู่แล้วใน AR ทุกใบแจ้งหนี้ไปยัง Finance app<br>
+        <strong>ปลอดภัย:</strong> ตรวจ duplicate — payment ที่ sync แล้วจะไม่ถูกสร้างซ้ำ<br>
+        <strong>ข้ามเดือนปิดงวด:</strong> เดือนที่ล็อกแล้วจะไม่ถูกแตะ
+      </p>
+      <div id="backfill-status" style="font-size:12px;color:var(--ink4);margin-bottom:10px;min-height:18px"></div>
+      <button class="btn btn-primary" onclick="backfillARPaymentsToFinance()" id="backfill-btn">
+        &#x1F504; Sync รายรับเก่าทั้งหมดไป Finance
+      </button>
+    </div>
   </div>`;
 }
 window.renderSettings = renderSettings;
@@ -3816,8 +4342,34 @@ window.saveDeviceName = saveDeviceName;
 // ══════════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════════
-function closeModal(id) { document.getElementById(id)?.classList.remove('show'); }
+function closeModal(id) {
+  document.getElementById(id)?.classList.remove('show');
+  // หลังปิด modal ตรวจ pending refresh จาก snapshot เครื่องอื่น
+  setTimeout(() => {
+    if(_pendingRefreshCols && _pendingRefreshCols.size > 0) {
+      _pendingRefreshCols.clear();
+      if(_LIVE_PAGES.has(_currentPage)) {
+        goPage(_currentPage);
+        toast('🔄 โหลดข้อมูลล่าสุดจากเครื่องอื่นแล้ว', 'info');
+      }
+    }
+  }, 200);
+}
 window.closeModal=closeModal;
+
+// ── helper: เช็ค pending refresh หลังปิด form (ใช้กับปุ่มที่เรียก .remove() โดยตรง)
+function _checkPendingRefresh() {
+  setTimeout(() => {
+    if(_pendingRefreshCols && _pendingRefreshCols.size > 0) {
+      _pendingRefreshCols.clear();
+      if(_LIVE_PAGES.has(_currentPage)) {
+        goPage(_currentPage);
+        toast('🔄 โหลดข้อมูลล่าสุดจากเครื่องอื่นแล้ว', 'info');
+      }
+    }
+  }, 200);
+}
+window._checkPendingRefresh = _checkPendingRefresh;
 
 let _toastTimer;
 function toast(msg,type='info'){
@@ -3839,11 +4391,12 @@ document.querySelectorAll('.overlay').forEach(ov=>{
 function exportData() {
   const payload = {
     exportedAt: new Date().toISOString(),
-    version: 2,
+    version: 3,
     companies: data.companies,
     quotations: data.quotations,
     invoices: data.invoices,
     billings: data.billings,
+    customers: data.customers || [],
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -3918,6 +4471,79 @@ function updateDataSourceLabel(sources) {
 }
 
 // ── INIT — Auto Pull จาก Firebase ทุกครั้งที่เปิด ──
+// ══════════════════════════════════════════════════════
+// MIGRATION v2.3 → v2.4 — เติม customerCode/norms, รวมซ้ำ, อัปเดตเอกสาร
+// ══════════════════════════════════════════════════════
+function migrateCustomersV23() {
+  const flagKey = 'AR_MIGRATED_CUSTOMERS_V23';
+  if(localStorage.getItem(flagKey) === '1') return;
+
+  saveLocalBackup();
+
+  const customers = data.customers || [];
+  if(customers.length === 0) { localStorage.setItem(flagKey,'1'); return; }
+
+  const seen  = new Map(); // key → master customer
+  const idMap = new Map(); // old id → master id
+  const result = [];
+  let maxCode = 0;
+
+  // หา maxCode จากที่มีอยู่แล้ว
+  customers.forEach(c => {
+    const m = (c.customerCode||'').match(/^CUS-(\d+)$/);
+    if(m) maxCode = Math.max(maxCode, parseInt(m[1],10));
+  });
+
+  customers.forEach(c => {
+    if(!c.id) c.id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now()+Math.random()+'';
+    if(!c.customerId) c.customerId = c.id;
+    c.name = c.name || c.customerName || '';
+    c.customerNameNorm = normalizeCustomerName(c.name);
+    c.taxIdNorm = normalizeTaxId(c.taxId || c.taxID || '');
+    c.updatedAt = c.updatedAt || new Date().toISOString();
+
+    const key = c.taxIdNorm || c.customerNameNorm;
+    if(key && seen.has(key)) {
+      const master = seen.get(key);
+      idMap.set(c.id, master.id);
+      idMap.set(c.customerId, master.id);
+    } else {
+      if(!c.customerCode) { maxCode++; c.customerCode = 'CUS-' + String(maxCode).padStart(4,'0'); }
+      if(key) seen.set(key, c);
+      result.push(c);
+      idMap.set(c.id, c.id);
+      idMap.set(c.customerId, c.id);
+    }
+  });
+
+  data.customers = result;
+
+  ['quotations','invoices','billings','payments'].forEach(col => {
+    (data[col] || []).forEach(doc => {
+      const oldId = doc.customerId;
+      const resolved = (oldId && idMap.has(oldId))
+        ? idMap.get(oldId)
+        : resolveCustomerIdForDoc(doc);
+      if(resolved) {
+        const cust = data.customers.find(c => c.id === resolved);
+        doc.customerId   = resolved;
+        doc.customerCode = cust?.customerCode || doc.customerCode || '';
+        doc.customerName = cust?.name || doc.customerName || doc.custName || '';
+        doc.custName     = doc.custName || doc.customerName;
+        doc.updatedAt    = new Date().toISOString();
+      }
+    });
+    syncLS(col, data[col] || []);
+  });
+
+  syncLS('customers', data.customers);
+  localStorage.setItem(flagKey, '1');
+
+  const removed = customers.length - result.length;
+  if(removed > 0) toast(`Migrate v2.4: รวมลูกค้าซ้ำ ${removed} รายการ, เติม customerCode เรียบร้อย`, 'ok');
+  else toast('Migrate v2.4: เติม customerCode และ customerId เรียบร้อย', 'ok');
+}
+
 (async function init() {
   const msgEl  = document.getElementById('loading-msg');
   const subEl  = document.getElementById('loading-sub');
@@ -3933,7 +4559,7 @@ function updateDataSourceLabel(sources) {
     if(_fbdb) {
       // ── มี Firebase → Pull ก่อนเสมอ ──
       setMsg('เชื่อมต่อ Firebase สำเร็จ', 'กำลังดึงข้อมูล...');
-      const COLS = ['companies','quotations','invoices','billings'];
+      const COLS = ['companies','quotations','invoices','billings','customers'];
       let total = 0;
       const emptyFromFb    = []; // collection ที่ Firebase ว่างแต่ local มีข้อมูล
       const colFbData      = {}; // col → { fbArr, lsArr }
@@ -4044,8 +4670,9 @@ function updateDataSourceLabel(sources) {
       data.quotations = lsLoad('quotations') || [];
       data.invoices   = lsLoad('invoices')   || [];
       data.billings   = lsLoad('billings')   || [];
+      data.customers  = lsLoad('customers')  || [];
       companies = data.companies;
-      sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local'};
+      sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local',customers:'local'};
       setMsg('⚠️ โหลดจาก localStorage', 'ไม่ได้เชื่อมต่อ Firebase');
     }
   } catch(e) {
@@ -4055,8 +4682,9 @@ function updateDataSourceLabel(sources) {
     data.quotations = lsLoad('quotations') || [];
     data.invoices   = lsLoad('invoices')   || [];
     data.billings   = lsLoad('billings')   || [];
+    data.customers  = lsLoad('customers')  || [];
     companies = data.companies;
-    sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local'};
+    sourceUsed = {companies:'local',quotations:'local',invoices:'local',billings:'local',customers:'local'};
     console.warn('Firebase pull failed:', e);
   }
 
@@ -4066,6 +4694,7 @@ function updateDataSourceLabel(sources) {
   screen.classList.add('fade-out');
   setTimeout(() => { screen.style.display = 'none'; }, 450);
 
+  migrateCustomersV23(); // เติม customerCode/norms และรวมลูกค้าซ้ำ (ครั้งเดียว)
   startRealtimeListeners(); // เริ่ม onSnapshot — ครอบคลุม syncCheckConnection ด้วย
   goPage('dashboard');
 })();
@@ -4707,6 +5336,7 @@ function admResetAll(){
       ADM_COLS.forEach(col=>{ADM[col]=[];admLsSave(col,[]);data[col]=[];});
       companies=[];
       Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_')).forEach(k=>localStorage.removeItem(k));
+      if(_fbdb){ _fbdb.collection(SEQ_COL).doc(SEQ_DOC).delete().catch(()=>{}); }
       admPageDanger(); admToast('ล้างข้อมูลทั้งหมดเรียบร้อย — backup ถูก download แล้ว ✅','ok');
       toast('⚠️ Auto Push ปิดชั่วคราว — กด Push เองเมื่อพร้อม เพื่อป้องกันข้อมูลว่างทับ Firebase', 'info');
     });
@@ -4735,10 +5365,21 @@ function admFixStatus(){
 }
 window.admFixStatus=admFixStatus;
 
-function admClearSeq(){
+async function admClearSeq(){
+  // ล้าง localStorage
   const keys=Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_'));
   keys.forEach(k=>localStorage.removeItem(k));
-  admToast(`ล้าง seq counter ${keys.length} รายการ`,'ok');
+  // ล้าง Firestore ar_config/sequences
+  if(_fbdb){
+    try{
+      await _fbdb.collection(SEQ_COL).doc(SEQ_DOC).delete();
+      admToast(`ล้าง seq counter ${keys.length} รายการ (localStorage + Firestore)`, 'ok');
+    } catch(e){
+      admToast(`ล้าง localStorage ${keys.length} รายการ (Firestore error: ${e.message})`, 'warn');
+    }
+  } else {
+    admToast(`ล้าง seq counter ${keys.length} รายการ (localStorage)`, 'ok');
+  }
 }
 window.admClearSeq=admClearSeq;
 
