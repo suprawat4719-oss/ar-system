@@ -1617,11 +1617,12 @@ function remainAmount(inv) { return Math.max(0,inv.total-(inv.paidAmount||0)); }
 // ══════════════════════════════════════════════════════
 function renderDashboard() {
   const invs = data.invoices;
-  const totalAR = invs.filter(i=>i.status!=='paid'&&i.status!=='cancelled').reduce((s,i)=>s+remainAmount(i),0);
+  const totalAR = invs.filter(i=>!['paid','cancelled'].includes(invStatus(i))).reduce((s,i)=>s+remainAmount(i),0);
   const overdueAR = invs.filter(i=>invStatus(i)==='overdue').reduce((s,i)=>s+remainAmount(i),0);
+  const thisMonth = today().slice(0,7);
   const paidThisMonth = invs.flatMap(i=>i.payments||[]).filter(p=>{
-    const m=new Date().toISOString().slice(0,7); return p.date?.startsWith(m);
-  }).reduce((s,p)=>s+p.amount,0);
+    return (p.paymentDate||p.date||'').startsWith(thisMonth);
+  }).reduce((s,p)=>s+(Number(p.amount)||0),0);
   const pendingCount = invs.filter(i=>['sent','partial','overdue'].includes(invStatus(i))).length;
 
   document.getElementById('page-content').innerHTML = `
