@@ -3050,52 +3050,62 @@ async function backfillARPaymentsToFinance() {
   }
 
   setStatus('กำลังตรวจสอบ ' + allPayments.length + ' รายการ...');
-  let synced = 0, skipped = 0, lockedSkip = 0, errors = 0;
+  let synced = 0, skipped = 0, shifted = 0, errors = 0;
 
   for (let i = 0; i < allPayments.length; i++) {
     const { inv, pmt } = allPayments[i];
     setStatus('(' + (i+1) + '/' + allPayments.length + ') กำลัง sync ' + (inv.docNumber||inv.id) + '...');
 
-    const monthKey = (pmt.date || '').slice(0, 7);
-    // ตรวจ month lock
-    try {
-      const lockDoc = await _fbdb.collection('month_locks').doc(monthKey).get();
-      if (lockDoc.exists && lockDoc.data().locked === true) {
-        lockedSkip++;
-        continue;
-      }
-    } catch(e) {}
-
-    // duplicate guard
+    // duplicate guard — ถ้ามีใน Finance แล้วข้ามได้เลย
     try {
       const existing = await _fbdb.collection('fin_transactions').doc(pmt.id).get();
       if (existing.exists) { skipped++; continue; }
     } catch(e) {}
 
-    // sync
+    // หา financeDate — ใช้ findNextOpenFinanceDate เลื่อนเดือนถ้าปิดงวด (ไม่ skip)
+    const payDate = pmt.paymentDate || pmt.date || '';
+    let financeInfo;
+    try {
+      financeInfo = await findNextOpenFinanceDate(payDate);
+    } catch(e) {
+      console.error('[backfill] findNextOpenFinanceDate failed:', pmt.id, e);
+      errors++; continue;
+    }
+    if (financeInfo.shifted) shifted++;
+
     const customerCode = inv.customerCode ||
       (data.customers||[]).find(c => c.id === inv.customerId)?.customerCode || '';
     const txDoc = {
-      id:           pmt.id,
-      type:         'income',
-      sourceModule: 'ar',
-      sourceRefId:  inv.id,
-      date:         pmt.date,
-      transferDate: pmt.date,
-      monthKey:     monthKey,
-      party:        inv.custName || inv.customerName || '',
-      customerId:   inv.customerId || '',
-      customerCode: customerCode,
-      category:     'รับชำระลูกค้า',
-      amount:       Number(pmt.amount) || 0,
-      method:       pmt.method || 'โอนธนาคาร',
-      referenceNo:  inv.docNumber || '',
-      note:         pmt.note || '',
-      status:       'confirmed',
-      syncStatus:   'linked',
-      createdAt:    pmt.createdAt || pmt.date + 'T00:00:00.000Z',
-      updatedAt:    new Date().toISOString(),
-      createdBy:    'ar_backfill'
+      id:                     pmt.id,
+      type:                   'income',
+      sourceModule:           'ar',
+      sourceApp:              'AR',
+      sourceType:             'AR_PAYMENT',
+      sourcePaymentId:        pmt.id,
+      sourceRefId:            inv.id,
+      sourceInvoiceId:        inv.id,
+      invoiceNo:              inv.docNumber || '',
+      date:                   financeInfo.financeDate,
+      transferDate:           financeInfo.financeDate,
+      paymentDate:            payDate,
+      monthKey:               financeInfo.financeMonth,
+      party:                  inv.custName || inv.customerName || '',
+      customerId:             inv.customerId || '',
+      customerCode:           customerCode,
+      customerName:           inv.custName || inv.customerName || '',
+      category:               'รับชำระลูกค้า',
+      amount:                 Number(pmt.amount) || 0,
+      method:                 pmt.method || 'โอนธนาคาร',
+      referenceNo:            inv.docNumber || '',
+      originalPaymentMonth:   payDate.slice(0, 7),
+      financeMonth:           financeInfo.financeMonth,
+      shiftedToNextOpenMonth: financeInfo.shifted,
+      note:                   financeInfo.reason || pmt.note || '',
+      status:                 'confirmed',
+      syncStatus:             'linked',
+      createdAt:              pmt.createdAt || payDate + 'T00:00:00.000Z',
+      updatedAt:              new Date().toISOString(),
+      createdBy:              'ar_backfill'
     };
     try {
       await _fbdb.collection('fin_transactions').doc(txDoc.id).set(txDoc);
@@ -3106,12 +3116,13 @@ async function backfillARPaymentsToFinance() {
     }
   }
 
-  const msg = 'Sync เสร็จ: ✅ ' + synced + ' รายการ | ข้ามซ้ำ: ' + skipped +
-    ' | เดือนปิดงวด: ' + lockedSkip +
+  const msg = 'Backfill เสร็จ: ✅ ' + synced + ' รายการ' +
+    (shifted ? ' (เลื่อนเดือน ' + shifted + ' รายการ)' : '') +
+    ' | ข้ามซ้ำ: ' + skipped +
     (errors ? ' | ❌ ผิดพลาด: ' + errors : '');
   setStatus(msg);
   toast(msg, synced > 0 ? 'ok' : 'warn');
-  console.log('[backfillARPaymentsToFinance]', { synced, skipped, lockedSkip, errors });
+  console.log('[backfillARPaymentsToFinance]', { synced, skipped, shifted, errors });
   if (btn) btn.disabled = false;
 }
 window.backfillARPaymentsToFinance = backfillARPaymentsToFinance;
@@ -4648,7 +4659,7 @@ function renderSettings() {
       <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
         ย้ายข้อมูลการรับชำระที่มีอยู่แล้วใน AR ทุกใบแจ้งหนี้ไปยัง Finance app<br>
         <strong>ปลอดภัย:</strong> ตรวจ duplicate — payment ที่ sync แล้วจะไม่ถูกสร้างซ้ำ<br>
-        <strong>ข้ามเดือนปิดงวด:</strong> เดือนที่ล็อกแล้วจะไม่ถูกแตะ
+        <strong>เดือนปิดงวด:</strong> เลื่อนไปลงเดือนถัดไปที่ยังเปิดอัตโนมัติ (ไม่ข้าม)
       </p>
       <div id="backfill-status" style="font-size:12px;color:var(--ink4);margin-bottom:10px;min-height:18px"></div>
       <button class="btn btn-primary" onclick="backfillARPaymentsToFinance()" id="backfill-btn">
