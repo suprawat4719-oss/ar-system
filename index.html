@@ -1136,6 +1136,11 @@ function listLocalBackups() {
 // ══════════════════════════════════════════════════════
 const SYNC_COLS = ['companies','quotations','invoices','billings','customers'];
 
+// ── Online/Offline state ──
+let _isOnline = navigator.onLine && !!_fbdb;
+window.addEventListener('online',  () => { if(_fbdb) { _isOnline = true;  syncUpdateUI('online','Live sync พร้อม 🟢'); startRealtimeListeners(); } });
+window.addEventListener('offline', () => { _isOnline = false; syncUpdateUI('error','ออฟไลน์ — ไม่สามารถสร้างเอกสารได้ ⚠️'); });
+
 function syncUpdateUI(state, msg, lastTime) {
   const dot = document.getElementById('sync-dot');
   const txt = document.getElementById('sync-status-text');
@@ -1385,12 +1390,14 @@ function startRealtimeListeners() {
       },
       err => {
         console.warn(`[AR] onSnapshot ${col} error:`, err.message);
+        _isOnline = false;
         syncUpdateUI('error', 'Listener ขาด — กด Force Pull');
       }
     );
     console.log(`[AR] listener started: ${col}`);
   });
   syncUpdateUI('online', 'Live sync พร้อม 🟢');
+  _isOnline = true;
   const btnPull = document.getElementById('btn-pull');
   const btnPush = document.getElementById('btn-push');
   if(btnPull) btnPull.disabled = false;
@@ -1526,67 +1533,45 @@ window.syncConvertDueFromTerms=syncConvertDueFromTerms;
 function uid() { return 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,7); }
 
 // ══════════════════════════════════════════════════════
-// RUNNING-NUMBER SEQUENCE — Firestore transaction + localStorage fallback
-// Collection: ar_config  Document: sequences
-// Field: {TYPE}_{PREFIX}_{YYYYMM}  → integer (เพิ่มทีละ 1 ด้วย transaction)
-// iPad Safari ไม่รองรับ localStorage ใน Private/ITP mode → ใช้ Firestore เป็นหลัก
+// RUNNING-NUMBER SEQUENCE
+// ดูจากเอกสารที่มีอยู่จริงใน data (โหลดจาก Firestore แล้ว)
+// หา docNumber สูงสุดของ type+prefix+เดือนนั้น แล้วบวก 1
+// ข้ามเดือน → เริ่ม 001 ใหม่อัตโนมัติ (เพราะ ym ต่างกัน)
+// ใช้ได้ทุกเครื่อง ทุก browser ไม่พึ่ง localStorage เลย
 // ══════════════════════════════════════════════════════
-const SEQ_COL = 'ar_config';
-const SEQ_DOC = 'sequences';
 
-// genDocNo — async, ใช้ Firestore transaction (ถ้ามี) หรือ localStorage fallback
-async function genDocNo(prefix, type) {
+// colForType — หา collection ที่ถูกต้องสำหรับแต่ละ type
+function _colForType(type) {
+  if (type === 'QT') return data.quotations;
+  if (type === 'INV') return data.invoices;
+  if (type === 'BL') return data.billings;
+  return [];
+}
+
+// nextSeq — หา running number ถัดไปจากเอกสารที่มีอยู่จริง
+function nextSeq(prefix, type) {
   const y = new Date().getFullYear() + 543;
   const m = String(new Date().getMonth() + 1).padStart(2, '0');
   const ym = `${y}${m}`;
-  const field = `${type}_${prefix}_${ym}`;
-  const lsKey = `ar_seq_${type}_${prefix}_${ym}`;
+  // pattern: QT-SPN-256905-003  → จับตัวเลขสุดท้าย
+  const pattern = new RegExp(`^${type}-${prefix}-${ym}-(\\d+)$`);
+  let maxNo = 0;
+  _colForType(type).forEach(doc => {
+    const m2 = (doc.docNumber || '').match(pattern);
+    if (m2) maxNo = Math.max(maxNo, parseInt(m2[1], 10));
+  });
+  return { ym, seq: maxNo + 1 };
+}
 
-  // ── Firestore transaction (primary) ──
-  if (_fbdb) {
-    try {
-      const ref = _fbdb.collection(SEQ_COL).doc(SEQ_DOC);
-      let seq = 1;
-      await _fbdb.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        seq = snap.exists ? ((snap.data()[field] || 0) + 1) : 1;
-        tx.set(ref, { [field]: seq }, { merge: true });
-      });
-      // mirror to localStorage เพื่อ offline fallback
-      try { localStorage.setItem(lsKey, seq); } catch(e) {}
-      return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
-    } catch(e) {
-      console.warn('[AR] genDocNo Firestore transaction failed, falling back to localStorage:', e);
-    }
-  }
-
-  // ── localStorage fallback (ใช้เมื่อ offline หรือ Firestore ไม่พร้อม) ──
-  let seq = 1;
-  try { const s = localStorage.getItem(lsKey); if (s) seq = parseInt(s, 10) + 1; } catch(e) {}
-  try { localStorage.setItem(lsKey, seq); } catch(e) {}
+// genDocNo — sync (ไม่ต้อง async แล้ว)
+function genDocNo(prefix, type) {
+  const { ym, seq } = nextSeq(prefix, type);
   return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
 }
 
-// peekDocNo — async, แสดง preview เลขถัดไป โดยไม่ increment จริง
-async function peekDocNo(prefix, type) {
-  const y = new Date().getFullYear() + 543;
-  const m = String(new Date().getMonth() + 1).padStart(2, '0');
-  const ym = `${y}${m}`;
-  const field = `${type}_${prefix}_${ym}`;
-  const lsKey = `ar_seq_${type}_${prefix}_${ym}`;
-
-  if (_fbdb) {
-    try {
-      const snap = await _fbdb.collection(SEQ_COL).doc(SEQ_DOC).get();
-      const seq = snap.exists ? ((snap.data()[field] || 0) + 1) : 1;
-      return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
-    } catch(e) {
-      console.warn('[AR] peekDocNo Firestore read failed, falling back to localStorage:', e);
-    }
-  }
-
-  let seq = 1;
-  try { const s = localStorage.getItem(lsKey); if (s) seq = parseInt(s, 10) + 1; } catch(e) {}
+// peekDocNo — sync เช่นกัน (preview เลขถัดไป ไม่ increment)
+function peekDocNo(prefix, type) {
+  const { ym, seq } = nextSeq(prefix, type);
   return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
 }
 function invStatus(inv) {
@@ -2319,19 +2304,30 @@ function renderPayments() {
 // ══════════════════════════════════════════════════════
 // NEW QUOTATION FORM
 // ══════════════════════════════════════════════════════
+function _requireOnline() {
+  if (!_isOnline) {
+    toast('⚠️ ออฟไลน์อยู่ — กรุณาเชื่อมต่ออินเทอร์เน็ตก่อนสร้างเอกสาร เพื่อป้องกันเลขเอกสารซ้ำ', 'err');
+    return false;
+  }
+  return true;
+}
+
 function renderNewQT() {
+  if (!_requireOnline()) return;
   _rowCount = 0;
   document.getElementById('page-content').innerHTML = buildDocForm('qt');
   initDocForm('qt');
   addRow('qt'); addRow('qt'); addRow('qt'); addRow('qt'); addRow('qt');
 }
 function renderNewINV() {
+  if (!_requireOnline()) return;
   _rowCount = 0;
   document.getElementById('page-content').innerHTML = buildDocForm('inv');
   initDocForm('inv');
   addRow('inv'); addRow('inv'); addRow('inv'); addRow('inv'); addRow('inv');
 }
 function renderNewBL() {
+  if (!_requireOnline()) return;
   _rowCount = 0;
   document.getElementById('page-content').innerHTML = buildDocForm('bl');
   initDocForm('bl');
@@ -2463,14 +2459,14 @@ function initDocForm(type) {
   buildCustDatalist();
 }
 
-async function selectCo(id, type) {
+function selectCo(id, type) {
   _selectedCo = companies.find(c=>c.id===id)||null;
   document.querySelectorAll('.co-card').forEach(el=>el.classList.remove('sel'));
   document.getElementById('co-'+id)?.classList.add('sel');
   if(_selectedCo) {
     const prefix = _selectedCo.prefix||'XX';
     const typeMap = {qt:'QT',inv:'INV',bl:'BL'};
-    document.getElementById('f-docno').value = await peekDocNo(prefix,typeMap[type]);
+    document.getElementById('f-docno').value = peekDocNo(prefix,typeMap[type]);
     const vatEl = document.getElementById('f-vat');
     if(vatEl) vatEl.checked = _selectedCo.hasVat;
     calcDoc(type);
@@ -2616,6 +2612,7 @@ function getFormItems(type) {
 }
 
 async function saveDoc(type) {
+  if (!_requireOnline()) return;
   if(!_selectedCo) { toast('กรุณาเลือกบริษัทก่อน','err'); return; }
   const custName = document.getElementById('f-cust-name')?.value?.trim();
   if(!custName) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
@@ -2625,13 +2622,14 @@ async function saveDoc(type) {
   const custObj = findDuplicateCustomer({name: custName, taxId: custTaxInput});
   const resolvedCustomerId   = custObj?.id || null;
   const resolvedCustomerCode = custObj?.customerCode || '';
+  const docDateValue = document.getElementById('f-date')?.value || today();
 
   if(type==='bl') {
     if(!_blSelected.length) { toast('กรุณาเลือกใบแจ้งหนี้อย่างน้อย 1 ใบ','err'); return; }
     const invs=data.invoices.filter(i=>_blSelected.includes(i.id));
     const total=invs.reduce((s,i)=>s+remainAmount(i),0);
     const bl={
-      docNumber:await genDocNo(_selectedCo.prefix||'X','BL'),
+      docNumber:genDocNo(_selectedCo.prefix||'X','BL'),
       docDate:docDateValue,
       companyId:_selectedCo.id, companyName:_selectedCo.name,
       customerId:resolvedCustomerId, customerCode:resolvedCustomerCode,
@@ -2657,9 +2655,8 @@ async function saveDoc(type) {
   const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
   const paymentTerms = getSelectedPaymentTerms();
   const paymentDays = getPaymentTermDays(paymentTerms);
-  const docDateValue = document.getElementById('f-date')?.value || today();
   const docData={
-    docNumber:await genDocNo(_selectedCo.prefix||'X', type==='qt'?'QT':'INV'),
+    docNumber:genDocNo(_selectedCo.prefix||'X', type==='qt'?'QT':'INV'),
     docDate:document.getElementById('f-date')?.value,
     companyId:_selectedCo.id, companyName:_selectedCo.name,
     customerId:resolvedCustomerId, customerCode:resolvedCustomerCode,
@@ -2711,6 +2708,7 @@ function convertDoc(action, srcId) {
 window.convertDoc=convertDoc;
 
 async function confirmConvert() {
+  if (!_requireOnline()) return;
   const {action, srcId} = _convertDoc;
   const cvDate = document.getElementById('cv-date')?.value||today();
   if(action==='qt2inv') {
@@ -2719,7 +2717,7 @@ async function confirmConvert() {
     const paymentTerms = qt.paymentTerms || qt.terms || '30 วัน';
     const paymentDays = getPaymentTermDays(paymentTerms);
     const inv={
-      docNumber:await genDocNo(co.prefix||'X','INV'),
+      docNumber:genDocNo(co.prefix||'X','INV'),
       docDate:cvDate, docDue:document.getElementById('cv-due')?.value||calcDueDateByTerms(cvDate,paymentTerms),
       companyId:qt.companyId, companyName:qt.companyName,
       customerId:qt.customerId||resolveCustomerIdForDoc(qt)||null,
@@ -2742,7 +2740,7 @@ async function confirmConvert() {
     const inv=data.invoices.find(i=>i.id===srcId); if(!inv) return;
     const co=companies.find(c=>c.id===inv.companyId)||{};
     const bl={
-      docNumber:await genDocNo(co.prefix||'X','BL'),
+      docNumber:genDocNo(co.prefix||'X','BL'),
       docDate:cvDate, companyId:inv.companyId, companyName:inv.companyName,
       customerId:inv.customerId||resolveCustomerIdForDoc(inv)||null,
       customerCode:inv.customerCode||(data.customers||[]).find(c=>c.id===(inv.customerId||resolveCustomerIdForDoc(inv)))?.customerCode||'',
@@ -5336,7 +5334,6 @@ function admResetAll(){
       ADM_COLS.forEach(col=>{ADM[col]=[];admLsSave(col,[]);data[col]=[];});
       companies=[];
       Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_')).forEach(k=>localStorage.removeItem(k));
-      if(_fbdb){ _fbdb.collection(SEQ_COL).doc(SEQ_DOC).delete().catch(()=>{}); }
       admPageDanger(); admToast('ล้างข้อมูลทั้งหมดเรียบร้อย — backup ถูก download แล้ว ✅','ok');
       toast('⚠️ Auto Push ปิดชั่วคราว — กด Push เองเมื่อพร้อม เพื่อป้องกันข้อมูลว่างทับ Firebase', 'info');
     });
@@ -5365,21 +5362,9 @@ function admFixStatus(){
 }
 window.admFixStatus=admFixStatus;
 
-async function admClearSeq(){
-  // ล้าง localStorage
-  const keys=Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_'));
-  keys.forEach(k=>localStorage.removeItem(k));
-  // ล้าง Firestore ar_config/sequences
-  if(_fbdb){
-    try{
-      await _fbdb.collection(SEQ_COL).doc(SEQ_DOC).delete();
-      admToast(`ล้าง seq counter ${keys.length} รายการ (localStorage + Firestore)`, 'ok');
-    } catch(e){
-      admToast(`ล้าง localStorage ${keys.length} รายการ (Firestore error: ${e.message})`, 'warn');
-    }
-  } else {
-    admToast(`ล้าง seq counter ${keys.length} รายการ (localStorage)`, 'ok');
-  }
+function admClearSeq(){
+  // ไม่มี sequence counter ใน localStorage แล้ว — running number ดูจาก data จริง
+  admToast('Running number ดูจากเอกสารใน database โดยตรง ไม่มี counter ให้ reset', 'info');
 }
 window.admClearSeq=admClearSeq;
 
