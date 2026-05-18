@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.9 — 2026-05-18
+<!-- AR SYSTEM v2.9.1 — 2026-05-19
+     changelog v2.9.1: แก้ dashboard aging bucket ผิด, สร้าง helper กลาง calcInvoiceStatus/calcInvoiceAgingBucket/calcInvoiceRemain, repair paidAmount อัตโนมัติ, เพิ่ม repairInvoices() + debugDashboard()
      changelog v2.9: รับชำระ AR ได้แม้เดือน Finance ปิดแล้ว โดยเลื่อน financeDate ไปเดือนถัดไปที่ยังเปิด, เพิ่ม audit trail paymentDate/financeDate, ปรับ retry sync, แก้ billing atomic write, บังคับ customerId, ปรับรายงานรับชำระ
      changelog v2.8: genDocNo async Firestore atomic counter (ป้องกันเลขซ้ำหลายเครื่อง), month lock check ใน confirmPayment ก่อน storeUpdate, syncStatus pending/synced/failed ใน payments[], _addPendingSync + retrySyncQueue, deleteCustomer check linked docs, invStatus timezone fix, openPayment oninput dedup, toast.warn CSS, renderPayments UTC+7 fix + retry button
      changelog v2.7 — 2026-05-10
@@ -19,7 +20,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.9 — 2026-05-18</title>
+<title>AR System | v2.9.1 — 2026-05-19</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -445,7 +446,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.9 — 2026-05-18</div>
+    <div class="logo-sub">v2.9.1 — 2026-05-19</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1483,30 +1484,49 @@ window.goPage = goPage;
 function fmt(n) { return (n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtInt(n) { return (n||0).toLocaleString('th-TH'); }
 function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function toISODateLocal(dt) {
-  const d = dt instanceof Date ? dt : new Date(dt);
-  if (Number.isNaN(d.getTime())) return '';
+// ══════════════════════════════════════════════════════
+// CORE DATE & INVOICE HELPERS — single source of truth
+// ══════════════════════════════════════════════════════
+
+// todayLocal — YYYY-MM-DD in local timezone (no UTC shift)
+function todayLocal() {
+  const d = new Date();
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
 }
-function today() { return toISODateLocal(new Date()); }
+// keep today() as alias for backward compat
+function today() { return todayLocal(); }
+
+function toISODateLocal(d) {
+  if(!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+
+// parseISODateLocal — parse YYYY-MM-DD as LOCAL midnight (no UTC shift)
 function parseISODateLocal(v) {
   if(!v) return new Date();
-  const [y,m,d] = String(v).split('-').map(Number);
+  const s = String(v).trim().slice(0,10);
+  const [y,m,d] = s.split('-').map(Number);
   if(!y || !m || !d) return new Date(v);
-  return new Date(y, m - 1, d);
+  return new Date(y, m-1, d, 0, 0, 0, 0);
 }
-function addDays(d,n) {
-  const dt = parseISODateLocal(d);
-  dt.setDate(dt.getDate() + (parseInt(n,10) || 0));
-  return toISODateLocal(dt);
-}
-function daysDiff(a,b) {
+
+// daysDiff — calendar days from date string a to b (positive = b is later)
+function daysDiff(a, b) {
   const da = parseISODateLocal(a);
   const db = parseISODateLocal(b);
-  return Math.ceil((db - da)/(1000*60*60*24));
+  return Math.round((db - da) / 86400000);
+}
+
+function addDays(d, n) {
+  const dt = parseISODateLocal(d);
+  dt.setDate(dt.getDate() + (parseInt(n,10)||0));
+  return toISODateLocal(dt);
 }
 function getPaymentTermDays(term) {
   const t = String(term || '').trim();
@@ -1594,13 +1614,45 @@ function peekDocNo(prefix, type) {
   const { ym, seq } = nextSeq(prefix, type);
   return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
 }
-function invStatus(inv) {
-  if(inv.status==='cancelled') return 'cancelled';
-  if((inv.paidAmount||0)>=inv.total) return 'paid';
-  if((inv.paidAmount||0)>0) return 'partial';
-  const due = parseISODateLocal(inv.docDue); if(due<new Date()) return 'overdue';
-  return inv.status||'sent';
+// calcInvoiceRemain — normalized, never negative
+function calcInvoiceRemain(inv) {
+  const total = Number(inv.total) || 0;
+  const paid  = Number(inv.paidAmount) || 0;
+  return Math.max(0, total - paid);
 }
+// alias
+function remainAmount(inv) { return calcInvoiceRemain(inv); }
+
+// calcInvoiceStatus — computed from real data, never trusts inv.status
+// returned values: 'cancelled' | 'draft' | 'paid' | 'overdue' | 'partial' | 'sent'
+function calcInvoiceStatus(inv) {
+  if (inv.status === 'cancelled') return 'cancelled';
+  if (inv.status === 'draft')     return 'draft';
+  const remain = calcInvoiceRemain(inv);
+  if (remain <= 0)                return 'paid';
+  const due = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue || '';
+  if (due && parseISODateLocal(due) < parseISODateLocal(todayLocal())) return 'overdue';
+  if ((Number(inv.paidAmount) || 0) > 0) return 'partial';
+  return inv.status || 'sent';
+}
+// alias — keeps all existing callers working
+function invStatus(inv) { return calcInvoiceStatus(inv); }
+
+// calcInvoiceAgingBucket — returns null for paid/cancelled, else '0-30'|'31-60'|'61-90'|'90+'|'current'
+function calcInvoiceAgingBucket(inv) {
+  const remain = calcInvoiceRemain(inv);
+  if (remain <= 0) return null;
+  if (['cancelled','draft'].includes(calcInvoiceStatus(inv))) return null;
+  const due = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue || '';
+  if (!due) return 'current';
+  const daysOverdue = daysDiff(due, todayLocal()); // positive = overdue
+  if (daysOverdue < 0)  return 'current';
+  if (daysOverdue <= 30) return '0-30';
+  if (daysOverdue <= 60) return '31-60';
+  if (daysOverdue <= 90) return '61-90';
+  return '90+';
+}
+
 function badgeHTML(status) {
   const m={draft:'badge-draft ร่าง',sent:'badge-sent ส่งแล้ว',partial:'badge-partial ชำระบางส่วน',
     paid:'badge-paid ชำระแล้ว',overdue:'badge-overdue เกินกำหนด',cancelled:'badge-cancelled ยกเลิก',
@@ -1610,20 +1662,38 @@ function badgeHTML(status) {
   const [cls,...words]=m[status]?.split(' ')||['badge-draft','?'];
   return `<span class="badge ${cls}">${words.join(' ')}</span>`;
 }
-function remainAmount(inv) { return Math.max(0,inv.total-(inv.paidAmount||0)); }
 
 // ══════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════
 function renderDashboard() {
-  const invs = data.invoices;
-  const totalAR = invs.filter(i=>!['paid','cancelled'].includes(invStatus(i))).reduce((s,i)=>s+remainAmount(i),0);
-  const overdueAR = invs.filter(i=>invStatus(i)==='overdue').reduce((s,i)=>s+remainAmount(i),0);
-  const thisMonth = today().slice(0,7);
-  const paidThisMonth = invs.flatMap(i=>i.payments||[]).filter(p=>{
-    return (p.paymentDate||p.date||'').startsWith(thisMonth);
-  }).reduce((s,p)=>s+(Number(p.amount)||0),0);
-  const pendingCount = invs.filter(i=>['sent','partial','overdue'].includes(invStatus(i))).length;
+  // dedupe invoices by id before any calculation
+  const seen = new Set();
+  const invs = (data.invoices||[]).filter(i => {
+    if (!i.id) return true;
+    if (seen.has(i.id)) return false;
+    seen.add(i.id); return true;
+  });
+
+  // repair paidAmount if stale (sum of payments[].amount)
+  invs.forEach(inv => {
+    if ((inv.payments||[]).length > 0) {
+      const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+      if (Math.abs(sumPmts - (Number(inv.paidAmount)||0)) > 0.01) {
+        inv.paidAmount = sumPmts; // in-memory repair only
+      }
+    }
+  });
+
+  const thisMonth = todayLocal().slice(0,7);
+  const totalAR   = invs.filter(i=>!['paid','cancelled','draft'].includes(calcInvoiceStatus(i)))
+                        .reduce((s,i)=>s+calcInvoiceRemain(i), 0);
+  const overdueAR = invs.filter(i=>calcInvoiceStatus(i)==='overdue')
+                        .reduce((s,i)=>s+calcInvoiceRemain(i), 0);
+  const paidThisMonth = invs.flatMap(i=>i.payments||[])
+                            .filter(p=>(p.paymentDate||p.date||'').startsWith(thisMonth))
+                            .reduce((s,p)=>s+(Number(p.amount)||0), 0);
+  const pendingCount = invs.filter(i=>['sent','partial','overdue'].includes(calcInvoiceStatus(i))).length;
 
   document.getElementById('page-content').innerHTML = `
   <div class="stat-grid">
@@ -1653,7 +1723,7 @@ function renderDashboard() {
     <div class="report-card">
       <div class="report-card-title">📊 สถานะใบแจ้งหนี้</div>
       ${['sent','partial','overdue','paid'].map(st=>{
-        const cnt=invs.filter(i=>invStatus(i)===st).length;
+        const cnt=invs.filter(i=>calcInvoiceStatus(i)===st).length;
         const total=invs.length||1;
         const colors={sent:'var(--accent)',partial:'#f97316',overdue:'var(--red)',paid:'var(--green)'};
         return `<div style="margin-bottom:10px">
@@ -1670,44 +1740,80 @@ function renderDashboard() {
     </div>
   </div>
 
-  <div class="card">
+  ${(()=>{
+    const followUpInvs = invs
+      .filter(i => ['sent','partial','overdue'].includes(calcInvoiceStatus(i)) && calcInvoiceRemain(i) > 0)
+      .map(i => {
+        const due = i.docDue || i.dueDate || i.invoiceDue || i.dateDue || '';
+        const daysOvd = due ? daysDiff(due, todayLocal()) : null;
+        return {...i, _remain: calcInvoiceRemain(i), _status: calcInvoiceStatus(i), _daysOvd: daysOvd};
+      })
+      .sort((a,b) => {
+        if (a._status==='overdue' && b._status!=='overdue') return -1;
+        if (b._status==='overdue' && a._status!=='overdue') return  1;
+        return (b._daysOvd||0) - (a._daysOvd||0);
+      });
+    return `<div class="card">
     <div class="card-header"><div class="card-title">🔔 ใบแจ้งหนี้ที่ต้องติดตาม</div></div>
     <table class="tbl">
-      <thead><tr><th>เลขที่</th><th>ลูกค้า</th><th>บริษัท</th><th>ครบกำหนด</th><th class="r">ยอดค้าง</th><th>สถานะ</th><th></th></tr></thead>
+      <thead><tr><th>เลขที่</th><th>ลูกค้า</th><th>บริษัท</th><th>ครบกำหนด</th><th class="c">เกิน(วัน)</th><th class="r">ยอดค้าง</th><th>สถานะ</th><th></th></tr></thead>
       <tbody>
-      ${invs.filter(i=>['sent','partial','overdue'].includes(invStatus(i))).slice(0,8).map(i=>`
-        <tr>
+      ${followUpInvs.slice(0,8).map(i=>{
+        const dueColor = i._daysOvd >= 8 ? ';color:var(--red);font-weight:700' : i._daysOvd >= 0 ? ';color:#f97316;font-weight:600' : '';
+        const daysLabel = i._daysOvd !== null ? (i._daysOvd > 0 ? `+${i._daysOvd}` : i._daysOvd) : '—';
+        return `<tr>
           <td class="mono">${i.docNumber}</td>
           <td>${i.custName}</td>
           <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
-          <td style="font-size:12px${invStatus(i)==='overdue'?';color:var(--red);font-weight:700':''}">${i.docDue||'—'}</td>
-          <td class="r mono bold">${fmt(remainAmount(i))}</td>
-          <td>${badgeHTML(invStatus(i))}</td>
+          <td style="font-size:12px${dueColor}">${i.docDue||i.dueDate||i.invoiceDue||i.dateDue||'—'}</td>
+          <td class="c mono" style="font-size:12px${dueColor}">${daysLabel}</td>
+          <td class="r mono bold">${fmt(i._remain)}</td>
+          <td>${badgeHTML(i._status)}</td>
           <td><button class="btn btn-xs btn-success" onclick="openPayment('${i.id}')">+ รับชำระ</button></td>
-        </tr>`).join('')||'<tr><td colspan="7"><div class="empty"><p>ไม่มีรายการค้างชำระ 🎉</p></div></td></tr>'}
+        </tr>`;
+      }).join('')||'<tr><td colspan="8"><div class="empty"><p>ไม่มีรายการค้างชำระ 🎉</p></div></td></tr>'}
       </tbody>
     </table>
   </div>`;
+  })()}
+  `;
 }
 
 function agingSummaryRows() {
-  const now = new Date();
-  const invs = data.invoices.filter(i=>['sent','partial','overdue'].includes(invStatus(i)));
-  const buckets = [{label:'0–30 วัน',color:'var(--green)',v:0},{label:'31–60 วัน',color:'#f97316',v:0},{label:'61–90 วัน',color:'var(--red)',v:0},{label:'90+ วัน',color:'#7f1d1d',v:0}];
-  invs.forEach(i=>{
-    const d = daysDiff(i.docDue, now.toISOString().split('T')[0]);
-    const r = remainAmount(i);
-    if(d<=30) buckets[0].v+=r;
-    else if(d<=60) buckets[1].v+=r;
-    else if(d<=90) buckets[2].v+=r;
-    else buckets[3].v+=r;
+  // dedupe invoices first
+  const seen2 = new Set();
+  const invs2 = (data.invoices||[]).filter(i => {
+    if (!i.id) return true;
+    if (seen2.has(i.id)) return false;
+    seen2.add(i.id); return true;
   });
-  const max = Math.max(...buckets.map(b=>b.v),1);
-  return buckets.map(b=>`
+  // repair paidAmount in-memory
+  invs2.forEach(inv => {
+    if ((inv.payments||[]).length > 0) {
+      const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+      if (Math.abs(sumPmts - (Number(inv.paidAmount)||0)) > 0.01) inv.paidAmount = sumPmts;
+    }
+  });
+  // Aging buckets — using unified calcInvoiceAgingBucket
+  const buckets = {'current':0, '0-30':0, '31-60':0, '61-90':0, '90+':0};
+  invs2.forEach(inv => {
+    const b = calcInvoiceAgingBucket(inv);
+    if (!b) return;
+    buckets[b] = (buckets[b]||0) + calcInvoiceRemain(inv);
+  });
+  const agingDefs = [
+    {key:'current', label:'ยังไม่ถึงกำหนด', color:'var(--accent)'},
+    {key:'0-30',    label:'0–30 วัน',        color:'var(--green)'},
+    {key:'31-60',   label:'31–60 วัน',       color:'#f97316'},
+    {key:'61-90',   label:'61–90 วัน',       color:'var(--red)'},
+    {key:'90+',     label:'90+ วัน',          color:'#7f1d1d'},
+  ];
+  const maxV = Math.max(...agingDefs.map(a=>buckets[a.key]||0), 1);
+  return agingDefs.map(a=>`
     <div class="aging-row">
-      <div class="aging-label">${b.label}</div>
-      <div class="aging-bar-wrap"><div class="aging-bar" style="width:${b.v/max*100}%;background:${b.color}">${b.v>0?'':''}</div></div>
-      <div class="aging-val" style="color:${b.color}">${fmt(b.v)}</div>
+      <div class="aging-label">${a.label}</div>
+      <div class="aging-bar-wrap"><div class="aging-bar" style="width:${(buckets[a.key]||0)/maxV*100}%;background:${a.color}"> </div></div>
+      <div class="aging-val" style="color:${a.color}">${fmt(buckets[a.key]||0)}</div>
     </div>`).join('');
 }
 
@@ -3696,13 +3802,36 @@ function renderReportCO() {
 }
 
 function renderReportAging() {
-  const today2=new Date();
-  const buckets=[{label:'0–30 วัน',color:'var(--green)',rows:[]},{label:'31–60 วัน',color:'#f97316',rows:[]},{label:'61–90 วัน',color:'var(--red)',rows:[]},{label:'90+ วัน',color:'#7f1d1d',rows:[]}];
-  data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
-    const d=daysDiff(i.docDue,today2.toISOString().split('T')[0]);
-    const r=remainAmount(i);
-    const idx=d<=0?0:d<=30?0:d<=60?1:d<=90?2:3;
-    buckets[idx].rows.push({...i,overdueDays:Math.max(0,d),remain:r});
+  // dedupe
+  const seenAg = new Set();
+  const allInvs = (data.invoices||[]).filter(i => {
+    if (!i.id) return true;
+    if (seenAg.has(i.id)) return false;
+    seenAg.add(i.id); return true;
+  });
+  // repair paidAmount in-memory
+  allInvs.forEach(inv => {
+    if ((inv.payments||[]).length > 0) {
+      const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+      if (Math.abs(sumPmts - (Number(inv.paidAmount)||0)) > 0.01) inv.paidAmount = sumPmts;
+    }
+  });
+  const buckets=[
+    {label:'ยังไม่ถึงกำหนด',color:'var(--accent)',key:'current',rows:[]},
+    {label:'0–30 วัน',color:'var(--green)',key:'0-30',rows:[]},
+    {label:'31–60 วัน',color:'#f97316',key:'31-60',rows:[]},
+    {label:'61–90 วัน',color:'var(--red)',key:'61-90',rows:[]},
+    {label:'90+ วัน',color:'#7f1d1d',key:'90+',rows:[]}
+  ];
+  const bucketMap = {};
+  buckets.forEach(b => bucketMap[b.key]=b);
+  allInvs.forEach(i=>{
+    const bKey = calcInvoiceAgingBucket(i);
+    if (!bKey) return; // paid/cancelled/draft
+    const r = calcInvoiceRemain(i);
+    const due = i.docDue || i.dueDate || i.invoiceDue || i.dateDue || '';
+    const daysOvd = due ? daysDiff(due, todayLocal()) : 0;
+    bucketMap[bKey].rows.push({...i, overdueDays: Math.max(0, daysOvd), remain: r});
   });
   const total=buckets.reduce((s,b)=>s+b.rows.reduce((ss,r)=>ss+r.remain,0),0)||1;
   document.getElementById('page-content').innerHTML=`
@@ -4666,6 +4795,18 @@ function renderSettings() {
       <button class="btn btn-primary" onclick="backfillARPaymentsToFinance()" id="backfill-btn">
         &#x1F504; Sync รายรับเก่าทั้งหมดไป Finance
       </button>
+    </div>
+  </div>
+  <div class="card" style="max-width:560px;margin-top:16px">
+    <div class="card-header">
+      <span class="card-title">&#x2699;&#xFE0F; Repair Dashboard Data</span>
+    </div>
+    <div class="card-body">
+      <div style="margin-top:0;padding-top:0">
+        <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">คำนวณ paidAmount ใหม่จาก payments[], ลบ invoice ซ้ำ, normalize field</p>
+        <button class="btn btn-outline" onclick="repairInvoices()">&#x2699;&#xFE0F; Repair Invoice Data</button>
+        <button class="btn btn-outline" onclick="debugDashboard()" style="margin-left:8px">&#x1F50D; Debug Dashboard (console)</button>
+      </div>
     </div>
   </div>`;
 }
@@ -5830,6 +5971,78 @@ document.getElementById('adm-confirm-ok-btn').onclick=()=>{
 document.querySelectorAll('.adm-overlay').forEach(ov=>{
   ov.addEventListener('click',e=>{if(e.target===ov) ov.classList.remove('adm-show');});
 });
+
+// ── REPAIR TOOL ──────────────────────────────────────────────────────────────
+async function repairInvoices() {
+  let repaired = 0;
+  const seen = new Set();
+  const deduped = [];
+  (data.invoices||[]).forEach(inv => {
+    if (!inv.id || seen.has(inv.id)) return;
+    seen.add(inv.id);
+    deduped.push(inv);
+  });
+  const removed = (data.invoices||[]).length - deduped.length;
+  data.invoices = deduped;
+
+  data.invoices.forEach(inv => {
+    let changed = false;
+    // normalize numbers
+    if (isNaN(Number(inv.total))) { inv.total = 0; changed = true; }
+    if (isNaN(Number(inv.paidAmount))) { inv.paidAmount = 0; changed = true; }
+    // recalc paidAmount from payments
+    if ((inv.payments||[]).length > 0) {
+      const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+      if (Math.abs(sumPmts - (Number(inv.paidAmount)||0)) > 0.01) {
+        inv.paidAmount = Math.round(sumPmts*100)/100; changed = true;
+      }
+    }
+    // normalize docDue field
+    const dueVal = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue;
+    if (dueVal && !inv.docDue) { inv.docDue = dueVal; changed = true; }
+    // fix negative remain (cap paidAmount at total)
+    if ((Number(inv.paidAmount)||0) > (Number(inv.total)||0)) {
+      inv.paidAmount = Number(inv.total)||0; changed = true;
+    }
+    // repair customerId from customers if name matches
+    if (!inv.customerId && (inv.custName||inv.customerName)) {
+      const found = findDuplicateCustomer({name: inv.custName||inv.customerName, taxId: inv.custTax||''});
+      if (found) { inv.customerId = found.id; inv.customerCode = found.customerCode||''; changed = true; }
+    }
+    if (changed) repaired++;
+  });
+
+  syncLS('invoices', data.invoices);
+  const msg = `Repair เสร็จ: แก้ ${repaired} invoice, ลบซ้ำ ${removed} รายการ`;
+  toast(msg, repaired > 0 ? 'ok' : 'info');
+  console.log('[repairInvoices]', { repaired, removed });
+  renderDashboard();
+}
+window.repairInvoices = repairInvoices;
+
+// ── DEBUG MODE ────────────────────────────────────────────────────────────────
+window.DEBUG_DASHBOARD = false;
+window.debugDashboard = function() {
+  const rows = (data.invoices||[]).map(inv => {
+    const due = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue || '';
+    const daysOvd = due ? daysDiff(due, todayLocal()) : null;
+    return {
+      docNo:       inv.docNumber || inv.docNo || inv.id,
+      customer:    inv.custName  || inv.customerName || '',
+      docDue:      due,
+      today:       todayLocal(),
+      daysOverdue: daysOvd,
+      total:       Number(inv.total)||0,
+      paidAmount:  Number(inv.paidAmount)||0,
+      remain:      calcInvoiceRemain(inv),
+      status:      calcInvoiceStatus(inv),
+      storedStatus:inv.status,
+      agingBucket: calcInvoiceAgingBucket(inv),
+    };
+  });
+  console.table(rows);
+  return rows;
+};
 </script>
 </body>
 </html>
