@@ -3163,7 +3163,7 @@ async function migratePayrollEmpIds(){
     saveTxs();
     if(isOnline && db){
       const batch = db.batch();
-      txs.filter(t => t.type==="payroll" && t.empId).forEach(t => {
+      txs.filter(t => (t.type==="payroll"||t.type==="employee_advance") && t.empId).forEach(t => {
         batch.update(db.collection("fin_transactions").doc(t.id), {empId: t.empId, employeeId: t.employeeId||t.empId, employeeCode: t.employeeCode||""});
       });
       batch.commit().catch(e => console.warn("[Migrate] empId patch failed:", e));

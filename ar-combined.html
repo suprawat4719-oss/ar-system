@@ -2416,11 +2416,11 @@ function renderPayments() {
   document.getElementById('page-content').innerHTML = `
   <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;max-width:600px">
     <div class="stat-card green"><div class="stat-label">รับเดือนนี้</div>
-      <div class="stat-value">${fmt(allPmts.filter(p=>(p.paymentDate||p.date||'').startsWith(thisMonth)).reduce((s,p)=>s+Number(p.amount)||0,0))}</div></div>
+      <div class="stat-value">${fmt(allPmts.filter(p=>(p.paymentDate||p.date||'').startsWith(thisMonth)).reduce((s,p)=>s+(Number(p.amount)||0),0))}</div></div>
     <div class="stat-card"><div class="stat-label">จำนวนครั้ง</div>
       <div class="stat-value">${allPmts.filter(p=>(p.paymentDate||p.date||'').startsWith(thisMonth)).length}</div></div>
     <div class="stat-card accent"><div class="stat-label">รับทั้งหมด</div>
-      <div class="stat-value">${fmt(allPmts.reduce((s,p)=>s+Number(p.amount)||0,0))}</div></div>
+      <div class="stat-value">${fmt(allPmts.reduce((s,p)=>s+(Number(p.amount)||0),0))}</div></div>
   </div>
   <div class="card">
     <div class="card-header">
@@ -5341,7 +5341,8 @@ function admInvStatus(inv) {
   if(inv.status==='cancelled') return 'cancelled';
   if((inv.paidAmount||0)>=inv.total) return 'paid';
   if((inv.paidAmount||0)>0) return 'partial';
-  const due=new Date(inv.docDue); if(due<new Date()) return 'overdue';
+  const due=inv.docDue||inv.dueDate||inv.invoiceDue||'';
+  if(due && parseISODateLocal(due) < parseISODateLocal(todayLocal())) return 'overdue';
   return inv.status||'sent';
 }
 function admBadge(status) {
