@@ -1,3 +1,9 @@
+<!--
+  Finance App v2.5-db-unified
+  changelog v2.5: เพิ่ม employeeCode, unified database references,
+  upsertFinanceTransactionFromPayment(), getEmployeeDisplay(),
+  migratePayrollEmpIds(), safe migration
+-->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -427,7 +433,7 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <div id="main">
   <!-- TOPBAR -->
   <div id="topbar">
-    <div class="tb-title">บัญชีรายรับรายจ่ายบริษัท &nbsp;—&nbsp; <span class="mo" id="topMo"></span><span id="versionBadge" style="font-size:10px;font-weight:600;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle;letter-spacing:.02em;cursor:help" title="คลิกเพื่อดูรายละเอียด">v2.4</span></div>
+    <div class="tb-title">บัญชีรายรับรายจ่ายบริษัท &nbsp;—&nbsp; <span class="mo" id="topMo"></span><span id="versionBadge" style="font-size:10px;font-weight:600;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle;letter-spacing:.02em;cursor:help" title="คลิกเพื่อดูรายละเอียด">v2.5-db-unified</span></div>
     <span id="fb-status" style="font-size:11px;font-weight:600;color:#6b7280;white-space:nowrap">⏳ กำลังโหลด...</span>
     <button class="btn btn-gray btn-sm" onclick="pullFromFirebase()" title="โหลดข้อมูลล่าสุดจาก Firebase มาบันทึกในเครื่อง" style="font-size:11px;padding:4px 10px">🔄 โหลดจาก Firebase</button>
     <button class="btn btn-teal" onclick="toast_('✅ พร้อมตรวจแก้แล้ว','#0d9488')">✓ พร้อมตรวจแก้</button>
@@ -1169,6 +1175,7 @@ async function createAdvanceRequest(tx){
     requestId:tx.id,
     employeeId:empId,
     employeeName:emp?emp.name:(tx.employeeName||tx.party||""),
+    employeeCode:emp?emp.employeeCode||"":tx.employeeCode||"",
     amount:Number(tx.amount)||0,
     date:tx.date||nowISO(),
     transferDate:tx.transferDate||tx.date||nowISO(),
@@ -1535,7 +1542,7 @@ function renderRightForm(){
   let payrollExtra="";
   if(isEmpType(rForm.type)){
     const activeEmps=employees.filter(e=>e.active);
-    const empOpts=activeEmps.map(e=>`<option value="${e.id}"${rForm.empId===e.id?" selected":""}>${e.name} · ${e.dept}</option>`).join("");
+    const empOpts=activeEmps.map(e=>`<option value="${e.id}"${rForm.empId===e.id?" selected":""}>${getEmployeeDisplay(e)}</option>`).join("");
     const selEmp=activeEmps.find(e=>e.id===rForm.empId);
     const empInfo=selEmp?`<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 10px;font-size:11.5px;color:#92400e;margin-top:-4px">💳 วงเงิน <b>${fmtMoney(selEmp.limit)}</b>/ครั้ง</div>`:"";
     const syncBadge=rForm.syncStatus?`<span class="sync-${rForm.syncStatus}" style="display:inline-flex;align-items:center;gap:3px;margin-left:4px"><span class="sync-dot"></span><span class="sync-label" style="font-size:10px">${{pending:"รอ",linked:"linked",pending_review:"รอตรวจ",error:"error"}[rForm.syncStatus]||""}</span></span>`:"";
@@ -1636,6 +1643,7 @@ function saveRight(){
   if(emp&&!rForm.party) rForm.party=emp.name;
   rForm.employeeId=rForm.empId||"";
   rForm.employeeName=emp?emp.name:"";
+  rForm.employeeCode=emp?emp.employeeCode||"":"";
   if(!rForm.syncStatus) rForm.syncStatus=emp?"linked":"pending";
 
   if(rForm.id){
@@ -1715,6 +1723,66 @@ function delTx(id){
 }
 
 // ─── APPROVE PAGE ─────────────────────────────────────────────────────────────
+
+// ── UNIFIED DB HELPERS (v2.5-db-unified) ────────────────────────────────────
+
+function generateEmployeeCode() {
+  var maxNo = 0;
+  employees.forEach(function(e) {
+    var m = (e.employeeCode || '').match(/^EMP-(\d+)$/);
+    if (m) maxNo = Math.max(maxNo, parseInt(m[1], 10));
+  });
+  return 'EMP-' + String(maxNo + 1).padStart(4, '0');
+}
+
+function getEmployeeDisplay(emp) {
+  if (!emp) return '';
+  var code = emp.employeeCode || '(ยังไม่มีรหัส)';
+  return code + ' — ' + (emp.name || '');
+}
+
+function getCustomerDisplay(cust) {
+  if (!cust) return '';
+  var code = cust.customerCode || '(ยังไม่มีรหัส)';
+  return code + ' — ' + (cust.name || '');
+}
+
+async function upsertFinanceTransactionFromPayment(payment, invoice) {
+  if (!isOnline || !db) return;
+  var monthKey = (payment.date || '').slice(0, 7);
+  if (isMonthLocked_fin && isMonthLocked_fin(monthKey)) {
+    console.warn('[upsertFinanceTransactionFromPayment] month locked:', monthKey);
+    return;
+  }
+  var doc = {
+    id: payment.id,
+    type: 'income',
+    sourceModule: 'ar',
+    sourceRefId: invoice.id,
+    date: payment.date,
+    transferDate: payment.date,
+    monthKey: monthKey,
+    party: invoice.custName || invoice.customerName || '',
+    customerId: invoice.customerId || '',
+    customerCode: invoice.customerCode || '',
+    category: 'รับชำระลูกค้า',
+    amount: Number(payment.amount) || 0,
+    method: payment.method || 'โอนธนาคาร',
+    referenceNo: invoice.docNumber || '',
+    status: 'confirmed',
+    note: payment.note || '',
+    syncStatus: 'linked',
+    createdAt: payment.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: 'ar_app'
+  };
+  try {
+    await db.collection('fin_transactions').doc(doc.id).set(doc, { merge: false });
+    console.log('[upsertFinanceTransactionFromPayment] synced payment', doc.id, 'amount', doc.amount);
+  } catch (err) {
+    console.error('[upsertFinanceTransactionFromPayment] failed:', err);
+  }
+}
 
 // ─── EMPLOYEE DISPLAY HELPER ─────────────────────────────────────────────────
 // ใช้ empId เป็น source of truth สำหรับ payroll เสมอ
@@ -2631,6 +2699,7 @@ function saveEmp(){
   const name=document.getElementById("ei-name").value.trim();
   if(!name){toast_("⚠️ กรุณาใส่ชื่อพนักงาน","#b45309");return;}
   const ptypes=[...document.querySelectorAll("#ei-ptypes input:checked")].map(cb=>cb.value);
+  const existingCode = editEmpIdx>=0 ? (employees[editEmpIdx].employeeCode||'') : '';
   const emp={
     id:editEmpIdx>=0?employees[editEmpIdx].id:uid(),
     name,
@@ -2639,6 +2708,7 @@ function saveEmp(){
     note:document.getElementById("ei-note").value.trim(),
     payrollTypes:ptypes.length?ptypes:["other"],
     active:document.getElementById("ei-active").checked,
+    employeeCode: existingCode || generateEmployeeCode(),
   };
   if(editEmpIdx>=0) employees[editEmpIdx]=emp;
   else employees.push(emp);
@@ -3065,31 +3135,40 @@ async function cleanupV2SyncTxs(){
 async function migratePayrollEmpIds(){
   if(!employees.length) return;
   let changed = 0;
+  // Phase 1: map party name → empId for old payroll txs missing empId
   txs = txs.map(t => {
-    // เฉพาะ payroll ที่ยังไม่มี empId
     if(t.type !== "payroll" || t.empId) return t;
-    // ค้นหา employee ที่ชื่อตรงกับ t.party (ตัดช่องว่างและคำนำหน้า)
     const normalize = s => (s||"").replace(/นาย|นาง|น\.ส\.|นางสาว|คุณ|\s/g,"").toLowerCase();
     const needle = normalize(t.party);
     if(!needle) return t;
     const match = employees.find(e => normalize(e.name).includes(needle) || needle.includes(normalize(e.name)));
     if(match){
       changed++;
-      return {...t, empId: match.id};
+      return {...t, empId: match.id, employeeId: match.id};
     }
     return t;
   });
+  // Phase 2: normalize empId → employeeId + employeeCode for payroll/employee_advance
+  for(let i=0; i<txs.length; i++){
+    const t=txs[i];
+    if(t.employeeCode) continue;
+    if(t.type!=="payroll"&&t.type!=="employee_advance") continue;
+    const empId=t.employeeId||t.empId||"";
+    const emp=employees.find(e=>e.id===empId);
+    if(!emp||!emp.employeeCode) continue;
+    txs[i]={...t, employeeCode:emp.employeeCode, employeeId:emp.id};
+    changed++;
+  }
   if(changed > 0){
-    localStorage.setItem("fin_txs", JSON.stringify(txs));
-    // อัพเดท Firestore เฉพาะรายการที่เปลี่ยน
+    saveTxs();
     if(isOnline && db){
       const batch = db.batch();
       txs.filter(t => t.type==="payroll" && t.empId).forEach(t => {
-        batch.update(db.collection("fin_transactions").doc(t.id), {empId: t.empId});
+        batch.update(db.collection("fin_transactions").doc(t.id), {empId: t.empId, employeeId: t.employeeId||t.empId, employeeCode: t.employeeCode||""});
       });
       batch.commit().catch(e => console.warn("[Migrate] empId patch failed:", e));
     }
-    console.log(`[Migrate] patched empId for ${changed} payroll tx(s)`);
+    console.log(`[Migrate] patched empId/employeeCode for ${changed} tx(s)`);
     render();
   }
 }

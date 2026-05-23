@@ -1,3 +1,9 @@
+<!--
+  Advance Tracker v1.0-db-unified
+  changelog v1.0-db-unified: เพิ่ม employeeCode (EMP-XXXX),
+  safe migration migrateEmployeeCodes(), dropdown แสดง code+name,
+  advance_requests บันทึก employeeCode, duplicate guard
+-->
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -134,7 +140,7 @@ select:focus,input:focus{outline:none;border-color:var(--blue)}
 <div class="hdr">
   <div style="flex:1">
     <h1>💼 เบิกล่วงหน้า
-      <span class="ver-badge" id="verBadge" title="...">v3.7</span>
+      <span class="ver-badge" id="verBadge" title="...">v3.7</span><span id="advVersionBadge" style="font-size:10px;font-weight:600;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle">v1.0-db-unified</span>
     </h1>
     <div class="hdr-sub">ระบบบันทึกเบิกเงินล่วงหน้าพนักงาน <span id="save-indicator"></span></div>
   </div>
@@ -340,6 +346,110 @@ var ADMIN_PASSWORD='Jack@2026';
 // modal state
 var _advRecType=null, _advRecEmpId=null;
 
+// ── EMPLOYEE CODE HELPERS ─────────────────────────────────────────────────────
+
+function generateEmployeeCode() {
+  var maxNo = 0;
+  emps.forEach(function(e) {
+    var m = (e.employeeCode || '').match(/^EMP-(\d+)$/);
+    if (m) maxNo = Math.max(maxNo, parseInt(m[1], 10));
+  });
+  return 'EMP-' + String(maxNo + 1).padStart(4, '0');
+}
+
+function getEmployeeCode(emp) {
+  return emp ? (emp.employeeCode || '') : '';
+}
+
+function getEmployeeDisplay(emp) {
+  if (!emp) return '';
+  var code = emp.employeeCode || '(ยังไม่มีรหัส)';
+  return code + ' — ' + (emp.name || '');
+}
+
+function resolveEmployeeByIdOrName(input) {
+  if (!input) return null;
+  var byId = emps.find(function(e) { return e.id === input; });
+  if (byId) return byId;
+  var byCode = emps.find(function(e) { return e.employeeCode === input; });
+  if (byCode) return byCode;
+  var norm = input.trim().replace(/\s+/g, ' ');
+  return emps.find(function(e) {
+    return (e.name || '').trim().replace(/\s+/g, ' ') === norm;
+  }) || null;
+}
+
+// ── MIGRATION ─────────────────────────────────────────────────────────────────
+
+async function migrateEmployeeCodes() {
+  var changed = 0;
+  var sorted = emps.slice().sort(function(a, b) {
+    return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
+  });
+  var maxNo = 0;
+  sorted.forEach(function(e) {
+    var m = (e.employeeCode || '').match(/^EMP-(\d+)$/);
+    if (m) maxNo = Math.max(maxNo, parseInt(m[1], 10));
+  });
+  for (var i = 0; i < sorted.length; i++) {
+    var emp = sorted[i];
+    if (emp.employeeCode && /^EMP-\d{4,}$/.test(emp.employeeCode)) continue;
+    maxNo++;
+    var code = 'EMP-' + String(maxNo).padStart(4, '0');
+    emp.employeeCode = code;
+    var idx = emps.findIndex(function(e) { return e.id === emp.id; });
+    if (idx >= 0) emps[idx].employeeCode = code;
+    if (isOnline && db && !emp.id.startsWith('local_')) {
+      try {
+        await db.collection('employees').doc(emp.id).update({
+          employeeCode: code,
+          updatedAt: new Date().toISOString()
+        });
+      } catch(err) {
+        console.warn('[migrateEmployeeCodes] failed for', emp.id, err);
+      }
+    }
+    changed++;
+  }
+  if (changed > 0) {
+    console.log('[migrateEmployeeCodes] assigned codes to', changed, 'employees');
+    if (typeof toast === 'function') toast('✅ กำหนดรหัสพนักงาน ' + changed + ' คนเรียบร้อย');
+  }
+}
+
+async function migrateAdvanceEmployeeRefs() {
+  if (!isOnline || !db) return;
+  var changed = 0;
+  try {
+    for (var i = 0; i < requests.length; i++) {
+      var req = requests[i];
+      if (req.employeeCode) continue;
+      var emp = emps.find(function(e) { return e.id === (req.employeeId || req.empId); });
+      if (!emp || !emp.employeeCode) continue;
+      requests[i].employeeCode = emp.employeeCode;
+      if (!req._localOnly && req.id) {
+        try {
+          await db.collection('advance_requests').doc(req.id).update({
+            employeeCode: emp.employeeCode,
+            updatedAt: new Date().toISOString()
+          });
+          changed++;
+        } catch(err) {}
+      }
+    }
+    if (changed > 0) console.log('[migrateAdvanceEmployeeRefs] updated', changed, 'requests');
+  } catch(err) {
+    console.warn('[migrateAdvanceEmployeeRefs]', err);
+  }
+}
+
+async function runEmployeeMigrationOnce() {
+  if (sessionStorage.getItem('_emp_migration_done')) return;
+  sessionStorage.setItem('_emp_migration_done', '1');
+  await migrateEmployeeCodes();
+  await migrateAdvanceEmployeeRefs();
+}
+
 // ── FIREBASE INIT ─────────────────────────────────────────────────────────────
 (function(){
   var s1=document.createElement('script');
@@ -539,6 +649,7 @@ async function saveAdvanceRecord(type, empId, amount, note, date){
     id:uid(),
     employeeId:empId,
     employeeName:emp?emp.name:'',
+    employeeCode:emp?emp.employeeCode||'':'',
     type:type,
     amount:Number(amount)||0,
     date:d,
@@ -610,7 +721,13 @@ async function saveAdvRecMo(){
     emp.transactions.push(tx);
     saveLocal(); _hasPendingChanges=true;
     if(isOnline&&db) try{await db.collection('employees').doc(empId).update({transactions:emp.transactions});}catch(err){}
-    var req={id:txId,requestId:txId,employeeId:empId,employeeName:emp?emp.name:'',amount:amt,date:date,category:cat,referenceNo:refNo,bankName:'-',receiverName:emp?emp.name:'',slipUrl:slipUrl,note:note,status:'approved',syncStatus:'pending',createdAt:new Date().toISOString(),createdBy:'advance_tracker',_localOnly:true};
+    var req={id:txId,requestId:txId,employeeId:empId,employeeName:emp?emp.name:'',employeeCode:emp?emp.employeeCode||'':'',amount:amt,date:date,category:cat,referenceNo:refNo,bankName:'-',receiverName:emp?emp.name:'',slipUrl:slipUrl,note:note,status:'approved',syncStatus:'pending',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),createdBy:'advance_tracker',_localOnly:true};
+    var existingReq=requests.find(function(r){
+      return r.id===txId||
+        (r.employeeId===empId&&r.amount===amt&&
+         r.date===date&&r.referenceNo===refNo);
+    });
+    if(existingReq){toast('⚠️ พบรายการซ้ำ — ไม่บันทึกซ้ำ');return;}
     requests.unshift(req);
     saveLocalReqs(); _hasPendingChanges=true;
     if(isOnline&&db){try{var dReq=Object.assign({},req);delete dReq._localOnly;await db.collection('advance_requests').doc(txId).set(dReq);requests[0]._localOnly=false;saveLocalReqs();}catch(err){}}
@@ -817,6 +934,7 @@ async function loadAll(){
       });
       emps=fbEmps;
       saveLocal();
+      runEmployeeMigrationOnce(); // NEW: generate EMP codes if missing
     }
     // โหลด advance_requests
     try{
@@ -1183,7 +1301,7 @@ function renderPayroll(){
     var advCalc=calculateEmployeeAdvance(emp.id);
     var outStyle=advCalc.outstanding>0?'color:var(--red);font-weight:700':'color:var(--green);font-weight:700';
     return'<tr style="border-bottom:1px solid var(--border)">'
-      +'<td style="padding:10px 12px;font-weight:600">'+emp.name+(emp.dept?'<br><span style="font-size:11px;color:var(--gray)">'+emp.dept+'</span>':'')+(emp.bank?'<br><span style="font-size:11px;color:var(--blue)">🏦 '+emp.bank+'</span>':'')+'</td>'
+      +'<td style="padding:10px 12px;font-weight:600">'+'<span style="font-size:11px;color:var(--blue);font-family:monospace;font-weight:700">'+(emp.employeeCode||'...')+'</span><br>'+emp.name+(emp.dept?'<br><span style="font-size:11px;color:var(--gray)">'+emp.dept+'</span>':'')+(emp.bank?'<br><span style="font-size:11px;color:var(--blue)">🏦 '+emp.bank+'</span>':'')+'</td>'
       +'<td style="padding:10px 12px;text-align:right">'+fmtMoney(moSal)+'</td>'
       +'<td style="padding:10px 12px;text-align:right;color:var(--green)">'+fmtMoney(totalExtra)+'</td>'
       +'<td style="padding:10px 12px;text-align:right;color:var(--red)">'+fmtMoney(totalDeduct+moCar)+'</td>'
@@ -1255,7 +1373,10 @@ function refSel(){
     var el=document.getElementById(id);if(!el)return;
     el.innerHTML=emps.length===0
       ?'<option value="">-- ยังไม่มีพนักงาน --</option>'
-      :emps.map(function(e){return'<option value="'+e.id+'"'+(e.id===curId?' selected':'')+'>'+e.name+'</option>';}).join('');
+      :emps.map(function(e){
+        var display=getEmployeeDisplay(e);
+        return'<option value="'+e.id+'"'+(e.id===curId?' selected':'')+'>'+display+'</option>';
+      }).join('');
   });
 }
 function selEmp(){curId=document.getElementById('sel1').value;renderDash();}
@@ -1716,6 +1837,8 @@ async function saveEmp(){
     if(isOnline&&db) try{await db.collection('employees').doc(_editEmpId).set(data,{merge:true});}catch(err){}
     toast('✅ แก้ไขพนักงานแล้ว');
   } else {
+    var newCode=generateEmployeeCode();
+    data.employeeCode=newCode;
     var newEmp=Object.assign({id:'local_'+uid(),transactions:[],extras:{},deducts:{}},data);
     if(isOnline&&db){
       try{
@@ -1725,7 +1848,7 @@ async function saveEmp(){
     }
     emps.push(newEmp); curId=newEmp.id;
     saveLocal(); _hasPendingChanges=true;
-    toast('✅ เพิ่มพนักงาน "'+name+'" แล้ว');
+    toast('✅ เพิ่มพนักงาน "'+name+'" ('+newCode+') แล้ว');
   }
   ['mn','mdept','mk','ms','mc'].forEach(function(id){document.getElementById(id).value='';});
   closeMo(); refSel(); renderDash();

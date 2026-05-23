@@ -1,4 +1,11 @@
-<!-- AR SYSTEM v2.4 — 2026-05-09
+<!-- AR SYSTEM v2.9.1 — 2026-05-19
+     changelog v2.9.1: แก้ dashboard aging bucket ผิด, สร้าง helper กลาง calcInvoiceStatus/calcInvoiceAgingBucket/calcInvoiceRemain, repair paidAmount อัตโนมัติ, เพิ่ม repairInvoices() + debugDashboard()
+     changelog v2.9: รับชำระ AR ได้แม้เดือน Finance ปิดแล้ว โดยเลื่อน financeDate ไปเดือนถัดไปที่ยังเปิด, เพิ่ม audit trail paymentDate/financeDate, ปรับ retry sync, แก้ billing atomic write, บังคับ customerId, ปรับรายงานรับชำระ
+     changelog v2.8: genDocNo async Firestore atomic counter (ป้องกันเลขซ้ำหลายเครื่อง), month lock check ใน confirmPayment ก่อน storeUpdate, syncStatus pending/synced/failed ใน payments[], _addPendingSync + retrySyncQueue, deleteCustomer check linked docs, invStatus timezone fix, openPayment oninput dedup, toast.warn CSS, renderPayments UTC+7 fix + retry button
+     changelog v2.7 — 2026-05-10
+     changelog v2.6: แก้บั๊ก form หายเมื่อมี snapshot จากเครื่องอื่น — ตรวจ modal เปิดอยู่ก่อน re-render,
+     pending refresh queue จะ refresh หลังปิด form แทน, ป้องกัน data loss ระหว่างแก้ไขเอกสาร
+     changelog v2.5: แก้ due date ใบแจ้งหนี้ให้สัมพันธ์กับเงื่อนไขชำระเงินจากใบเสนอราคา/ฟอร์มเอกสาร, เก็บ paymentTerms/paymentDays, แก้ date helper ไม่ให้ timezone เพี้ยน
      changelog v2.4: ระบบ Customer ID ถูกต้องแบบบัญชีจริง — customerCode (CUS-XXXX), normalizeCustomerName,
      ตรวจชื่อซ้ำ/taxId ซ้ำก่อนบันทึก, customerId ผูกกับเอกสารทุกชนิด, รายงานค้างชำระ group by customerId,
      ปุ่มตรวจลูกค้าซ้ำ + Merge, migration อัตโนมัติข้อมูลเก่า, export/import ครบ customers
@@ -13,7 +20,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.4 — 2026-05-09</title>
+<title>AR System | v2.9.1 — 2026-05-19</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -232,6 +239,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .toast.show{transform:translateY(0);opacity:1}
 .toast.ok{background:var(--green);color:#fff}
 .toast.err{background:var(--red);color:#fff}
+.toast.warn{background:#f97316;color:#fff}
 .toast.info{background:var(--ink);color:#fff}
 
 /* ── EMPTY ── */
@@ -438,7 +446,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.4 — 2026-05-09</div>
+    <div class="logo-sub">v2.9.1 — 2026-05-19</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1131,6 +1139,11 @@ function listLocalBackups() {
 // ══════════════════════════════════════════════════════
 const SYNC_COLS = ['companies','quotations','invoices','billings','customers'];
 
+// ── Online/Offline state ──
+let _isOnline = navigator.onLine && !!_fbdb;
+window.addEventListener('online',  () => { if(_fbdb) { _isOnline = true;  syncUpdateUI('online','Live sync พร้อม 🟢'); startRealtimeListeners(); } });
+window.addEventListener('offline', () => { _isOnline = false; syncUpdateUI('error','ออฟไลน์ — ไม่สามารถสร้างเอกสารได้ ⚠️'); });
+
 function syncUpdateUI(state, msg, lastTime) {
   const dot = document.getElementById('sync-dot');
   const txt = document.getElementById('sync-status-text');
@@ -1341,10 +1354,32 @@ function _applySnapshot(col, snap) {
   if(!isFirst && fromServer && !isEcho) {
     const now = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
     syncUpdateUI('online', '🔄 Live sync ✅', now);
-    toast(`🔄 ${col} อัปเดตจากเครื่องอื่น`, 'info');
-    if(_LIVE_PAGES.has(_currentPage)) goPage(_currentPage);
+
+    // ตรวจว่ามี modal/form แก้ไขเปิดอยู่หรือไม่
+    const editModalIds = [
+      'modal-edit-qt','modal-edit-inv','modal-edit-bl',
+      'modal-payment','modal-convert','modal-co',
+      'modal-customer','adm-modal-edit-inv'
+    ];
+    const isFormOpen = editModalIds.some(id => {
+      const el = document.getElementById(id);
+      return el && (el.classList.contains('show') || el.classList.contains('adm-show'));
+    });
+
+    if(isFormOpen) {
+      // มี form เปิดอยู่ → แจ้งเตือนแต่ไม่ re-render (ป้องกัน data loss)
+      toast(`⚠️ ${col} อัปเดตจากเครื่องอื่น — จะโหลดใหม่เมื่อปิดฟอร์ม`, 'warn');
+      _pendingRefreshCols = _pendingRefreshCols || new Set();
+      _pendingRefreshCols.add(col);
+    } else {
+      toast(`🔄 ${col} อัปเดตจากเครื่องอื่น`, 'info');
+      if(_LIVE_PAGES.has(_currentPage)) goPage(_currentPage);
+    }
   }
 }
+
+// ตรวจ pending refresh เมื่อ modal ถูกปิด
+let _pendingRefreshCols = new Set();
 
 function startRealtimeListeners() {
   if(!_fbdb) return;
@@ -1358,12 +1393,14 @@ function startRealtimeListeners() {
       },
       err => {
         console.warn(`[AR] onSnapshot ${col} error:`, err.message);
+        _isOnline = false;
         syncUpdateUI('error', 'Listener ขาด — กด Force Pull');
       }
     );
     console.log(`[AR] listener started: ${col}`);
   });
   syncUpdateUI('online', 'Live sync พร้อม 🟢');
+  _isOnline = true;
   const btnPull = document.getElementById('btn-pull');
   const btnPush = document.getElementById('btn-push');
   if(btnPull) btnPull.disabled = false;
@@ -1447,33 +1484,175 @@ window.goPage = goPage;
 function fmt(n) { return (n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtInt(n) { return (n||0).toLocaleString('th-TH'); }
 function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function today() { return new Date().toISOString().split('T')[0]; }
-function addDays(d,n) { const dt=new Date(d); dt.setDate(dt.getDate()+n); return dt.toISOString().split('T')[0]; }
-function daysDiff(a,b) { return Math.ceil((new Date(b)-new Date(a))/(1000*60*60*24)); }
+// ══════════════════════════════════════════════════════
+// CORE DATE & INVOICE HELPERS — single source of truth
+// ══════════════════════════════════════════════════════
+
+// todayLocal — YYYY-MM-DD in local timezone (no UTC shift)
+function todayLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+// keep today() as alias for backward compat
+function today() { return todayLocal(); }
+
+function toISODateLocal(d) {
+  if(!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+
+// parseISODateLocal — parse YYYY-MM-DD as LOCAL midnight (no UTC shift)
+function parseISODateLocal(v) {
+  if(!v) return new Date();
+  const s = String(v).trim().slice(0,10);
+  const [y,m,d] = s.split('-').map(Number);
+  if(!y || !m || !d) return new Date(v);
+  return new Date(y, m-1, d, 0, 0, 0, 0);
+}
+
+// daysDiff — calendar days from date string a to b (positive = b is later)
+function daysDiff(a, b) {
+  const da = parseISODateLocal(a);
+  const db = parseISODateLocal(b);
+  return Math.round((db - da) / 86400000);
+}
+
+function addDays(d, n) {
+  const dt = parseISODateLocal(d);
+  dt.setDate(dt.getDate() + (parseInt(n,10)||0));
+  return toISODateLocal(dt);
+}
+function getPaymentTermDays(term) {
+  const t = String(term || '').trim();
+  if(!t || /ชำระทันที|ทันที|cash|เงินสด/i.test(t)) return 0;
+  const m = t.match(/(\d+)/);
+  return m ? Math.max(0, parseInt(m[1], 10) || 0) : 0;
+}
+function calcDueDateByTerms(docDate, term) { return addDays(docDate || today(), getPaymentTermDays(term)); }
+function getSelectedPaymentTerms() { return document.getElementById('f-terms')?.value || '30 วัน'; }
+function syncDueFromTerms() {
+  const dueEl = document.getElementById('f-due');
+  if(!dueEl) return;
+  const dateVal = document.getElementById('f-date')?.value || today();
+  dueEl.value = calcDueDateByTerms(dateVal, getSelectedPaymentTerms());
+}
+function syncConvertDueFromTerms() {
+  const dueEl = document.getElementById('cv-due');
+  if(!dueEl) return;
+  const dateVal = document.getElementById('cv-date')?.value || today();
+  const term = dueEl.dataset.term || '30 วัน';
+  dueEl.value = calcDueDateByTerms(dateVal, term);
+}
+window.syncDueFromTerms=syncDueFromTerms;
+window.syncConvertDueFromTerms=syncConvertDueFromTerms;
+
 function uid() { return 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2,7); }
-// ── Running-number sequence (never resets on delete) ──
-// Key format: ar_seq_{TYPE}_{PREFIX}_{YYYYMM}  → integer
-function genDocNo(prefix, type) {
-  const y=new Date().getFullYear()+543, m=String(new Date().getMonth()+1).padStart(2,'0'), ym=`${y}${m}`;
-  const key=`ar_seq_${type}_${prefix}_${ym}`;
-  let seq=1; try{const s=localStorage.getItem(key);if(s)seq=parseInt(s,10)+1;}catch(e){}
-  try{localStorage.setItem(key,seq);}catch(e){}
-  return `${type}-${prefix}-${ym}-${String(seq).padStart(3,'0')}`;
+
+// ══════════════════════════════════════════════════════
+// RUNNING-NUMBER SEQUENCE
+// ดูจากเอกสารที่มีอยู่จริงใน data (โหลดจาก Firestore แล้ว)
+// หา docNumber สูงสุดของ type+prefix+เดือนนั้น แล้วบวก 1
+// ข้ามเดือน → เริ่ม 001 ใหม่อัตโนมัติ (เพราะ ym ต่างกัน)
+// ใช้ได้ทุกเครื่อง ทุก browser ไม่พึ่ง localStorage เลย
+// ══════════════════════════════════════════════════════
+
+// colForType — หา collection ที่ถูกต้องสำหรับแต่ละ type
+function _colForType(type) {
+  if (type === 'QT') return data.quotations;
+  if (type === 'INV') return data.invoices;
+  if (type === 'BL') return data.billings;
+  return [];
 }
-// peekDocNo — แสดง preview เลขถัดไป โดยไม่ increment จริง
+
+// nextSeq — หา running number ถัดไปจากเอกสารที่มีอยู่จริง
+function nextSeq(prefix, type) {
+  const y = new Date().getFullYear() + 543;
+  const m = String(new Date().getMonth() + 1).padStart(2, '0');
+  const ym = `${y}${m}`;
+  // pattern: QT-SPN-256905-003  → จับตัวเลขสุดท้าย
+  const pattern = new RegExp(`^${type}-${prefix}-${ym}-(\\d+)$`);
+  let maxNo = 0;
+  _colForType(type).forEach(doc => {
+    const m2 = (doc.docNumber || '').match(pattern);
+    if (m2) maxNo = Math.max(maxNo, parseInt(m2[1], 10));
+  });
+  return { ym, seq: maxNo + 1 };
+}
+
+// genDocNo — async, ใช้ Firestore atomic counter ป้องกันเลขเอกสารซ้ำหลายเครื่อง
+// fallback: local nextSeq ถ้าออฟไลน์หรือ transaction ล้มเหลว
+async function genDocNo(prefix, type) {
+  const y = new Date().getFullYear() + 543;
+  const mo = String(new Date().getMonth() + 1).padStart(2, '0');
+  const ym = `${y}${mo}`;
+  if (_fbdb) {
+    try {
+      const counterRef = _fbdb.collection('doc_counters').doc(`${type}-${prefix}-${ym}`);
+      const seq = await _fbdb.runTransaction(async tx => {
+        const snap = await tx.get(counterRef);
+        const next = (snap.exists ? (snap.data().seq || 0) : 0) + 1;
+        tx.set(counterRef, { seq: next, type, prefix, ym, updatedAt: new Date().toISOString() });
+        return next;
+      });
+      return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
+    } catch(e) {
+      console.warn('[genDocNo] Firestore counter failed, fallback to local:', e);
+    }
+  }
+  const { ym: ymFb, seq: seqFb } = nextSeq(prefix, type);
+  return `${type}-${prefix}-${ymFb}-${String(seqFb).padStart(3, '0')}`;
+}
+
+// peekDocNo — sync, preview เท่านั้น ไม่ increment counter
 function peekDocNo(prefix, type) {
-  const y=new Date().getFullYear()+543, m=String(new Date().getMonth()+1).padStart(2,'0'), ym=`${y}${m}`;
-  const key=`ar_seq_${type}_${prefix}_${ym}`;
-  let seq=1; try{const s=localStorage.getItem(key);if(s)seq=parseInt(s,10)+1;}catch(e){}
-  return `${type}-${prefix}-${ym}-${String(seq).padStart(3,'0')}`;
+  const { ym, seq } = nextSeq(prefix, type);
+  return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
 }
-function invStatus(inv) {
-  if(inv.status==='cancelled') return 'cancelled';
-  if((inv.paidAmount||0)>=inv.total) return 'paid';
-  if((inv.paidAmount||0)>0) return 'partial';
-  const due = new Date(inv.docDue); if(due<new Date()) return 'overdue';
-  return inv.status||'sent';
+// calcInvoiceRemain — normalized, never negative
+function calcInvoiceRemain(inv) {
+  const total = Number(inv.total) || 0;
+  const paid  = Number(inv.paidAmount) || 0;
+  return Math.max(0, total - paid);
 }
+// alias
+function remainAmount(inv) { return calcInvoiceRemain(inv); }
+
+// calcInvoiceStatus — computed from real data, never trusts inv.status
+// returned values: 'cancelled' | 'draft' | 'paid' | 'overdue' | 'partial' | 'sent'
+function calcInvoiceStatus(inv) {
+  if (inv.status === 'cancelled') return 'cancelled';
+  if (inv.status === 'draft')     return 'draft';
+  const remain = calcInvoiceRemain(inv);
+  if (remain <= 0)                return 'paid';
+  const due = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue || '';
+  if (due && parseISODateLocal(due) < parseISODateLocal(todayLocal())) return 'overdue';
+  if ((Number(inv.paidAmount) || 0) > 0) return 'partial';
+  return inv.status || 'sent';
+}
+// alias — keeps all existing callers working
+function invStatus(inv) { return calcInvoiceStatus(inv); }
+
+// calcInvoiceAgingBucket — returns null for paid/cancelled, else '0-30'|'31-60'|'61-90'|'90+'|'current'
+function calcInvoiceAgingBucket(inv) {
+  const remain = calcInvoiceRemain(inv);
+  if (remain <= 0) return null;
+  if (['cancelled','draft'].includes(calcInvoiceStatus(inv))) return null;
+  const due = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue || '';
+  if (!due) return 'current';
+  const daysOverdue = daysDiff(due, todayLocal()); // positive = overdue
+  if (daysOverdue < 0)  return 'current';
+  if (daysOverdue <= 30) return '0-30';
+  if (daysOverdue <= 60) return '31-60';
+  if (daysOverdue <= 90) return '61-90';
+  return '90+';
+}
+
 function badgeHTML(status) {
   const m={draft:'badge-draft ร่าง',sent:'badge-sent ส่งแล้ว',partial:'badge-partial ชำระบางส่วน',
     paid:'badge-paid ชำระแล้ว',overdue:'badge-overdue เกินกำหนด',cancelled:'badge-cancelled ยกเลิก',
@@ -1483,19 +1662,38 @@ function badgeHTML(status) {
   const [cls,...words]=m[status]?.split(' ')||['badge-draft','?'];
   return `<span class="badge ${cls}">${words.join(' ')}</span>`;
 }
-function remainAmount(inv) { return Math.max(0,inv.total-(inv.paidAmount||0)); }
 
 // ══════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════
 function renderDashboard() {
-  const invs = data.invoices;
-  const totalAR = invs.filter(i=>i.status!=='paid'&&i.status!=='cancelled').reduce((s,i)=>s+remainAmount(i),0);
-  const overdueAR = invs.filter(i=>invStatus(i)==='overdue').reduce((s,i)=>s+remainAmount(i),0);
-  const paidThisMonth = invs.flatMap(i=>i.payments||[]).filter(p=>{
-    const m=new Date().toISOString().slice(0,7); return p.date?.startsWith(m);
-  }).reduce((s,p)=>s+p.amount,0);
-  const pendingCount = invs.filter(i=>['sent','partial','overdue'].includes(invStatus(i))).length;
+  // dedupe invoices by id before any calculation
+  const seen = new Set();
+  const invs = (data.invoices||[]).filter(i => {
+    if (!i.id) return true;
+    if (seen.has(i.id)) return false;
+    seen.add(i.id); return true;
+  });
+
+  // repair paidAmount if stale (sum of payments[].amount)
+  invs.forEach(inv => {
+    if ((inv.payments||[]).length > 0) {
+      const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+      if (Math.abs(sumPmts - (Number(inv.paidAmount)||0)) > 0.01) {
+        inv.paidAmount = sumPmts; // in-memory repair only
+      }
+    }
+  });
+
+  const thisMonth = todayLocal().slice(0,7);
+  const totalAR   = invs.filter(i=>!['paid','cancelled','draft'].includes(calcInvoiceStatus(i)))
+                        .reduce((s,i)=>s+calcInvoiceRemain(i), 0);
+  const overdueAR = invs.filter(i=>calcInvoiceStatus(i)==='overdue')
+                        .reduce((s,i)=>s+calcInvoiceRemain(i), 0);
+  const paidThisMonth = invs.flatMap(i=>i.payments||[])
+                            .filter(p=>(p.paymentDate||p.date||'').startsWith(thisMonth))
+                            .reduce((s,p)=>s+(Number(p.amount)||0), 0);
+  const pendingCount = invs.filter(i=>['sent','partial','overdue'].includes(calcInvoiceStatus(i))).length;
 
   document.getElementById('page-content').innerHTML = `
   <div class="stat-grid">
@@ -1525,7 +1723,7 @@ function renderDashboard() {
     <div class="report-card">
       <div class="report-card-title">📊 สถานะใบแจ้งหนี้</div>
       ${['sent','partial','overdue','paid'].map(st=>{
-        const cnt=invs.filter(i=>invStatus(i)===st).length;
+        const cnt=invs.filter(i=>calcInvoiceStatus(i)===st).length;
         const total=invs.length||1;
         const colors={sent:'var(--accent)',partial:'#f97316',overdue:'var(--red)',paid:'var(--green)'};
         return `<div style="margin-bottom:10px">
@@ -1542,44 +1740,80 @@ function renderDashboard() {
     </div>
   </div>
 
-  <div class="card">
+  ${(()=>{
+    const followUpInvs = invs
+      .filter(i => ['sent','partial','overdue'].includes(calcInvoiceStatus(i)) && calcInvoiceRemain(i) > 0)
+      .map(i => {
+        const due = i.docDue || i.dueDate || i.invoiceDue || i.dateDue || '';
+        const daysOvd = due ? daysDiff(due, todayLocal()) : null;
+        return {...i, _remain: calcInvoiceRemain(i), _status: calcInvoiceStatus(i), _daysOvd: daysOvd};
+      })
+      .sort((a,b) => {
+        if (a._status==='overdue' && b._status!=='overdue') return -1;
+        if (b._status==='overdue' && a._status!=='overdue') return  1;
+        return (b._daysOvd||0) - (a._daysOvd||0);
+      });
+    return `<div class="card">
     <div class="card-header"><div class="card-title">🔔 ใบแจ้งหนี้ที่ต้องติดตาม</div></div>
     <table class="tbl">
-      <thead><tr><th>เลขที่</th><th>ลูกค้า</th><th>บริษัท</th><th>ครบกำหนด</th><th class="r">ยอดค้าง</th><th>สถานะ</th><th></th></tr></thead>
+      <thead><tr><th>เลขที่</th><th>ลูกค้า</th><th>บริษัท</th><th>ครบกำหนด</th><th class="c">เกิน(วัน)</th><th class="r">ยอดค้าง</th><th>สถานะ</th><th></th></tr></thead>
       <tbody>
-      ${invs.filter(i=>['sent','partial','overdue'].includes(invStatus(i))).slice(0,8).map(i=>`
-        <tr>
+      ${followUpInvs.slice(0,8).map(i=>{
+        const dueColor = i._daysOvd >= 8 ? ';color:var(--red);font-weight:700' : i._daysOvd >= 0 ? ';color:#f97316;font-weight:600' : '';
+        const daysLabel = i._daysOvd !== null ? (i._daysOvd > 0 ? `+${i._daysOvd}` : i._daysOvd) : '—';
+        return `<tr>
           <td class="mono">${i.docNumber}</td>
           <td>${i.custName}</td>
           <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
-          <td style="font-size:12px${invStatus(i)==='overdue'?';color:var(--red);font-weight:700':''}">${i.docDue||'—'}</td>
-          <td class="r mono bold">${fmt(remainAmount(i))}</td>
-          <td>${badgeHTML(invStatus(i))}</td>
+          <td style="font-size:12px${dueColor}">${i.docDue||i.dueDate||i.invoiceDue||i.dateDue||'—'}</td>
+          <td class="c mono" style="font-size:12px${dueColor}">${daysLabel}</td>
+          <td class="r mono bold">${fmt(i._remain)}</td>
+          <td>${badgeHTML(i._status)}</td>
           <td><button class="btn btn-xs btn-success" onclick="openPayment('${i.id}')">+ รับชำระ</button></td>
-        </tr>`).join('')||'<tr><td colspan="7"><div class="empty"><p>ไม่มีรายการค้างชำระ 🎉</p></div></td></tr>'}
+        </tr>`;
+      }).join('')||'<tr><td colspan="8"><div class="empty"><p>ไม่มีรายการค้างชำระ 🎉</p></div></td></tr>'}
       </tbody>
     </table>
   </div>`;
+  })()}
+  `;
 }
 
 function agingSummaryRows() {
-  const now = new Date();
-  const invs = data.invoices.filter(i=>['sent','partial','overdue'].includes(invStatus(i)));
-  const buckets = [{label:'0–30 วัน',color:'var(--green)',v:0},{label:'31–60 วัน',color:'#f97316',v:0},{label:'61–90 วัน',color:'var(--red)',v:0},{label:'90+ วัน',color:'#7f1d1d',v:0}];
-  invs.forEach(i=>{
-    const d = daysDiff(i.docDue, now.toISOString().split('T')[0]);
-    const r = remainAmount(i);
-    if(d<=30) buckets[0].v+=r;
-    else if(d<=60) buckets[1].v+=r;
-    else if(d<=90) buckets[2].v+=r;
-    else buckets[3].v+=r;
+  // dedupe invoices first
+  const seen2 = new Set();
+  const invs2 = (data.invoices||[]).filter(i => {
+    if (!i.id) return true;
+    if (seen2.has(i.id)) return false;
+    seen2.add(i.id); return true;
   });
-  const max = Math.max(...buckets.map(b=>b.v),1);
-  return buckets.map(b=>`
+  // repair paidAmount in-memory
+  invs2.forEach(inv => {
+    if ((inv.payments||[]).length > 0) {
+      const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+      if (Math.abs(sumPmts - (Number(inv.paidAmount)||0)) > 0.01) inv.paidAmount = sumPmts;
+    }
+  });
+  // Aging buckets — using unified calcInvoiceAgingBucket
+  const buckets = {'current':0, '0-30':0, '31-60':0, '61-90':0, '90+':0};
+  invs2.forEach(inv => {
+    const b = calcInvoiceAgingBucket(inv);
+    if (!b) return;
+    buckets[b] = (buckets[b]||0) + calcInvoiceRemain(inv);
+  });
+  const agingDefs = [
+    {key:'current', label:'ยังไม่ถึงกำหนด', color:'var(--accent)'},
+    {key:'0-30',    label:'0–30 วัน',        color:'var(--green)'},
+    {key:'31-60',   label:'31–60 วัน',       color:'#f97316'},
+    {key:'61-90',   label:'61–90 วัน',       color:'var(--red)'},
+    {key:'90+',     label:'90+ วัน',          color:'#7f1d1d'},
+  ];
+  const maxV = Math.max(...agingDefs.map(a=>buckets[a.key]||0), 1);
+  return agingDefs.map(a=>`
     <div class="aging-row">
-      <div class="aging-label">${b.label}</div>
-      <div class="aging-bar-wrap"><div class="aging-bar" style="width:${b.v/max*100}%;background:${b.color}">${b.v>0?'':''}</div></div>
-      <div class="aging-val" style="color:${b.color}">${fmt(b.v)}</div>
+      <div class="aging-label">${a.label}</div>
+      <div class="aging-bar-wrap"><div class="aging-bar" style="width:${(buckets[a.key]||0)/maxV*100}%;background:${a.color}"> </div></div>
+      <div class="aging-val" style="color:${a.color}">${fmt(buckets[a.key]||0)}</div>
     </div>`).join('');
 }
 
@@ -1680,7 +1914,16 @@ function editQT(id) {
       <div class="form-grid-4" style="gap:10px;margin-bottom:12px">
         <div class="field"><label>วันที่</label><input type="date" id="eqt-date" value="${q.docDate}"></div>
         <div class="field"><label>ใช้ได้ถึง</label><input type="date" id="eqt-valid" value="${q.docValid||''}"></div>
-        <div class="field span2"><label>สถานะ</label>
+        <div class="field"><label>เงื่อนไขชำระ</label>
+          <select id="eqt-terms">
+            <option${(q.paymentTerms||q.terms)==='ชำระทันที'?' selected':''}>ชำระทันที</option>
+            <option${(q.paymentTerms||q.terms)==='7 วัน'?' selected':''}>7 วัน</option>
+            <option${(q.paymentTerms||q.terms)==='15 วัน'?' selected':''}>15 วัน</option>
+            <option${(!q.paymentTerms&&!q.terms)||(q.paymentTerms||q.terms)==='30 วัน'?' selected':''}>30 วัน</option>
+            <option${(q.paymentTerms||q.terms)==='60 วัน'?' selected':''}>60 วัน</option>
+          </select>
+        </div>
+        <div class="field"><label>สถานะ</label>
           <select id="eqt-status">
             <option value="draft"${q.status==='draft'?' selected':''}>ร่าง</option>
             <option value="sent"${q.status==='sent'?' selected':''}>ส่งแล้ว</option>
@@ -1734,7 +1977,7 @@ function editQT(id) {
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-qt').remove()">ยกเลิก</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-qt').remove(); if(typeof _checkPendingRefresh==='function') _checkPendingRefresh();">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditQT('${id}')">💾 บันทึก</button>
       </div>
     </div>
@@ -1793,6 +2036,8 @@ async function saveEditQT(id) {
   const hasWht=document.getElementById('eqt-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
   const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const paymentTerms = document.getElementById('eqt-terms')?.value || q.paymentTerms || q.terms || '30 วัน';
+  const paymentDays = getPaymentTermDays(paymentTerms);
   const d={
     docDate:document.getElementById('eqt-date').value,
     docValid:document.getElementById('eqt-valid').value,
@@ -1802,6 +2047,7 @@ async function saveEditQT(id) {
     custContact:document.getElementById('eqt-contact').value,
     custAddress:document.getElementById('eqt-addr').value,
     note:document.getElementById('eqt-note').value,
+    paymentTerms, terms:paymentTerms, paymentDays,
     items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht
   };
   const ok=await storeUpdate('quotations',id,d); if(!ok) return;
@@ -1934,7 +2180,7 @@ function editINV(id) {
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-inv').remove()">ยกเลิก</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-inv').remove(); if(typeof _checkPendingRefresh==='function') _checkPendingRefresh();">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditINV('${id}')">💾 บันทึก</button>
       </div>
     </div>
@@ -2134,7 +2380,7 @@ function editBL(id) {
         <div class="field span2"><label>หมายเหตุ</label><textarea id="ebl-note" style="min-height:60px">${bl.note||''}</textarea></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-bl').remove()">ยกเลิก</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-edit-bl').remove(); if(typeof _checkPendingRefresh==='function') _checkPendingRefresh();">ยกเลิก</button>
         <button class="btn btn-primary" onclick="saveEditBL('${id}')">💾 บันทึก</button>
       </div>
     </div>
@@ -2159,45 +2405,116 @@ window.saveEditBL=saveEditBL;
 function renderPayments() {
   const allPmts = data.invoices.flatMap(i=>(i.payments||[]).map(p=>({...p,invId:i.id,invNo:i.docNumber,custName:i.custName,companyName:i.companyName})));
   allPmts.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const thisMonth = today().slice(0, 7);
+  const pendingQ = JSON.parse(localStorage.getItem('ar_pending_sync') || '[]');
+  const retryBadge = pendingQ.length ? ` <span style="background:var(--red);color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;vertical-align:middle">${pendingQ.length}</span>` : '';
+
+  // distinct months for filters
+  const payMonths = [...new Set(allPmts.map(p=>(p.paymentDate||p.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const finMonths = [...new Set(allPmts.map(p=>(p.financeMonth||(p.financeDate||p.date||'').slice(0,7))).filter(Boolean))].sort().reverse();
+
   document.getElementById('page-content').innerHTML = `
   <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;max-width:600px">
     <div class="stat-card green"><div class="stat-label">รับเดือนนี้</div>
-      <div class="stat-value">${fmt(allPmts.filter(p=>p.date?.startsWith(new Date().toISOString().slice(0,7))).reduce((s,p)=>s+p.amount,0))}</div></div>
+      <div class="stat-value">${fmt(allPmts.filter(p=>(p.paymentDate||p.date||'').startsWith(thisMonth)).reduce((s,p)=>s+Number(p.amount)||0,0))}</div></div>
     <div class="stat-card"><div class="stat-label">จำนวนครั้ง</div>
-      <div class="stat-value">${allPmts.filter(p=>p.date?.startsWith(new Date().toISOString().slice(0,7))).length}</div></div>
+      <div class="stat-value">${allPmts.filter(p=>(p.paymentDate||p.date||'').startsWith(thisMonth)).length}</div></div>
     <div class="stat-card accent"><div class="stat-label">รับทั้งหมด</div>
-      <div class="stat-value">${fmt(allPmts.reduce((s,p)=>s+p.amount,0))}</div></div>
+      <div class="stat-value">${fmt(allPmts.reduce((s,p)=>s+Number(p.amount)||0,0))}</div></div>
   </div>
   <div class="card">
-    <div class="card-header"><div class="card-title">ประวัติการรับชำระทั้งหมด</div></div>
+    <div class="card-header">
+      <div class="card-title">ประวัติการรับชำระทั้งหมด</div>
+      <button class="btn btn-sm btn-outline" onclick="retrySyncQueue()" style="font-size:12px">🔄 Retry sync Finance${retryBadge}</button>
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+      <label style="font-size:13px;font-weight:600">กรองเดือนรับ:
+        <select id="filter-pay-month" onchange="filterPaymentsTable()" style="margin-left:6px;font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)">
+          <option value="">— ทั้งหมด —</option>
+          ${payMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}
+        </select>
+      </label>
+      <label style="font-size:13px;font-weight:600">กรองเดือน Finance:
+        <select id="filter-fin-month" onchange="filterPaymentsTable()" style="margin-left:6px;font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg)">
+          <option value="">— ทั้งหมด —</option>
+          ${finMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}
+        </select>
+      </label>
+    </div>
     <table class="tbl">
-      <thead><tr><th>วันที่</th><th>ใบแจ้งหนี้</th><th>ลูกค้า</th><th>บริษัท</th><th>ช่องทาง</th><th>หมายเหตุ</th><th class="r">จำนวน</th></tr></thead>
-      <tbody>${allPmts.map(p=>`<tr>
-        <td>${p.date}</td><td class="mono">${p.invNo}</td><td>${p.custName}</td>
-        <td style="font-size:12px;color:var(--ink4)">${p.companyName}</td>
-        <td>${p.method||'—'}</td><td class="muted">${p.note||'—'}</td>
-        <td class="r mono bold" style="color:var(--green)">${fmt(p.amount)}</td>
-      </tr>`).join('')||'<tr><td colspan="7"><div class="empty"><p>ยังไม่มีรายการ</p></div></td></tr>'}</tbody>
+      <thead><tr>
+        <th>วันที่รับ</th><th>เดือน AR</th><th>เดือน Finance</th>
+        <th>ใบแจ้งหนี้</th><th>ลูกค้า</th><th>บริษัท</th>
+        <th>ช่องทาง</th><th>หมายเหตุ</th>
+        <th>Finance sync</th><th class="r">จำนวน</th>
+      </tr></thead>
+      <tbody id="payments-tbody">${allPmts.map(p=>{
+        const st = p.syncStatus || (p.financeTransactionId ? 'synced' : '—');
+        const stHtml = st==='synced'?`<span style="color:var(--green);font-size:11px">✅ synced</span>`
+          :st==='failed'?`<span style="color:var(--red);font-size:11px">❌ failed</span>`
+          :st==='pending'?`<span style="color:var(--orange);font-size:11px">⏳ pending</span>`
+          :`<span style="color:var(--ink4);font-size:11px">—</span>`;
+        const payDate = p.paymentDate || p.date || '';
+        const arMonth = p.originalPaymentMonth || payDate.slice(0,7);
+        const finMonth = p.financeMonth || (p.financeDate||p.date||'').slice(0,7);
+        const shiftedBadge = p.shiftedToNextOpenMonth
+          ? `<span style="background:var(--orange);color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:4px;vertical-align:middle" title="${p.shiftedReason||''}">เลื่อนเดือน</span>`
+          : '';
+        return `<tr data-pay-month="${arMonth}" data-fin-month="${finMonth}">
+          <td>${payDate}</td>
+          <td class="mono">${arMonth}</td>
+          <td class="mono">${finMonth}${shiftedBadge}</td>
+          <td class="mono">${p.invNo}</td><td>${p.custName}</td>
+          <td style="font-size:12px;color:var(--ink4)">${p.companyName}</td>
+          <td>${p.method||'—'}</td><td class="muted">${p.note||'—'}</td>
+          <td>${stHtml}</td>
+          <td class="r mono bold" style="color:var(--green)">${fmt(Number(p.amount)||0)}</td>
+        </tr>`;
+      }).join('')||'<tr><td colspan="10"><div class="empty"><p>ยังไม่มีรายการ</p></div></td></tr>'}</tbody>
     </table>
   </div>`;
 }
 
+function filterPaymentsTable() {
+  const payF = document.getElementById('filter-pay-month')?.value || '';
+  const finF = document.getElementById('filter-fin-month')?.value || '';
+  const rows = document.querySelectorAll('#payments-tbody tr[data-pay-month]');
+  rows.forEach(tr => {
+    const pm = tr.dataset.payMonth || '';
+    const fm = tr.dataset.finMonth || '';
+    const show = (!payF || pm === payF) && (!finF || fm === finF);
+    tr.style.display = show ? '' : 'none';
+  });
+}
+window.filterPaymentsTable = filterPaymentsTable;
+
 // ══════════════════════════════════════════════════════
 // NEW QUOTATION FORM
 // ══════════════════════════════════════════════════════
+function _requireOnline() {
+  if (!_isOnline) {
+    toast('⚠️ ออฟไลน์อยู่ — กรุณาเชื่อมต่ออินเทอร์เน็ตก่อนสร้างเอกสาร เพื่อป้องกันเลขเอกสารซ้ำ', 'err');
+    return false;
+  }
+  return true;
+}
+
 function renderNewQT() {
+  if (!_requireOnline()) return;
   _rowCount = 0;
   document.getElementById('page-content').innerHTML = buildDocForm('qt');
   initDocForm('qt');
   addRow('qt'); addRow('qt'); addRow('qt'); addRow('qt'); addRow('qt');
 }
 function renderNewINV() {
+  if (!_requireOnline()) return;
   _rowCount = 0;
   document.getElementById('page-content').innerHTML = buildDocForm('inv');
   initDocForm('inv');
   addRow('inv'); addRow('inv'); addRow('inv'); addRow('inv'); addRow('inv');
 }
 function renderNewBL() {
+  if (!_requireOnline()) return;
   _rowCount = 0;
   document.getElementById('page-content').innerHTML = buildDocForm('bl');
   initDocForm('bl');
@@ -2262,10 +2579,10 @@ function buildDocForm(type) {
     <div class="card-body">
       <div class="form-grid-4">
         <div class="field"><label>เลขที่เอกสาร</label><input type="text" id="f-docno" readonly></div>
-        <div class="field"><label>วันที่</label><input type="date" id="f-date" value="${today()}"></div>
+        <div class="field"><label>วันที่</label><input type="date" id="f-date" value="${today()}" onchange="syncDueFromTerms()"></div>
         ${extraFields}
         <div class="field"><label>เงื่อนไขการชำระ</label>
-          <select id="f-terms"><option>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option selected>30 วัน</option><option>60 วัน</option></select></div>
+          <select id="f-terms" onchange="syncDueFromTerms()"><option>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option selected>30 วัน</option><option>60 วัน</option></select></div>
       </div>
     </div>
   </div>
@@ -2319,8 +2636,7 @@ let _selectedCo = null;
 function initDocForm(type) {
   _selectedCo = null;
   if(type==='inv') {
-    const dueEl = document.getElementById('f-due');
-    if(dueEl) dueEl.value = addDays(today(), 30);
+    syncDueFromTerms();
   }
   if(type==='qt') {
     const validEl = document.getElementById('f-valid');
@@ -2368,6 +2684,11 @@ function renderBankOptions(co) {
         <div style="font-size:12px;color:var(--ink3)">เลขบัญชี: <span style="font-family:monospace;font-weight:700;letter-spacing:.05em">${b.accNo}</span>${b.branch?' | สาขา: '+b.branch:''}</div>
       </div>
     </label>`).join('');
+  // auto-select ธนาคารแรก ถ้ายังไม่ได้เลือก
+  if (banks.length > 0 && !document.querySelector('input[name="pay-method"]:checked')) {
+    const first = document.getElementById('pm-bank0');
+    if (first) first.checked = true;
+  }
   updatePayMethodUI();
 }
 window.renderBankOptions=renderBankOptions;
@@ -2482,24 +2803,65 @@ function getFormItems(type) {
   }).filter(r=>r.desc||r.price>0);
 }
 
+let _saving = false;
+let _converting = false;
+
 async function saveDoc(type) {
+  if (_saving) return; // ป้องกัน double-submit
+  if (!_requireOnline()) return;
   if(!_selectedCo) { toast('กรุณาเลือกบริษัทก่อน','err'); return; }
   const custName = document.getElementById('f-cust-name')?.value?.trim();
   if(!custName) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
+
+  // lock ทันที — disable ปุ่มบันทึก
+  _saving = true;
+  const saveBtn = document.querySelector('.btn-primary[onclick*="saveDoc"]');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ กำลังบันทึก...'; }
+
+  try {
   const custTaxInput = document.getElementById('f-cust-tax')?.value?.trim()||'';
 
   // resolve customerId จาก store.customers
   const custObj = findDuplicateCustomer({name: custName, taxId: custTaxInput});
-  const resolvedCustomerId   = custObj?.id || null;
-  const resolvedCustomerCode = custObj?.customerCode || '';
+  let resolvedCustomerId   = custObj?.id || null;
+  let resolvedCustomerCode = custObj?.customerCode || '';
+  const docDateValue = document.getElementById('f-date')?.value || today();
+
+  // ถ้าไม่เจอ customer ให้สร้างอัตโนมัติ
+  if (!resolvedCustomerId && custName) {
+    const newCust = {
+      id: uid(),
+      name: custName,
+      customerName: custName,
+      taxId: custTaxInput || '',
+      address: document.getElementById('f-cust-addr')?.value || '',
+      customerCode: generateCustomerCode(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      source: 'auto_created_from_doc'
+    };
+    const addedCustId = await storeAdd('customers', newCust);
+    newCust.id = addedCustId || newCust.id;
+    data.customers = data.customers || [];
+    data.customers.push(newCust);
+    syncLS('customers', data.customers);
+    resolvedCustomerId   = newCust.id;
+    resolvedCustomerCode = newCust.customerCode;
+    toast(`สร้างลูกค้าใหม่ "${custName}" อัตโนมัติ`, 'info');
+  }
 
   if(type==='bl') {
     if(!_blSelected.length) { toast('กรุณาเลือกใบแจ้งหนี้อย่างน้อย 1 ใบ','err'); return; }
     const invs=data.invoices.filter(i=>_blSelected.includes(i.id));
-    const total=invs.reduce((s,i)=>s+remainAmount(i),0);
-    const bl={
-      docNumber:genDocNo(_selectedCo.prefix||'X','BL'),
-      docDate:document.getElementById('f-date')?.value,
+    // validate all invoices can be linked before writing anything
+    const alreadyLinked = invs.filter(i=>i.linkedBilling);
+    if (alreadyLinked.length) {
+      toast(`ใบแจ้งหนี้ ${alreadyLinked.map(i=>i.docNumber).join(', ')} ถูกวางบิลแล้ว`, 'err'); return;
+    }
+    const total = invs.reduce((s,i)=>s+remainAmount(i),0);
+    const bl = {
+      docNumber: await genDocNo(_selectedCo.prefix||'X','BL'),
+      docDate: docDateValue,
       companyId:_selectedCo.id, companyName:_selectedCo.name,
       customerId:resolvedCustomerId, customerCode:resolvedCustomerCode,
       custName, customerName:custName,
@@ -2508,10 +2870,33 @@ async function saveDoc(type) {
       invoiceIds:_blSelected, total, status:'sent',
       note:document.getElementById('f-note')?.value,
       payMethod:getSelectedPayMethod(),
+      paymentTerms:getSelectedPaymentTerms(), terms:getSelectedPaymentTerms(), paymentDays:getPaymentTermDays(getSelectedPaymentTerms()),
     };
-    bl.id=await storeAdd('billings',bl);
+
+    if (_fbdb) {
+      // Firestore batch write — atomic: ใบวางบิล + update invoices
+      try {
+        const batch = _fbdb.batch();
+        const blRef = _fbdb.collection('billings').doc();
+        bl.id = blRef.id;
+        bl.createdAt = new Date().toISOString();
+        batch.set(blRef, bl);
+        for (const inv of invs) {
+          const invRef = _fbdb.collection('invoices').doc(inv.id);
+          batch.update(invRef, { linkedBilling: bl.id, updatedAt: new Date().toISOString() });
+        }
+        await batch.commit();
+      } catch(e) {
+        toast('บันทึกใบวางบิลไม่สำเร็จ: ' + e.message, 'err');
+        return;
+      }
+    } else {
+      // local-only mode
+      bl.id = uid();
+    }
+
     data.billings.push(bl);
-    for(const inv of invs){ const r=await storeUpdate('invoices',inv.id,{linkedBilling:bl.id}); if(r) inv.linkedBilling=bl.id; }
+    for (const inv of invs) { inv.linkedBilling = bl.id; }
     syncLS('billings', data.billings); syncLS('invoices', data.invoices);
     toast('บันทึกใบวางบิลเรียบร้อย','ok'); goPage('billing'); return;
   }
@@ -2521,8 +2906,10 @@ async function saveDoc(type) {
   const hasWht=document.getElementById('f-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
   const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const paymentTerms = getSelectedPaymentTerms();
+  const paymentDays = getPaymentTermDays(paymentTerms);
   const docData={
-    docNumber:genDocNo(_selectedCo.prefix||'X', type==='qt'?'QT':'INV'),
+    docNumber: await genDocNo(_selectedCo.prefix||'X', type==='qt'?'QT':'INV'),
     docDate:document.getElementById('f-date')?.value,
     companyId:_selectedCo.id, companyName:_selectedCo.name,
     customerId:resolvedCustomerId, customerCode:resolvedCustomerCode,
@@ -2535,7 +2922,8 @@ async function saveDoc(type) {
     items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht,
     status:'sent', note:document.getElementById('f-note')?.value,
     payMethod:getSelectedPayMethod(),
-    ...(type==='inv'?{docDue:document.getElementById('f-due')?.value,paidAmount:0,payments:[],linkedQt:null,linkedBilling:null}:{}),
+    paymentTerms, terms:paymentTerms, paymentDays,
+    ...(type==='inv'?{docDue:document.getElementById('f-due')?.value || calcDueDateByTerms(docDateValue,paymentTerms),paidAmount:0,payments:[],linkedQt:null,linkedBilling:null}:{}),
     ...(type==='qt'?{docValid:document.getElementById('f-valid')?.value,linkedInvoice:null}:{}),
   };
   const col=type==='qt'?'quotations':'invoices';
@@ -2544,6 +2932,13 @@ async function saveDoc(type) {
   syncLS(col, data[col]);
   toast(`บันทึก${type==='qt'?'ใบเสนอราคา':'ใบแจ้งหนี้'}เรียบร้อย`,'ok');
   goPage(type==='qt'?'quotations':'invoices');
+  } catch(e) {
+    console.error('[AR] saveDoc error:', e);
+    toast('เกิดข้อผิดพลาด: ' + e.message, 'err');
+  } finally {
+    _saving = false;
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 บันทึก'; }
+  }
 }
 window.saveDoc=saveDoc;
 
@@ -2556,14 +2951,16 @@ function convertDoc(action, srcId) {
   const titles = {qt2inv:`แปลง QT → ใบแจ้งหนี้\n${src?.docNumber}`, inv2bl:`แปลง INV → ใบวางบิล\n${src?.docNumber}`};
   document.getElementById('convert-title').textContent = titles[action]||'แปลงเอกสาร';
   const co=companies.find(c=>c.id===src?.companyId)||{};
+  const srcTerms = src?.paymentTerms || src?.terms || '30 วัน';
+  const defaultDue = calcDueDateByTerms(today(), srcTerms);
   document.getElementById('convert-body').innerHTML=`
     <div style="background:var(--bg2);padding:14px;border-radius:var(--r);font-size:13px;margin-bottom:12px">
       <div style="font-weight:700">${src?.docNumber}</div>
       <div style="color:var(--ink4)">${src?.custName} — ${fmt(src?.total)} บาท</div>
     </div>
     <div class="form-grid" style="gap:10px">
-      <div class="field"><label>วันที่เอกสาร</label><input type="date" id="cv-date" value="${today()}"></div>
-      ${action==='qt2inv'?`<div class="field"><label>ครบกำหนดชำระ</label><input type="date" id="cv-due" value="${addDays(today(),30)}"></div>`:''}
+      <div class="field"><label>วันที่เอกสาร</label><input type="date" id="cv-date" value="${today()}" onchange="syncConvertDueFromTerms()"></div>
+      ${action==='qt2inv'?`<div class="field"><label>ครบกำหนดชำระ (${srcTerms})</label><input type="date" id="cv-due" data-term="${srcTerms}" value="${defaultDue}"></div>`:''}
     </div>`;
   document.getElementById('convert-confirm-btn').onclick = confirmConvert;
   document.getElementById('modal-convert').classList.add('show');
@@ -2571,14 +2968,22 @@ function convertDoc(action, srcId) {
 window.convertDoc=convertDoc;
 
 async function confirmConvert() {
+  if (_converting) return;
+  if (!_requireOnline()) return;
+  _converting = true;
+  const confirmBtn = document.getElementById('convert-confirm-btn');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '⏳ กำลังแปลง...'; }
+  try {
   const {action, srcId} = _convertDoc;
   const cvDate = document.getElementById('cv-date')?.value||today();
   if(action==='qt2inv') {
     const qt=data.quotations.find(q=>q.id===srcId); if(!qt) return;
     const co=companies.find(c=>c.id===qt.companyId)||{};
+    const paymentTerms = qt.paymentTerms || qt.terms || '30 วัน';
+    const paymentDays = getPaymentTermDays(paymentTerms);
     const inv={
-      docNumber:genDocNo(co.prefix||'X','INV'),
-      docDate:cvDate, docDue:document.getElementById('cv-due')?.value||addDays(cvDate,30),
+      docNumber: await genDocNo(co.prefix||'X','INV'),
+      docDate:cvDate, docDue:document.getElementById('cv-due')?.value||calcDueDateByTerms(cvDate,paymentTerms),
       companyId:qt.companyId, companyName:qt.companyName,
       customerId:qt.customerId||resolveCustomerIdForDoc(qt)||null,
       customerCode:qt.customerCode||(data.customers||[]).find(c=>c.id===(qt.customerId||resolveCustomerIdForDoc(qt)))?.customerCode||'',
@@ -2587,6 +2992,7 @@ async function confirmConvert() {
       items:qt.items, hasVat:qt.hasVat, hasWht:qt.hasWht,
       subtotal:qt.subtotal, vat:qt.vat, wht:qt.wht, total:qt.total,
       paidAmount:0, status:'sent', payments:[], linkedQt:qt.id, linkedBilling:null, note:qt.note,
+      payMethod:qt.payMethod||null, paymentTerms, terms:paymentTerms, paymentDays,
     };
     inv.id=await storeAdd('invoices',inv);
     data.invoices.push(inv);
@@ -2599,7 +3005,7 @@ async function confirmConvert() {
     const inv=data.invoices.find(i=>i.id===srcId); if(!inv) return;
     const co=companies.find(c=>c.id===inv.companyId)||{};
     const bl={
-      docNumber:genDocNo(co.prefix||'X','BL'),
+      docNumber: await genDocNo(co.prefix||'X','BL'),
       docDate:cvDate, companyId:inv.companyId, companyName:inv.companyName,
       customerId:inv.customerId||resolveCustomerIdForDoc(inv)||null,
       customerCode:inv.customerCode||(data.customers||[]).find(c=>c.id===(inv.customerId||resolveCustomerIdForDoc(inv)))?.customerCode||'',
@@ -2613,6 +3019,13 @@ async function confirmConvert() {
     syncLS('billings', data.billings); syncLS('invoices', data.invoices);
     toast('แปลงเป็นใบวางบิลเรียบร้อย','ok');
     closeModal('modal-convert'); goPage('billing');
+  }
+  } catch(e) {
+    console.error('[AR] confirmConvert error:', e);
+    toast('เกิดข้อผิดพลาด: ' + e.message, 'err');
+  } finally {
+    _converting = false;
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'ยืนยัน'; }
   }
 }
 
@@ -2631,7 +3044,7 @@ function openPayment(invId) {
   document.getElementById('pmt-note').value = '';
   document.getElementById('pmt-remain-info').innerHTML='';
   document.getElementById('modal-payment').classList.add('show');
-  document.getElementById('pmt-amount').addEventListener('input', updateRemainPreview);
+  document.getElementById('pmt-amount').oninput = updateRemainPreview;
 }
 window.openPayment=openPayment;
 
@@ -2645,15 +3058,336 @@ function updateRemainPreview() {
   else el.innerHTML=`<span style="color:var(--orange)">⚠️ ยังคงเหลือ ${fmt(afterRem)} บาท (ชำระบางส่วน)</span>`;
 }
 
+// ── AR → Finance Sync (v2.9 — month-lock-aware) ──────────────────────────────
+// sync payment ไป fin_transactions (collection หลักที่ Finance app อ่าน)
+// financeDate/financeMonth ถูก resolve โดย findNextOpenFinanceDate() ก่อนเรียก function นี้
+async function syncARPaymentToFinance(invoice, payment) {
+  if (!_fbdb) return null;
+  // duplicate guard: ตรวจก่อนว่ามีแล้วหรือยัง
+  try {
+    const existing = await _fbdb.collection('fin_transactions').doc(payment.id).get();
+    if (existing.exists) {
+      console.log('[AR→Finance] already synced, skip:', payment.id);
+      return payment.id;
+    }
+  } catch(e) { /* ถ้าตรวจไม่ได้ให้ผ่าน */ }
+  // ใช้ financeDate/financeMonth ที่ผ่านมา (month lock ถูกจัดการโดย findNextOpenFinanceDate แล้ว)
+  const financeDate = payment.financeDate || payment.date;
+  const financeMonth = payment.financeMonth || financeDate.slice(0, 7);
+  const customerCode = invoice.customerCode ||
+    (data.customers||[]).find(c=>c.id===invoice.customerId)?.customerCode || '';
+  const txDoc = {
+    id:                     payment.id,
+    type:                   'income',
+    sourceModule:           'ar',
+    sourceApp:              'AR',
+    sourceType:             'AR_PAYMENT',
+    sourcePaymentId:        payment.id,
+    sourceRefId:            invoice.id,
+    sourceInvoiceId:        invoice.id,
+    invoiceNo:              invoice.docNumber || invoice.docNo || '',
+    date:                   financeDate,
+    transferDate:           financeDate,
+    paymentDate:            payment.paymentDate || payment.date,
+    monthKey:               financeMonth,
+    party:                  invoice.custName || invoice.customerName || '',
+    customerId:             invoice.customerId || '',
+    customerCode:           customerCode,
+    customerName:           invoice.custName || invoice.customerName || '',
+    category:               'รับชำระลูกค้า',
+    amount:                 Number(payment.amount) || 0,
+    method:                 payment.method || 'โอนธนาคาร',
+    referenceNo:            invoice.docNumber || '',
+    originalPaymentMonth:   payment.originalPaymentMonth || (payment.date||'').slice(0,7),
+    financeMonth:           financeMonth,
+    shiftedToNextOpenMonth: payment.shiftedToNextOpenMonth || false,
+    note:                   payment.shiftedReason
+                              ? payment.shiftedReason
+                              : (payment.note || ''),
+    status:                 'confirmed',
+    syncStatus:             'linked',
+    createdAt:              payment.createdAt || new Date().toISOString(),
+    updatedAt:              new Date().toISOString(),
+    createdBy:              'ar_app'
+  };
+  try {
+    await _fbdb.collection('fin_transactions').doc(txDoc.id).set(txDoc);
+    console.log('[AR→Finance] synced to fin_transactions:', txDoc.id, '฿'+txDoc.amount,
+                'financeDate:', financeDate, 'paymentDate:', txDoc.paymentDate);
+    // audit log
+    _fbdb.collection('audit_logs').add({
+      action: 'AR_PAYMENT_SYNCED',
+      app: 'ar', monthKey: financeMonth,
+      at: new Date().toISOString(),
+      detail: {
+        invoiceId: invoice.id, paymentId: payment.id,
+        amount: txDoc.amount, docNumber: invoice.docNumber,
+        paymentDate: txDoc.paymentDate, financeDate,
+        shifted: txDoc.shiftedToNextOpenMonth
+      }
+    }).catch(()=>{});
+    return txDoc.id;
+  } catch(err) {
+    console.error('[AR→Finance] sync failed:', err);
+    return null;
+  }
+}
+window.syncARPaymentToFinance = syncARPaymentToFinance;
+
+// ── BACKFILL: sync payment เก่าทั้งหมดจาก AR invoices → fin_transactions ────
+async function backfillARPaymentsToFinance() {
+  if (!_fbdb) { toast('ไม่ได้เชื่อมต่อ Firebase', 'err'); return; }
+  const btn = document.getElementById('backfill-btn');
+  const statusEl = document.getElementById('backfill-status');
+  if (btn) btn.disabled = true;
+  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+
+  const invoices = data.invoices || [];
+  const allPayments = [];
+  invoices.forEach(inv => {
+    (inv.payments || []).forEach(pmt => {
+      if (pmt.id && pmt.amount > 0) allPayments.push({ inv, pmt });
+    });
+  });
+
+  if (allPayments.length === 0) {
+    toast('ไม่พบ payment ใดใน AR', 'warn');
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  setStatus('กำลังตรวจสอบ ' + allPayments.length + ' รายการ...');
+  let synced = 0, skipped = 0, shifted = 0, errors = 0;
+
+  for (let i = 0; i < allPayments.length; i++) {
+    const { inv, pmt } = allPayments[i];
+    setStatus('(' + (i+1) + '/' + allPayments.length + ') กำลัง sync ' + (inv.docNumber||inv.id) + '...');
+
+    // duplicate guard — ถ้ามีใน Finance แล้วข้ามได้เลย
+    try {
+      const existing = await _fbdb.collection('fin_transactions').doc(pmt.id).get();
+      if (existing.exists) { skipped++; continue; }
+    } catch(e) {}
+
+    // หา financeDate — ใช้ findNextOpenFinanceDate เลื่อนเดือนถ้าปิดงวด (ไม่ skip)
+    const payDate = pmt.paymentDate || pmt.date || '';
+    let financeInfo;
+    try {
+      financeInfo = await findNextOpenFinanceDate(payDate);
+    } catch(e) {
+      console.error('[backfill] findNextOpenFinanceDate failed:', pmt.id, e);
+      errors++; continue;
+    }
+    if (financeInfo.shifted) shifted++;
+
+    const customerCode = inv.customerCode ||
+      (data.customers||[]).find(c => c.id === inv.customerId)?.customerCode || '';
+    const txDoc = {
+      id:                     pmt.id,
+      type:                   'income',
+      sourceModule:           'ar',
+      sourceApp:              'AR',
+      sourceType:             'AR_PAYMENT',
+      sourcePaymentId:        pmt.id,
+      sourceRefId:            inv.id,
+      sourceInvoiceId:        inv.id,
+      invoiceNo:              inv.docNumber || '',
+      date:                   financeInfo.financeDate,
+      transferDate:           financeInfo.financeDate,
+      paymentDate:            payDate,
+      monthKey:               financeInfo.financeMonth,
+      party:                  inv.custName || inv.customerName || '',
+      customerId:             inv.customerId || '',
+      customerCode:           customerCode,
+      customerName:           inv.custName || inv.customerName || '',
+      category:               'รับชำระลูกค้า',
+      amount:                 Number(pmt.amount) || 0,
+      method:                 pmt.method || 'โอนธนาคาร',
+      referenceNo:            inv.docNumber || '',
+      originalPaymentMonth:   payDate.slice(0, 7),
+      financeMonth:           financeInfo.financeMonth,
+      shiftedToNextOpenMonth: financeInfo.shifted,
+      note:                   financeInfo.reason || pmt.note || '',
+      status:                 'confirmed',
+      syncStatus:             'linked',
+      createdAt:              pmt.createdAt || payDate + 'T00:00:00.000Z',
+      updatedAt:              new Date().toISOString(),
+      createdBy:              'ar_backfill'
+    };
+    try {
+      await _fbdb.collection('fin_transactions').doc(txDoc.id).set(txDoc);
+      synced++;
+    } catch(e) {
+      console.error('[backfill] failed:', pmt.id, e);
+      errors++;
+    }
+  }
+
+  const msg = 'Backfill เสร็จ: ✅ ' + synced + ' รายการ' +
+    (shifted ? ' (เลื่อนเดือน ' + shifted + ' รายการ)' : '') +
+    ' | ข้ามซ้ำ: ' + skipped +
+    (errors ? ' | ❌ ผิดพลาด: ' + errors : '');
+  setStatus(msg);
+  toast(msg, synced > 0 ? 'ok' : 'warn');
+  console.log('[backfillARPaymentsToFinance]', { synced, skipped, shifted, errors });
+  if (btn) btn.disabled = false;
+}
+window.backfillARPaymentsToFinance = backfillARPaymentsToFinance;
+
+// ── Month-lock helpers (v2.9) ──────────────────────────────────────────────────
+// Returns true if YYYY-MM monthKey is locked in Finance
+// Checks localStorage cache first (key: 'ar_month_locks_cache'), then Firestore
+async function isFinanceMonthLocked(monthKey) {
+  try {
+    const cache = JSON.parse(localStorage.getItem('ar_month_locks_cache') || '{}');
+    if (cache[monthKey] !== undefined) return cache[monthKey];
+  } catch(e) {}
+  if (!_fbdb) return false;
+  try {
+    const snap = await _fbdb.collection('month_locks').doc(monthKey).get();
+    const locked = snap.exists && snap.data().locked === true;
+    // cache result for 60s
+    try {
+      const cache = JSON.parse(localStorage.getItem('ar_month_locks_cache') || '{}');
+      cache[monthKey] = locked;
+      cache['__ts_' + monthKey] = Date.now();
+      localStorage.setItem('ar_month_locks_cache', JSON.stringify(cache));
+    } catch(e) {}
+    return locked;
+  } catch(e) { return false; }
+}
+window.isFinanceMonthLocked = isFinanceMonthLocked;
+
+// Given a paymentDate (YYYY-MM-DD), return the financeDate to use.
+// If the payment's month is locked, advance to the 1st of the next unlocked month.
+// Returns: { financeDate, financeMonth, shifted, reason }
+async function findNextOpenFinanceDate(paymentDate) {
+  const origMonth = paymentDate.slice(0, 7); // YYYY-MM
+  if (!(await isFinanceMonthLocked(origMonth))) {
+    return { financeDate: paymentDate, financeMonth: origMonth, shifted: false, reason: '' };
+  }
+  // advance month by month, up to 24
+  let [y, m] = origMonth.split('-').map(Number);
+  for (let i = 0; i < 24; i++) {
+    m++; if (m > 12) { m = 1; y++; }
+    const candidate = `${y}-${String(m).padStart(2,'0')}`;
+    if (!(await isFinanceMonthLocked(candidate))) {
+      const financeDate = `${candidate}-01`;
+      return {
+        financeDate,
+        financeMonth: candidate,
+        shifted: true,
+        reason: `รับเงินจริงวันที่ ${paymentDate} แต่เดือน ${origMonth} ถูกปิดงวดแล้ว จึงลงบัญชีในเดือน ${candidate}`
+      };
+    }
+  }
+  throw new Error(`ไม่พบเดือนบัญชีที่เปิดอยู่ภายใน 24 เดือน (เริ่มจาก ${origMonth})`);
+}
+window.findNextOpenFinanceDate = findNextOpenFinanceDate;
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ── Pending sync queue — เก็บ payment ที่ sync Finance ไม่สำเร็จ ──────────────
+function _addPendingSync(invoiceId, paymentId) {
+  try {
+    const q = JSON.parse(localStorage.getItem('ar_pending_sync') || '[]');
+    if (!q.find(x => x.invoiceId === invoiceId && x.paymentId === paymentId)) {
+      q.push({ invoiceId, paymentId, addedAt: new Date().toISOString() });
+      localStorage.setItem('ar_pending_sync', JSON.stringify(q));
+    }
+  } catch(e) {}
+}
+
+async function retrySyncQueue() {
+  if (!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
+  const q = JSON.parse(localStorage.getItem('ar_pending_sync') || '[]');
+  if (!q.length) { toast('ไม่มีรายการ sync ค้างอยู่', 'info'); return; }
+  let ok = 0;
+  const remaining = [];
+  for (const item of q) {
+    const inv = data.invoices.find(i => i.id === item.invoiceId);
+    if (!inv) continue;
+    const pmt = (inv.payments || []).find(p =>
+      p.id === item.paymentId &&
+      (p.syncStatus === 'failed' || p.syncStatus === 'pending' || !p.syncStatus)
+    );
+    if (!pmt) continue;
+    // Re-compute financeDate in case a previously-locked month is now open
+    let freshFinance;
+    try {
+      freshFinance = await findNextOpenFinanceDate(pmt.paymentDate || pmt.date);
+    } catch(e) {
+      console.warn('[retrySyncQueue] findNextOpenFinanceDate error:', e);
+      remaining.push(item);
+      continue;
+    }
+    const updatedPmt = {
+      ...pmt,
+      financeDate: freshFinance.financeDate,
+      financeMonth: freshFinance.financeMonth,
+      shiftedToNextOpenMonth: freshFinance.shifted,
+      shiftedReason: freshFinance.reason,
+    };
+    const txId = await syncARPaymentToFinance(inv, updatedPmt);
+    if (txId) {
+      const fp = inv.payments.map(p =>
+        p.id === pmt.id
+          ? {...p, ...updatedPmt, financeTransactionId: txId, syncStatus: 'synced'}
+          : p
+      );
+      storeUpdate('invoices', inv.id, {payments: fp}).catch(()=>{});
+      inv.payments = fp;
+      syncLS('invoices', data.invoices);
+      ok++;
+    } else {
+      remaining.push(item);
+    }
+  }
+  localStorage.setItem('ar_pending_sync', JSON.stringify(remaining));
+  toast(`Retry: สำเร็จ ${ok} รายการ${remaining.length ? `, ยังค้าง ${remaining.length} รายการ` : ''}`,
+    ok > 0 ? 'ok' : 'err');
+}
+window.retrySyncQueue = retrySyncQueue;
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function confirmPayment() {
   if(!_payingInvoice) return;
   const amt=parseFloat(document.getElementById('pmt-amount').value)||0;
   if(amt<=0) { toast('กรุณากรอกจำนวนเงิน','err'); return; }
   const rem=remainAmount(_payingInvoice);
   if(amt>rem+0.01) { toast(`จำนวนเกินยอดคงเหลือ (${fmt(rem)} บาท)`,'err'); return; }
-  const pmt={ id:uid(), date:document.getElementById('pmt-date').value,
-    amount:amt, method:document.getElementById('pmt-method').value,
-    note:document.getElementById('pmt-note').value };
+  const pmtDate = document.getElementById('pmt-date').value;
+
+  // ── หา financeDate (เลื่อนเดือนถ้า Finance ปิดงวด) ──────────────────────────
+  let financeInfo;
+  try {
+    financeInfo = await findNextOpenFinanceDate(pmtDate);
+  } catch(e) {
+    toast('เกิดข้อผิดพลาด: ' + e.message, 'err'); return;
+  }
+  if (financeInfo.shifted) {
+    const origMonth = pmtDate.slice(0,7);
+    const financeMonth = financeInfo.financeMonth;
+    toast(`เดือน ${origMonth} ปิดแล้ว — จะลงบัญชี Finance ในเดือน ${financeMonth} แทน`, 'warn');
+  }
+
+  const pmt = {
+    id: uid(),
+    date: pmtDate,                                     // backward compat
+    paymentDate: pmtDate,                              // actual payment date
+    financeDate: financeInfo.financeDate,              // date used in Finance
+    financeMonth: financeInfo.financeMonth,            // YYYY-MM used in Finance
+    originalPaymentMonth: pmtDate.slice(0, 7),        // YYYY-MM of actual payment
+    shiftedToNextOpenMonth: financeInfo.shifted,
+    shiftedReason: financeInfo.reason,
+    amount: amt,
+    method: document.getElementById('pmt-method').value,
+    note: document.getElementById('pmt-note').value,
+    createdAt: new Date().toISOString(),
+    financeTransactionId: null,
+    syncStatus: 'pending',
+    syncError: null,
+  };
+
   const newPayments=[...(_payingInvoice.payments||[]),pmt];
   const newPaidAmount=(_payingInvoice.paidAmount||0)+amt;
   const tempInv={..._payingInvoice,payments:newPayments,paidAmount:newPaidAmount};
@@ -2664,6 +3398,21 @@ async function confirmPayment() {
   syncLS('invoices', data.invoices);
   closeModal('modal-payment');
   toast(`บันทึกรับชำระ ${fmt(amt)} บาท เรียบร้อย`,'ok');
+  // ── sync ไป fin_transactions พร้อม track syncStatus ──────────────────────────
+  syncARPaymentToFinance(_payingInvoice, pmt).then(txId => {
+    const syncSt = txId ? 'synced' : 'failed';
+    const finalPayments = (_payingInvoice.payments||[]).map(p =>
+      p.id === pmt.id ? {...p, financeTransactionId: txId||null, syncStatus: syncSt} : p
+    );
+    storeUpdate('invoices', _payingInvoice.id, {payments: finalPayments}).catch(()=>{});
+    Object.assign(_payingInvoice, {payments: finalPayments});
+    syncLS('invoices', data.invoices);
+    if (!txId) _addPendingSync(_payingInvoice.id, pmt.id);
+  }).catch(e => {
+    console.warn('[AR→Finance] background sync error:', e);
+    _addPendingSync(_payingInvoice.id, pmt.id);
+  });
+  // ─────────────────────────────────────────────────────────────────────────────
   if(_currentPage==='invoices') refreshINVTable();
   else if(_currentPage==='dashboard') renderDashboard();
   else if(_currentPage==='payments') renderPayments();
@@ -2744,16 +3493,21 @@ function viewDoc(type, id) {
   }
   if(src.note) body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)"><b>หมายเหตุ:</b> ${src.note}</div>`;
 
-  // แสดงข้อมูลการชำระเงิน
+  // แสดงข้อมูลการชำระเงิน — fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo ใน invoice
   const pm=src.payMethod;
-  if(pm?.bankInfo) {
-    const b=pm.bankInfo;
+  const co2=companies.find(c=>c.id===src.companyId);
+  const bankInfoList = pm?.bankInfo ? [pm.bankInfo]
+    : (pm?.method==='เงินสด' ? [] : (co2?.banks||[]));
+  if(bankInfoList.length) {
     body+=`<div class="divider"></div>
     <div style="background:var(--accent-light);border:1px solid var(--accent-mid);border-radius:var(--r);padding:12px;font-size:12px">
-      <div style="font-weight:700;color:var(--accent);margin-bottom:6px">💳 ชำระเงินโดยการโอน</div>
-      <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType}${b.branch?' | สาขา: '+b.branch:''}</div>
-      <div>ชื่อบัญชี: <b>${b.accName}</b></div>
-      <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--accent)">${b.accNo}</span></div>
+      <div style="font-weight:700;color:var(--accent);margin-bottom:8px">💳 ชำระเงินโดยการโอนเข้าบัญชี</div>
+      ${bankInfoList.map(b=>`
+      <div style="margin-bottom:6px">
+        <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType}${b.branch?' | สาขา: '+b.branch:''}</div>
+        <div>ชื่อบัญชี: <b>${b.accName}</b></div>
+        <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--accent)">${b.accNo}</span></div>
+      </div>`).join('<hr style="border:none;border-top:1px dashed var(--border);margin:6px 0">')}
     </div>`;
   } else if(pm?.method==='เงินสด') {
     body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)">💵 ชำระเป็น <b>เงินสด</b></div>`;
@@ -2928,16 +3682,20 @@ function printCurrentDoc() {
       </div>
     </div>`:''}
 
-    <!-- BANK INFO -->
-    ${src.payMethod?.bankInfo?`
-    <div class="bank-box">
-      <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
-      <div>
-        <div style="font-size:13px;font-weight:600;margin-bottom:2px">${src.payMethod.bankInfo.bankName} — ${src.payMethod.bankInfo.accType}${src.payMethod.bankInfo.branch?' สาขา '+src.payMethod.bankInfo.branch:''}</div>
-        <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${src.payMethod.bankInfo.accName}</b></div>
-        <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${src.payMethod.bankInfo.accNo}</span></div>
-      </div>
-    </div>`:src.payMethod?.method==='เงินสด'?`<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>`:''}
+    <!-- BANK INFO — fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo ใน invoice -->
+    ${(()=>{
+      const pm=src.payMethod;
+      const banks=pm?.bankInfo?[pm.bankInfo]:(pm?.method==='เงินสด'?[]:(co.banks||[]));
+      if(!banks.length) return pm?.method==='เงินสด'?'<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>':'';
+      return `<div class="bank-box">
+        <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
+        ${banks.map(b=>`<div style="margin-bottom:6px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType}${b.branch?' สาขา '+b.branch:''}</div>
+          <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${b.accName}</b></div>
+          <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
+        </div>`).join('<hr style="border:none;border-top:1px dashed #ddd;margin:6px 0">')}
+      </div>`;
+    })()}
 
     <!-- NOTE -->
     ${src.note?`<div class="note-box"><b>หมายเหตุ:</b> ${src.note}</div>`:''}
@@ -3044,13 +3802,36 @@ function renderReportCO() {
 }
 
 function renderReportAging() {
-  const today2=new Date();
-  const buckets=[{label:'0–30 วัน',color:'var(--green)',rows:[]},{label:'31–60 วัน',color:'#f97316',rows:[]},{label:'61–90 วัน',color:'var(--red)',rows:[]},{label:'90+ วัน',color:'#7f1d1d',rows:[]}];
-  data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
-    const d=daysDiff(i.docDue,today2.toISOString().split('T')[0]);
-    const r=remainAmount(i);
-    const idx=d<=0?0:d<=30?0:d<=60?1:d<=90?2:3;
-    buckets[idx].rows.push({...i,overdueDays:Math.max(0,d),remain:r});
+  // dedupe
+  const seenAg = new Set();
+  const allInvs = (data.invoices||[]).filter(i => {
+    if (!i.id) return true;
+    if (seenAg.has(i.id)) return false;
+    seenAg.add(i.id); return true;
+  });
+  // repair paidAmount in-memory
+  allInvs.forEach(inv => {
+    if ((inv.payments||[]).length > 0) {
+      const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+      if (Math.abs(sumPmts - (Number(inv.paidAmount)||0)) > 0.01) inv.paidAmount = sumPmts;
+    }
+  });
+  const buckets=[
+    {label:'ยังไม่ถึงกำหนด',color:'var(--accent)',key:'current',rows:[]},
+    {label:'0–30 วัน',color:'var(--green)',key:'0-30',rows:[]},
+    {label:'31–60 วัน',color:'#f97316',key:'31-60',rows:[]},
+    {label:'61–90 วัน',color:'var(--red)',key:'61-90',rows:[]},
+    {label:'90+ วัน',color:'#7f1d1d',key:'90+',rows:[]}
+  ];
+  const bucketMap = {};
+  buckets.forEach(b => bucketMap[b.key]=b);
+  allInvs.forEach(i=>{
+    const bKey = calcInvoiceAgingBucket(i);
+    if (!bKey) return; // paid/cancelled/draft
+    const r = calcInvoiceRemain(i);
+    const due = i.docDue || i.dueDate || i.invoiceDue || i.dateDue || '';
+    const daysOvd = due ? daysDiff(due, todayLocal()) : 0;
+    bucketMap[bKey].rows.push({...i, overdueDays: Math.max(0, daysOvd), remain: r});
   });
   const total=buckets.reduce((s,b)=>s+b.rows.reduce((ss,r)=>ss+r.remain,0),0)||1;
   document.getElementById('page-content').innerHTML=`
@@ -3785,6 +4566,11 @@ window.viewCustomer = viewCustomer;
 
 async function deleteCustomer(id) {
   const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
+  const linked = ['quotations','invoices','billings'].reduce((sum, col) =>
+    sum + (data[col]||[]).filter(d => d.customerId === id).length, 0);
+  if (linked > 0) {
+    toast(`ไม่สามารถลบได้ — ลูกค้านี้มีเอกสาร ${linked} รายการ (ใช้ "ไม่ใช้งาน" แทน)`, 'err'); return;
+  }
   if(!confirm(`ลบข้อมูลลูกค้า "${c.name}" ?\nการลบไม่สามารถย้อนกลับได้`)) return;
   await storeDelete('customers', id);
   data.customers = data.customers.filter(x=>x.id!==id);
@@ -3994,6 +4780,34 @@ function renderSettings() {
         ${Object.keys(_listeners).length?'กำลัง listen '+Object.keys(_listeners).length+' collections':'ไม่ได้ listen'}</strong></div>
       <div>Device name: <strong>${_deviceName}</strong></div>
     </div>
+  </div>
+  <div class="card" style="max-width:560px;border:1.5px solid #f59e0b">
+    <div class="card-header" style="background:rgba(245,158,11,.08)">
+      <span class="card-title">&#x1F504; Sync รายรับเก่าจาก AR &#x2192; Finance</span>
+    </div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
+        ย้ายข้อมูลการรับชำระที่มีอยู่แล้วใน AR ทุกใบแจ้งหนี้ไปยัง Finance app<br>
+        <strong>ปลอดภัย:</strong> ตรวจ duplicate — payment ที่ sync แล้วจะไม่ถูกสร้างซ้ำ<br>
+        <strong>เดือนปิดงวด:</strong> เลื่อนไปลงเดือนถัดไปที่ยังเปิดอัตโนมัติ (ไม่ข้าม)
+      </p>
+      <div id="backfill-status" style="font-size:12px;color:var(--ink4);margin-bottom:10px;min-height:18px"></div>
+      <button class="btn btn-primary" onclick="backfillARPaymentsToFinance()" id="backfill-btn">
+        &#x1F504; Sync รายรับเก่าทั้งหมดไป Finance
+      </button>
+    </div>
+  </div>
+  <div class="card" style="max-width:560px;margin-top:16px">
+    <div class="card-header">
+      <span class="card-title">&#x2699;&#xFE0F; Repair Dashboard Data</span>
+    </div>
+    <div class="card-body">
+      <div style="margin-top:0;padding-top:0">
+        <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">คำนวณ paidAmount ใหม่จาก payments[], ลบ invoice ซ้ำ, normalize field</p>
+        <button class="btn btn-outline" onclick="repairInvoices()">&#x2699;&#xFE0F; Repair Invoice Data</button>
+        <button class="btn btn-outline" onclick="debugDashboard()" style="margin-left:8px">&#x1F50D; Debug Dashboard (console)</button>
+      </div>
+    </div>
   </div>`;
 }
 window.renderSettings = renderSettings;
@@ -4012,8 +4826,34 @@ window.saveDeviceName = saveDeviceName;
 // ══════════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════════
-function closeModal(id) { document.getElementById(id)?.classList.remove('show'); }
+function closeModal(id) {
+  document.getElementById(id)?.classList.remove('show');
+  // หลังปิด modal ตรวจ pending refresh จาก snapshot เครื่องอื่น
+  setTimeout(() => {
+    if(_pendingRefreshCols && _pendingRefreshCols.size > 0) {
+      _pendingRefreshCols.clear();
+      if(_LIVE_PAGES.has(_currentPage)) {
+        goPage(_currentPage);
+        toast('🔄 โหลดข้อมูลล่าสุดจากเครื่องอื่นแล้ว', 'info');
+      }
+    }
+  }, 200);
+}
 window.closeModal=closeModal;
+
+// ── helper: เช็ค pending refresh หลังปิด form (ใช้กับปุ่มที่เรียก .remove() โดยตรง)
+function _checkPendingRefresh() {
+  setTimeout(() => {
+    if(_pendingRefreshCols && _pendingRefreshCols.size > 0) {
+      _pendingRefreshCols.clear();
+      if(_LIVE_PAGES.has(_currentPage)) {
+        goPage(_currentPage);
+        toast('🔄 โหลดข้อมูลล่าสุดจากเครื่องอื่นแล้ว', 'info');
+      }
+    }
+  }, 200);
+}
+window._checkPendingRefresh = _checkPendingRefresh;
 
 let _toastTimer;
 function toast(msg,type='info'){
@@ -5009,9 +5849,8 @@ function admFixStatus(){
 window.admFixStatus=admFixStatus;
 
 function admClearSeq(){
-  const keys=Object.keys(localStorage).filter(k=>k.startsWith('ar_seq_'));
-  keys.forEach(k=>localStorage.removeItem(k));
-  admToast(`ล้าง seq counter ${keys.length} รายการ`,'ok');
+  // ไม่มี sequence counter ใน localStorage แล้ว — running number ดูจาก data จริง
+  admToast('Running number ดูจากเอกสารใน database โดยตรง ไม่มี counter ให้ reset', 'info');
 }
 window.admClearSeq=admClearSeq;
 
@@ -5132,6 +5971,78 @@ document.getElementById('adm-confirm-ok-btn').onclick=()=>{
 document.querySelectorAll('.adm-overlay').forEach(ov=>{
   ov.addEventListener('click',e=>{if(e.target===ov) ov.classList.remove('adm-show');});
 });
+
+// ── REPAIR TOOL ──────────────────────────────────────────────────────────────
+async function repairInvoices() {
+  let repaired = 0;
+  const seen = new Set();
+  const deduped = [];
+  (data.invoices||[]).forEach(inv => {
+    if (!inv.id || seen.has(inv.id)) return;
+    seen.add(inv.id);
+    deduped.push(inv);
+  });
+  const removed = (data.invoices||[]).length - deduped.length;
+  data.invoices = deduped;
+
+  data.invoices.forEach(inv => {
+    let changed = false;
+    // normalize numbers
+    if (isNaN(Number(inv.total))) { inv.total = 0; changed = true; }
+    if (isNaN(Number(inv.paidAmount))) { inv.paidAmount = 0; changed = true; }
+    // recalc paidAmount from payments
+    if ((inv.payments||[]).length > 0) {
+      const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
+      if (Math.abs(sumPmts - (Number(inv.paidAmount)||0)) > 0.01) {
+        inv.paidAmount = Math.round(sumPmts*100)/100; changed = true;
+      }
+    }
+    // normalize docDue field
+    const dueVal = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue;
+    if (dueVal && !inv.docDue) { inv.docDue = dueVal; changed = true; }
+    // fix negative remain (cap paidAmount at total)
+    if ((Number(inv.paidAmount)||0) > (Number(inv.total)||0)) {
+      inv.paidAmount = Number(inv.total)||0; changed = true;
+    }
+    // repair customerId from customers if name matches
+    if (!inv.customerId && (inv.custName||inv.customerName)) {
+      const found = findDuplicateCustomer({name: inv.custName||inv.customerName, taxId: inv.custTax||''});
+      if (found) { inv.customerId = found.id; inv.customerCode = found.customerCode||''; changed = true; }
+    }
+    if (changed) repaired++;
+  });
+
+  syncLS('invoices', data.invoices);
+  const msg = `Repair เสร็จ: แก้ ${repaired} invoice, ลบซ้ำ ${removed} รายการ`;
+  toast(msg, repaired > 0 ? 'ok' : 'info');
+  console.log('[repairInvoices]', { repaired, removed });
+  renderDashboard();
+}
+window.repairInvoices = repairInvoices;
+
+// ── DEBUG MODE ────────────────────────────────────────────────────────────────
+window.DEBUG_DASHBOARD = false;
+window.debugDashboard = function() {
+  const rows = (data.invoices||[]).map(inv => {
+    const due = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue || '';
+    const daysOvd = due ? daysDiff(due, todayLocal()) : null;
+    return {
+      docNo:       inv.docNumber || inv.docNo || inv.id,
+      customer:    inv.custName  || inv.customerName || '',
+      docDue:      due,
+      today:       todayLocal(),
+      daysOverdue: daysOvd,
+      total:       Number(inv.total)||0,
+      paidAmount:  Number(inv.paidAmount)||0,
+      remain:      calcInvoiceRemain(inv),
+      status:      calcInvoiceStatus(inv),
+      storedStatus:inv.status,
+      agingBucket: calcInvoiceAgingBucket(inv),
+    };
+  });
+  console.table(rows);
+  return rows;
+};
 </script>
 </body>
 </html>
