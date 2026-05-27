@@ -681,8 +681,8 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <div id="toast"></div>
 
 <script>
-const BUILD_TIME="2026-05-27 12:00";
-const BUILD_LABEL="v2.13 · 27 พ.ค. 2569";
+const BUILD_TIME="2026-05-27 14:00";
+const BUILD_LABEL="v2.14 · 27 พ.ค. 2569";
 const MONTHS_TH=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const CATS={
   income:["รับชำระลูกค้า","มัดจำโครงการ","รับเงินสด/โอน","ดอกเบี้ยรับ","รายได้อื่น"],
@@ -1094,10 +1094,12 @@ function saveTxs(){
     batch.set(ref,tx);
   });
   batch.commit()
-    .then(async ()=>{
+    .then(()=>{
       localStorage.removeItem("fin_pending_ids");
-      // sync เฉพาะ employee-related types ไปยัง finance_transactions
-      await Promise.all(txs.filter(t=>isEmpType(t.type)).map(t=>saveFinanceTransaction(t)));
+      // NOTE: ไม่ sync ข้ามไป advance_requests ที่นี่
+      // — เพื่อป้องกัน double-sync และ full-resync ของ record ทั้งหมดทุกครั้งที่ saveTxs() ถูกเรียก
+      // การ sync จะทำ explicitly ที่ call site แต่ละจุด (saveRight/saveForm/Drive import)
+      // และใน flushPendingToFirebase() สำหรับ record ที่สร้างตอน offline
     })
     .catch(e=>console.warn("saveTxs Firebase error",e));
 }
@@ -1134,6 +1136,12 @@ async function flushPendingToFirebase(){
     });
     await batch.commit();
     localStorage.removeItem("fin_pending_ids");
+    // sync advance requests ที่สร้างตอน offline → advance_requests + advance_monthly
+    const advancePending=pendingTxs.filter(t=>shouldSyncAdvance(t));
+    if(advancePending.length){
+      await Promise.all(advancePending.map(t=>createAdvanceRequest(t)));
+      console.log(`[Sync] synced ${advancePending.length} offline advance request(s) to advance_requests`);
+    }
     toast_(`☁️ sync ${pendingTxs.length} รายการ (offline) ขึ้น Firebase แล้ว`,"#0d9488");
     console.log(`[Sync] flushed ${pendingTxs.length} pending tx(s) to Firebase`);
   }catch(e){
