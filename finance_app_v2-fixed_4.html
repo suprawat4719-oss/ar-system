@@ -681,8 +681,8 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <div id="toast"></div>
 
 <script>
-const BUILD_TIME="2026-05-27 14:00";
-const BUILD_LABEL="v2.14 · 27 พ.ค. 2569";
+const BUILD_TIME="2026-05-27 15:30";
+const BUILD_LABEL="v2.15 · 27 พ.ค. 2569";
 const MONTHS_TH=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const CATS={
   income:["รับชำระลูกค้า","มัดจำโครงการ","รับเงินสด/โอน","ดอกเบี้ยรับ","รายได้อื่น"],
@@ -804,6 +804,72 @@ function setFbStatus(mode){
   else{el.textContent="⏳ กำลังโหลด...";el.style.color="#6b7280";}
 }
 
+// ─── SYNC RETRY QUEUE ────────────────────────────────────────────────────────
+// บันทึก tx.id ที่ sync ล้มเหลวระหว่าง createAdvanceRequest → syncAdvance
+// แล้ว retry อัตโนมัติตอน reconnect (loadFromFirebase / pullFromFirebase)
+const SYNC_RETRY_KEY="fin_sync_retry";
+const SYNC_RETRY_MAX=5; // ลองสูงสุดก่อนแจ้งให้ manual sync
+
+function addToSyncRetry(txId, errMsg){
+  try{
+    const q=JSON.parse(localStorage.getItem(SYNC_RETRY_KEY)||"[]");
+    const i=q.findIndex(e=>e.txId===txId);
+    if(i>=0){
+      q[i].retryCount=(q[i].retryCount||0)+1;
+      q[i].lastError=errMsg;
+      q[i].updatedAt=new Date().toISOString();
+    } else {
+      q.push({txId,retryCount:0,lastError:errMsg,createdAt:new Date().toISOString()});
+    }
+    localStorage.setItem(SYNC_RETRY_KEY,JSON.stringify(q));
+    console.warn(`[SyncRetry] queued tx:${txId} — ${errMsg}`);
+  }catch(_){}
+}
+
+function removeSyncRetry(txId){
+  try{
+    const q=JSON.parse(localStorage.getItem(SYNC_RETRY_KEY)||"[]");
+    localStorage.setItem(SYNC_RETRY_KEY,JSON.stringify(q.filter(e=>e.txId!==txId)));
+  }catch(_){}
+}
+
+async function processSyncRetryQueue(){
+  if(!isOnline||!db) return;
+  try{
+    const q=JSON.parse(localStorage.getItem(SYNC_RETRY_KEY)||"[]");
+    if(!q.length) return;
+
+    const active=q.filter(e=>(e.retryCount||0)<SYNC_RETRY_MAX);
+    const dead=q.filter(e=>(e.retryCount||0)>=SYNC_RETRY_MAX);
+
+    if(dead.length){
+      // แจ้งเตือน — ต้อง manual sync
+      toast_(`⚠️ sync ล้มเหลวซ้ำ ${dead.length} รายการ — กดปุ่ม "Sync Force" เพื่อลองใหม่`,"#dc2626",8000);
+      console.error("[SyncRetry] exceeded max retries:",dead.map(e=>e.txId));
+    }
+    if(!active.length) return;
+
+    console.log(`[SyncRetry] กำลัง retry ${active.length} รายการที่ sync ค้าง...`);
+    let ok=0, fail=0;
+    for(const entry of active){
+      const tx=txs.find(t=>t.id===entry.txId);
+      if(!tx||!shouldSyncAdvance(tx)){ removeSyncRetry(entry.txId); continue; }
+      try{
+        await createAdvanceRequest(tx);
+        removeSyncRetry(entry.txId);
+        ok++;
+      }catch(e){
+        addToSyncRetry(entry.txId, e.message);
+        fail++;
+      }
+    }
+    if(ok>0) toast_(`🔄 retry sync สำเร็จ ${ok} รายการ`,"#0d9488",4000);
+    if(fail>0) console.warn(`[SyncRetry] ยังล้มเหลวอีก ${fail} รายการ`);
+  }catch(e){
+    console.warn("[SyncRetry] processSyncRetryQueue error:",e);
+  }
+}
+
 // ─── FIREBASE LOAD HELPERS ────────────────────────────────────────────────────
 async function loadFromFirebase(){
   // รอ Firebase SDK โหลดเสร็จ (max 5 วินาที)
@@ -906,6 +972,8 @@ async function loadFromFirebase(){
     await cleanupV2SyncTxs();
     // map party name → empId สำหรับ payroll เก่าที่ยังไม่มี empId
     await migratePayrollEmpIds();
+    // retry sync ที่ล้มเหลวครั้งก่อน (advance_requests / advance_monthly)
+    await processSyncRetryQueue();
   } catch(err){
     console.warn("Firebase offline, using localStorage",err);
     isOnline=false;
@@ -1031,6 +1099,9 @@ window.onload=async()=>{
   // แจ้งผู้ใช้ถ้ามีข้อมูล offline รอ sync
   const _pending=JSON.parse(localStorage.getItem("fin_pending_ids")||"[]");
   if(_pending.length>0) setTimeout(()=>toast_(`⏳ มี ${_pending.length} รายการรอ sync ขึ้น Firebase`,"#d97706"),800);
+  // แจ้งถ้ามี sync ที่ล้มเหลวรอ retry
+  const _retryQ=JSON.parse(localStorage.getItem(SYNC_RETRY_KEY)||"[]");
+  if(_retryQ.length>0) setTimeout(()=>toast_(`🔄 มี ${_retryQ.length} รายการ sync ค้าง — จะ retry อัตโนมัติเมื่อออนไลน์`,"#0d9488"),1200);
   try{const c=localStorage.getItem("fin_cats");if(c){dynCats=JSON.parse(c);Object.assign(CATS,dynCats);}}catch{}
   try{const e=localStorage.getItem("fin_employees");employees=e?JSON.parse(e):JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));}catch{employees=JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));}
   try{const p=localStorage.getItem("fin_ptypes");payrollTypes=p?JSON.parse(p):JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));}catch{payrollTypes=JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));}
@@ -1234,6 +1305,8 @@ async function createAdvanceRequest(tx){
     try{localStorage.setItem("fin_txs",JSON.stringify(txs));}catch(_){}
   }catch(e){
     console.warn("[advance_requests] create failed:",e);
+    // เพิ่มเข้า retry queue — จะ retry อัตโนมัติตอน reconnect
+    addToSyncRetry(tx.id, e.message);
     // บันทึก error status กลับ
     try{
       await db.collection("finance_transactions").doc(tx.id).set({
@@ -1296,6 +1369,7 @@ async function syncAdvance(tx){
     console.log("[advance_monthly] synced:",tx.id,"month:",monthKey);
   }catch(e){
     console.warn("[advance_monthly] sync failed:",tx.id,e);
+    throw e; // rethrow: ให้ createAdvanceRequest() จับแล้ว retry ได้
   }
 }
 
@@ -3121,6 +3195,8 @@ async function pullFromFirebase(){
     isOnline=true;
     setFbStatus("online");
     render();
+    // retry sync ที่ล้มเหลวครั้งก่อน
+    await processSyncRetryQueue();
     toast_(`✅ โหลดสำเร็จ — ${txs.length} รายการ, ${employees.length} พนักงาน บันทึกในเครื่องแล้ว`,"#16a34a");
   }catch(e){
     toast_("❌ โหลดจาก Firebase ล้มเหลว: "+e.message,"#dc2626");
