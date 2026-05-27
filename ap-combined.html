@@ -1,0 +1,2176 @@
+<!-- AP SYSTEM v1.7 — 2026-05-27 (committed to git 2026-05-27 15:30)
+     changelog v1.7: แก้ autofillVendor เคลียร์ field ก่อน overwrite (ป้องกันธนาคาร vendor เก่าค้าง),
+       payment modal ใช้ vendor master เป็นหลักสำหรับข้อมูลธนาคาร (ไม่เชื่อ inv.vendorBank ที่อาจบันทึกผิด),
+       อัปเดต sidebar version/วันที่ให้ตรงกับ title
+     changelog v1.6: ปุ่มจ่ายตรงจากตาราง, AP→Finance sync, syncStatus badge, retry sync
+     changelog v1.5: แก้บัค 6 จุด — saveInvoice crash, f-vendorRef, OCR headers, Settings API key, autofillVendor, try/catch
+     changelog v1.4: เพิ่ม vendorBankName, OCR prompt แม่นขึ้น
+     changelog v1.3: รองรับใบวางบิล, OCR อ่าน prePmts, ธนาคารเจ้าหนี้
+     changelog v1.2: OCR ด้วย Claude API
+     changelog v1.1: แก้ 3 บัค
+     changelog v1.0: ระบบ AP ครั้งแรก
+-->
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AP System | v1.7 — 2026-05-27</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #18181b; --ink2: #3f3f46; --ink3: #71717a; --ink4: #a1a1aa;
+  --bg: #fafaf9; --bg2: #f5f4f1; --bg3: #eeece8;
+  --white: #ffffff;
+  --border: #e4e2dd; --border2: #d4d2cc;
+  --accent: #7c3aed; --accent-light: #f5f3ff; --accent-mid: #ddd6fe;
+  --orange: #c2410c; --orange-light: #fff7ed; --orange-mid: #fed7aa;
+  --green: #15803d; --green-light: #f0fdf4; --green-mid: #bbf7d0;
+  --red: #b91c1c; --red-light: #fef2f2; --red-mid: #fecaca;
+  --yellow: #92400e; --yellow-light: #fffbeb; --yellow-mid: #fde68a;
+  --blue: #1d4ed8; --blue-light: #eff6ff; --blue-mid: #bfdbfe;
+  --r: 8px; --r2: 12px;
+  --sh: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+  --sh2: 0 4px 16px rgba(0,0,0,.09), 0 2px 4px rgba(0,0,0,.06);
+  --sh3: 0 12px 40px rgba(0,0,0,.13);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6;min-height:100vh}
+
+/* ── SIDEBAR ── */
+.layout{display:flex;min-height:100vh}
+.sidebar{width:220px;background:var(--ink);color:#fff;flex-shrink:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sidebar-logo{padding:20px 18px 14px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sidebar-logo .logo-mark{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#c4b5fd;letter-spacing:.1em;font-weight:500}
+.sidebar-logo .logo-name{font-size:14px;font-weight:700;color:#fff;margin-top:3px}
+.sidebar-logo .logo-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:1px}
+.nav-section{padding:12px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.3)}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 14px;border-radius:6px;margin:1px 6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.65);transition:all .15s;border:none;background:none;width:calc(100% - 12px);text-align:left;font-family:'Sarabun',sans-serif}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav-item.active{background:var(--accent);color:#fff}
+.nav-item .nav-icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
+.sidebar-spacer{flex:1}
+.sidebar-footer{padding:14px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.3)}
+
+.main{flex:1;overflow:auto}
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 28px;height:52px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:50;box-shadow:var(--sh)}
+.topbar-title{font-size:15px;font-weight:700;color:var(--ink)}
+.topbar-sub{font-size:12px;color:var(--ink4);margin-left:2px}
+.topbar-space{flex:1}
+.content{padding:24px 28px;max-width:1280px}
+
+/* ── CARDS ── */
+.card{background:var(--white);border:1px solid var(--border);border-radius:var(--r2);box-shadow:var(--sh);margin-bottom:18px;overflow:hidden}
+.card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.card-title{font-size:13px;font-weight:700;color:var(--ink);letter-spacing:.01em}
+.card-sub{font-size:11px;color:var(--ink4);margin-left:4px}
+.card-body{padding:20px}
+.card-footer{padding:14px 20px;border-top:1px solid var(--border);background:var(--bg);display:flex;gap:8px;justify-content:flex-end}
+
+/* ── STAT CARDS ── */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.stat-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r2);padding:18px 20px;box-shadow:var(--sh)}
+.stat-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);margin-bottom:8px}
+.stat-value{font-size:24px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--ink);line-height:1}
+.stat-note{font-size:11px;color:var(--ink4);margin-top:6px}
+.stat-card.accent .stat-value{color:var(--accent)}
+.stat-card.orange .stat-value{color:var(--orange)}
+.stat-card.red .stat-value{color:var(--red)}
+.stat-card.green .stat-value{color:var(--green)}
+
+/* ── FORM ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.form-grid-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+.span2{grid-column:span 2}.span3{grid-column:span 3}.span4{grid-column:span 4}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:600;color:var(--ink3);letter-spacing:.03em;text-transform:uppercase}
+.field input,.field select,.field textarea{border:1.5px solid var(--border);border-radius:var(--r);padding:8px 11px;font-family:'Sarabun',sans-serif;font-size:13.5px;color:var(--ink);background:var(--bg);transition:all .15s;width:100%}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);background:var(--white);box-shadow:0 0 0 3px rgba(124,58,237,.1)}
+.field input[readonly]{background:#f0f0f0;color:var(--ink3);cursor:default}
+.field textarea{resize:vertical;min-height:64px}
+
+/* ── TABLE ── */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{padding:9px 12px;text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);border-bottom:2px solid var(--border);background:var(--bg2);white-space:nowrap}
+.tbl th.r,.tbl td.r{text-align:right}
+.tbl th.c,.tbl td.c{text-align:center}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--accent-light)}
+.tbl .mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
+.tbl .bold{font-weight:700}
+.tbl .muted{color:var(--ink4);font-size:12px}
+
+/* ── ITEMS TABLE ── */
+.items-tbl{width:100%;border-collapse:collapse;margin-bottom:8px}
+.items-tbl th{padding:7px 8px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);border-bottom:2px solid var(--border);background:var(--bg2)}
+.items-tbl th.r,.items-tbl td.r{text-align:right}
+.items-tbl td{padding:4px 4px;border-bottom:1px solid var(--border)}
+.item-inp{border:1px solid transparent;border-radius:5px;padding:5px 7px;font-family:'Sarabun',sans-serif;font-size:13px;color:var(--ink);background:transparent;width:100%;transition:all .14s}
+.item-inp:focus{outline:none;border-color:var(--accent);background:var(--accent-light);box-shadow:0 0 0 2px rgba(124,58,237,.08)}
+.item-inp.r{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.03em;white-space:nowrap}
+.badge-pending{background:var(--blue-light);color:var(--blue)}
+.badge-partial{background:var(--yellow-light);color:var(--yellow)}
+.badge-paid{background:var(--green-light);color:var(--green)}
+.badge-overdue{background:var(--red-light);color:var(--red)}
+.badge-cancelled{background:#f4f4f5;color:var(--ink4)}
+
+/* ── BUTTONS ── */
+.btn{padding:8px 18px;border-radius:var(--r);border:none;cursor:pointer;font-family:'Sarabun',sans-serif;font-size:13px;font-weight:600;transition:all .17s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#6d28d9;box-shadow:0 4px 12px rgba(124,58,237,.25)}
+.btn-success{background:var(--green);color:#fff}
+.btn-success:hover{background:#166534}
+.btn-orange{background:var(--orange);color:#fff}
+.btn-orange:hover{background:#9a3412}
+.btn-outline{background:var(--white);color:var(--ink);border:1.5px solid var(--border)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-ghost{background:transparent;color:var(--ink3);border:1.5px solid var(--border)}
+.btn-ghost:hover{background:var(--bg2)}
+.btn-danger{background:var(--red-light);color:var(--red);border:1.5px solid var(--red-mid)}
+.btn-danger:hover{background:var(--red);color:#fff}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-xs{padding:3px 9px;font-size:11px;border-radius:5px}
+
+/* ── PROGRESS ── */
+.progress-wrap{background:var(--border);border-radius:20px;height:6px;overflow:hidden}
+.progress-bar{height:100%;border-radius:20px;transition:width .4s}
+.progress-bar.green{background:var(--green)}
+.progress-bar.orange{background:#f97316}
+.progress-bar.red{background:var(--red)}
+
+/* ── SUMMARY BOX ── */
+.summary-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;width:280px;margin-left:auto;margin-top:12px}
+.s-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;color:var(--ink2)}
+.s-row .val{font-family:'IBM Plex Mono',monospace;font-size:12.5px}
+.s-row.total{border-top:2px solid var(--border2);margin-top:6px;padding-top:10px;font-weight:700;font-size:15px;color:var(--ink)}
+.s-row.total .val{font-size:15px;color:var(--accent)}
+.s-row.remain .val{color:var(--red);font-weight:700}
+.s-row.paid .val{color:var(--green)}
+
+/* ── PAYMENT HISTORY ── */
+.pmt-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--r);border:1px solid var(--border);margin-bottom:6px;background:var(--bg)}
+.pmt-item .pmt-icon{font-size:18px;width:32px;text-align:center}
+.pmt-item .pmt-info{flex:1}
+.pmt-item .pmt-date{font-size:12px;color:var(--ink4)}
+.pmt-item .pmt-note{font-size:12px;color:var(--ink3)}
+.pmt-item .pmt-amt{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--red);font-size:14px}
+.pmt-item .pmt-del{background:none;border:none;cursor:pointer;color:var(--ink4);padding:4px;border-radius:4px;font-size:13px}
+.pmt-item .pmt-del:hover{background:var(--red-light);color:var(--red)}
+
+/* ── AGING BARS ── */
+.aging-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.aging-label{font-size:12px;font-weight:600;color:var(--ink3);width:100px;flex-shrink:0}
+.aging-bar-wrap{flex:1;background:var(--border);border-radius:4px;height:20px;overflow:hidden;position:relative}
+.aging-bar{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;font-size:11px;font-weight:700;color:#fff;transition:width .5s}
+.aging-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;width:90px;text-align:right;flex-shrink:0}
+
+/* ── FILTERS ── */
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.filters select,.filters input{border:1.5px solid var(--border);border-radius:var(--r);padding:7px 11px;font-family:'Sarabun',sans-serif;font-size:12.5px;background:var(--white);color:var(--ink)}
+.filters select:focus,.filters input:focus{outline:none;border-color:var(--accent)}
+
+/* ── MODAL ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.overlay.show{display:flex}
+.modal{background:var(--white);border-radius:var(--r2);padding:26px;width:500px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:var(--sh3);animation:modalIn .2s ease}
+.modal-lg{width:720px}
+.modal-title{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:18px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+@keyframes modalIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── CO GRID ── */
+.co-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:4px}
+.co-card{border:2px solid var(--border);border-radius:var(--r);padding:12px 14px;cursor:pointer;transition:all .15s;background:var(--bg)}
+.co-card:hover{border-color:var(--accent);background:var(--accent-light)}
+.co-card.sel{border-color:var(--accent);background:var(--accent-light);box-shadow:0 0 0 3px rgba(124,58,237,.1)}
+.co-card .co-name{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:2px}
+.co-card .co-tax{font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--ink4)}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:22px;right:22px;padding:11px 18px;border-radius:var(--r);font-size:13.5px;font-weight:600;box-shadow:var(--sh3);transform:translateY(50px);opacity:0;transition:all .28s cubic-bezier(.34,1.56,.64,1);z-index:500;max-width:320px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{background:var(--green);color:#fff}
+.toast.err{background:var(--red);color:#fff}
+.toast.info{background:var(--ink);color:#fff}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:50px 20px;color:var(--ink4)}
+.empty-icon{font-size:40px;margin-bottom:10px}
+.empty p{font-size:14px}
+
+/* ── REPORT ── */
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.report-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r2);padding:18px 20px;box-shadow:var(--sh)}
+.report-card-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+
+/* ── FILE ATTACH ── */
+.file-attach-zone{border:2px dashed var(--border2);border-radius:var(--r);padding:16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg2);position:relative}
+.file-attach-zone:hover{border-color:var(--accent);background:var(--accent-light)}
+.file-attach-zone input{display:none}
+.file-preview{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-top:8px}
+.file-preview .file-icon{font-size:20px;flex-shrink:0}
+.file-preview .file-name{font-size:12px;color:var(--ink2);font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-preview .file-size{font-size:11px;color:var(--ink4)}
+.file-preview .file-del{background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px;padding:2px 6px;border-radius:4px}
+.file-preview .file-del:hover{background:var(--red-light);color:var(--red)}
+
+/* ── SYNC STATUS ── */
+.sync-bar{padding:10px 12px;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:6px}
+.sync-status{display:flex;align-items:center;gap:6px;font-size:10px;color:rgba(255,255,255,.35);font-family:'IBM Plex Mono',monospace}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#52525b;flex-shrink:0;transition:all .3s}
+.sync-dot.online{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.5)}
+.sync-dot.syncing{background:#f97316;animation:syncPulse .7s infinite alternate}
+.sync-dot.error{background:#ef4444}
+@keyframes syncPulse{from{opacity:.4}to{opacity:1}}
+.sync-btns{display:flex;gap:5px}
+.sync-btn{flex:1;padding:5px 4px;border-radius:5px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.55);font-size:10px;font-family:'IBM Plex Mono',monospace;cursor:pointer;transition:all .15s;font-weight:600;text-align:center}
+.sync-btn:hover{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.25)}
+.sync-btn:disabled{opacity:.35;cursor:not-allowed}
+.sync-last{font-size:9px;color:rgba(255,255,255,.2);font-family:'IBM Plex Mono',monospace;text-align:center}
+
+/* ── HAMBURGER ── */
+.hamburger{display:none;flex-direction:column;justify-content:center;gap:5px;background:none;border:none;cursor:pointer;padding:6px 8px;border-radius:var(--r);margin-right:4px;flex-shrink:0}
+.hamburger span{display:block;width:20px;height:2px;background:var(--ink);border-radius:2px;transition:all .25s}
+.hamburger:hover span{background:var(--accent)}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:149;backdrop-filter:blur(2px)}
+.sidebar-backdrop.show{display:block}
+
+/* ── LOADING ── */
+#loading-screen{position:fixed;inset:0;background:#18181b;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .4s}
+#loading-screen.fade-out{opacity:0;pointer-events:none}
+.loading-logo{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#c4b5fd;letter-spacing:.2em;text-transform:uppercase;margin-bottom:4px}
+.loading-title{font-size:18px;font-weight:700;color:#fff}
+.loading-spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.1);border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite;margin:8px 0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-msg{font-size:12px;color:rgba(255,255,255,.4);font-family:'IBM Plex Mono',monospace;min-height:18px;text-align:center}
+
+/* ── RESPONSIVE ── */
+@media(max-width:1024px){
+  .sidebar{width:200px}
+  .content{padding:18px 18px}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  .report-grid{grid-template-columns:1fr}
+  .summary-box{width:240px}
+}
+@media(max-width:768px){
+  .sidebar{position:fixed;inset:0 auto 0 0;z-index:150;width:240px;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:none;height:100%}
+  .sidebar.open{transform:translateX(0);box-shadow:var(--sh3)}
+  .hamburger{display:flex}
+  .layout{display:block}
+  .main{min-height:100vh}
+  .topbar{padding:0 14px;gap:8px}
+  .topbar-title{font-size:14px}
+  .topbar-sub{display:none}
+  .content{padding:14px 14px;max-width:100%}
+  .stat-grid{grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+  .stat-value{font-size:19px}
+  .form-grid,.form-grid-3,.form-grid-4{grid-template-columns:1fr;gap:10px}
+  .span2,.span3,.span4{grid-column:span 1}
+  .report-grid{grid-template-columns:1fr}
+  .summary-box{width:100%;margin-top:12px}
+  .card{overflow-x:auto}
+  .tbl{min-width:520px}
+  .modal{width:calc(100vw - 24px);max-width:calc(100vw - 24px);padding:18px 16px}
+  .modal-lg{width:calc(100vw - 24px);max-width:calc(100vw - 24px)}
+  .toast{right:12px;left:12px;bottom:16px;max-width:none;text-align:center}
+  .co-grid{grid-template-columns:1fr}
+  .hide-mobile{display:none!important}
+}
+@media(max-width:400px){
+  .stat-grid{grid-template-columns:1fr 1fr}
+  .stat-value{font-size:17px}
+}
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="loading-logo">▸ AP SYSTEM</div>
+  <div class="loading-title">กำลังโหลดข้อมูล...</div>
+  <div class="loading-spinner"></div>
+  <div class="loading-msg" id="loading-msg">เชื่อมต่อ Firebase...</div>
+</div>
+
+<div class="sidebar-backdrop" id="sb-backdrop" onclick="closeSidebar()"></div>
+<div class="layout">
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">▸ AP SYSTEM</div>
+    <div class="logo-name">บัญชีเจ้าหนี้</div>
+    <div class="logo-sub">v1.7 — 2026-05-27</div>
+  </div>
+  <div class="nav-section">หลัก</div>
+  <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
+  <button class="nav-item" onclick="goPage('invoices')" id="nav-invoices"><span class="nav-icon">🧾</span>ใบแจ้งหนี้ (AP)</button>
+  <button class="nav-item" onclick="goPage('payments')" id="nav-payments"><span class="nav-icon">💸</span>บันทึกจ่ายเงิน</button>
+  <div class="nav-section">รายงาน</div>
+  <button class="nav-item" onclick="goPage('report-aging')" id="nav-report-aging"><span class="nav-icon">⏳</span>AP Aging</button>
+  <button class="nav-item" onclick="goPage('report-vendor')" id="nav-report-vendor"><span class="nav-icon">👥</span>ค้างจ่ายรายเจ้าหนี้</button>
+  <div class="nav-section">ข้อมูลหลัก</div>
+  <button class="nav-item" onclick="goPage('vendors')" id="nav-vendors"><span class="nav-icon">🏪</span>เจ้าหนี้ (Vendors)</button>
+  <button class="nav-item" onclick="goPage('companies')" id="nav-companies"><span class="nav-icon">🏛</span>จัดการบริษัท</button>
+  <button class="nav-item" onclick="goPage('settings')" id="nav-settings"><span class="nav-icon">⚙️</span>ตั้งค่าระบบ</button>
+  <div class="sidebar-spacer"></div>
+  <div class="sync-bar">
+    <div class="sync-status">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-label">ออฟไลน์</span>
+    </div>
+    <div class="sync-btns">
+      <button class="sync-btn pull" onclick="pullFromFirebase()" id="btn-pull">↓ PULL</button>
+      <button class="sync-btn push" onclick="pushToFirebase()" id="btn-push">↑ PUSH</button>
+    </div>
+    <div class="sync-last" id="sync-last"></div>
+  </div>
+  <div class="sidebar-footer">AP System v1.7</div>
+</aside>
+
+<!-- ── MAIN ── -->
+<div class="main">
+  <div class="topbar">
+    <button class="hamburger" onclick="openSidebar()" aria-label="เมนู">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="topbar-title" id="topbar-title">Dashboard</div>
+    <div class="topbar-sub" id="topbar-sub"></div>
+    <div class="topbar-space"></div>
+    <div id="topbar-actions"></div>
+  </div>
+  <div class="content" id="page-content"></div>
+</div>
+</div>
+
+<!-- ── MODALS ── -->
+<div class="overlay" id="ov-invoice"><div class="modal modal-lg" id="modal-invoice"></div></div>
+<div class="overlay" id="ov-payment"><div class="modal" id="modal-payment"></div></div>
+<div class="overlay" id="ov-vendor"><div class="modal" id="modal-vendor"></div></div>
+<div class="overlay" id="ov-company"><div class="modal" id="modal-company"></div></div>
+<div class="overlay" id="ov-conflict"><div class="modal" id="modal-conflict"></div></div>
+<div class="overlay" id="ov-attach"><div class="modal modal-lg" id="modal-attach"></div></div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ── FIREBASE SDK ── -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+'use strict';
+// ══════════════════════════════════════
+// GLOBAL STATE
+// ══════════════════════════════════════
+let companies = [];
+let _currentPage = 'dashboard';
+const LS_DEVICE_NAME = 'ap_device_name';
+let _deviceName = localStorage.getItem(LS_DEVICE_NAME) || 'เครื่องนี้';
+let _payingInvoice = null;
+let _lastLocalWrite = 0;
+let _pendingRefreshCols = new Set();
+let _isFormOpen = false;
+
+let data = {
+  companies: [],
+  ap_invoices: [],
+  vendors: [],
+};
+
+// ══════════════════════════════════════
+// FIREBASE
+// ══════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyCpyJ0nz1WeV-hysdK1TZQow222Kqb5v8s",
+  authDomain: "advance-tracker-cadf5.firebaseapp.com",
+  projectId: "advance-tracker-cadf5",
+  storageBucket: "advance-tracker-cadf5.firebasestorage.app",
+  messagingSenderId: "186461314782",
+  appId: "1:186461314782:web:525509bb1a76d13d3cac4f",
+};
+
+let _fbdb = null;
+let _listeners = {};
+
+function initFirebase() {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    _fbdb = firebase.firestore();
+    setSyncStatus('online');
+    return true;
+  } catch(e) {
+    setSyncStatus('error');
+    return false;
+  }
+}
+
+async function fbGetAll(col) {
+  if (!_fbdb) return null;
+  try {
+    const snap = await _fbdb.collection(col).get();
+    return snap.docs.map(d => ({id: d.id, ...d.data()}));
+  } catch(e) { return null; }
+}
+
+async function fbSet(col, id, d) {
+  if (!_fbdb) return false;
+  try {
+    await _fbdb.collection(col).doc(id).set({...d, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    return true;
+  } catch(e) { return false; }
+}
+
+async function fbUpdate(col, id, d) {
+  if (!_fbdb) return false;
+  try { await _fbdb.collection(col).doc(id).update(d); return true; } catch(e) { return false; }
+}
+
+async function fbDelete(col, id) {
+  if (!_fbdb) return false;
+  try { await _fbdb.collection(col).doc(id).delete(); return true; } catch(e) { return false; }
+}
+
+async function fbGetDoc(col, id) {
+  if (!_fbdb) return null;
+  try {
+    const snap = await _fbdb.collection(col).doc(id).get();
+    return snap.exists ? {id: snap.id, ...snap.data()} : null;
+  } catch(e) { return null; }
+}
+
+// ══════════════════════════════════════
+// LOCAL STORAGE
+// ══════════════════════════════════════
+const SYNC_COLS = ['companies','ap_invoices','vendors'];
+
+// localStorage key map — ป้องกัน double prefix เช่น ap_ + ap_invoices = ap_ap_invoices
+const LS_KEY = { companies: 'ap_companies', ap_invoices: 'ap_invoices', vendors: 'ap_vendors' };
+function lsSave(col, arr) {
+  try { localStorage.setItem(LS_KEY[col] || ('ap_' + col), JSON.stringify(arr)); } catch(e) {}
+}
+function lsLoad(col) {
+  try { const s = localStorage.getItem(LS_KEY[col] || ('ap_' + col)); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+}
+
+// ══════════════════════════════════════
+// STORE (CRUD with optimistic lock)
+// ══════════════════════════════════════
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+async function storeAdd(col, d) {
+  _lastLocalWrite = Date.now();
+  const id = uid();
+  const enriched = {...d, updatedAt: new Date().toISOString(), updatedBy: _deviceName};
+  const fbOk = await fbSet(col, id, enriched);
+  if (_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase ตอบกลับผิดพลาด', 'err'); return null; }
+  const arr = lsLoad(col) || [];
+  arr.push({id, ...enriched});
+  lsSave(col, arr);
+  return id;
+}
+
+async function storeUpdate(col, id, d) {
+  _lastLocalWrite = Date.now();
+  const updates = {...d, updatedAt: new Date().toISOString(), updatedBy: _deviceName};
+  const localDoc = (data[col] || []).find(x => x.id === id);
+  const localUpdatedAt = localDoc?.updatedAt ?? null;
+  if (_fbdb && localUpdatedAt) {
+    const remoteDoc = await fbGetDoc(col, id);
+    const remoteUpdatedAt = remoteDoc?.updatedAt ?? null;
+    if (remoteDoc && remoteUpdatedAt && remoteUpdatedAt !== localUpdatedAt) {
+      const choice = await showConflictDialog(col, localDoc, remoteDoc);
+      if (choice === 'cancel') return false;
+      if (choice === 'theirs') {
+        if (data[col]) { const j = data[col].findIndex(x => x.id === id); if (j >= 0) Object.assign(data[col][j], remoteDoc); if (col === 'companies') companies = data.companies; }
+        const arr2 = lsLoad(col) || []; const k = arr2.findIndex(x => x.id === id);
+        if (k >= 0) { arr2[k] = remoteDoc; lsSave(col, arr2); }
+        toast(`ใช้ข้อมูลจาก ${remoteDoc.updatedBy || 'เครื่องอื่น'} แล้ว`, 'info');
+        goPage(_currentPage); return false;
+      }
+    }
+  }
+  const fbOk = await fbUpdate(col, id, updates);
+  if (_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ', 'err'); return false; }
+  const arr = lsLoad(col) || []; const i = arr.findIndex(x => x.id === id);
+  if (i >= 0) { arr[i] = {...arr[i], ...updates}; lsSave(col, arr); }
+  if (data[col]) { const j = data[col].findIndex(x => x.id === id); if (j >= 0) Object.assign(data[col][j], updates); if (col === 'companies') companies = data.companies; }
+  return true;
+}
+
+async function storeDelete(col, id) {
+  _lastLocalWrite = Date.now();
+  await fbDelete(col, id);
+  const arr = (lsLoad(col) || []).filter(x => x.id !== id);
+  lsSave(col, arr);
+}
+
+function syncLS(col, arr) { lsSave(col, arr); }
+
+// ══════════════════════════════════════
+// AP → FINANCE SYNC
+// ══════════════════════════════════════
+async function isAPFinanceMonthLocked(monthKey) {
+  try {
+    const cache = JSON.parse(localStorage.getItem('ap_month_locks_cache') || '{}');
+    if (cache[monthKey] !== undefined && Date.now() - (cache['__ts_' + monthKey] || 0) < 60000) return cache[monthKey];
+  } catch(e) {}
+  if (!_fbdb) return false;
+  try {
+    const snap = await _fbdb.collection('month_locks').doc(monthKey).get();
+    const locked = snap.exists && snap.data().locked === true;
+    try {
+      const cache = JSON.parse(localStorage.getItem('ap_month_locks_cache') || '{}');
+      cache[monthKey] = locked;
+      cache['__ts_' + monthKey] = Date.now();
+      localStorage.setItem('ap_month_locks_cache', JSON.stringify(cache));
+    } catch(e) {}
+    return locked;
+  } catch(e) { return false; }
+}
+
+async function findNextOpenAPFinanceDate(paymentDate) {
+  const origMonth = paymentDate.slice(0, 7);
+  if (!(await isAPFinanceMonthLocked(origMonth))) {
+    return { financeDate: paymentDate, financeMonth: origMonth, shifted: false, reason: '' };
+  }
+  let [y, m] = origMonth.split('-').map(Number);
+  for (let i = 0; i < 24; i++) {
+    m++; if (m > 12) { m = 1; y++; }
+    const candidate = `${y}-${String(m).padStart(2,'0')}`;
+    if (!(await isAPFinanceMonthLocked(candidate))) {
+      const financeDate = `${candidate}-01`;
+      return { financeDate, financeMonth: candidate, shifted: true,
+        reason: `จ่ายจริงวันที่ ${paymentDate} แต่เดือน ${origMonth} ปิดงวดแล้ว จึงลงบัญชีในเดือน ${candidate}` };
+    }
+  }
+  throw new Error(`ไม่พบเดือนบัญชีที่เปิดอยู่ภายใน 24 เดือน`);
+}
+
+async function syncAPPaymentToFinance(invoice, payment) {
+  if (!_fbdb) return null;
+  try {
+    const existing = await _fbdb.collection('fin_transactions').doc(payment.id).get();
+    if (existing.exists) return payment.id;
+  } catch(e) {}
+  const financeDate = payment.financeDate || payment.date;
+  const financeMonth = payment.financeMonth || financeDate.slice(0, 7);
+  const vendorName = getVendorName(invoice.vendorId);
+  const txDoc = {
+    id:                     payment.id,
+    type:                   'expense',
+    sourceModule:           'ap',
+    sourceApp:              'AP',
+    sourceType:             'AP_PAYMENT',
+    sourcePaymentId:        payment.id,
+    sourceRefId:            invoice.id,
+    sourceInvoiceId:        invoice.id,
+    invoiceNo:              invoice.docNo || '',
+    date:                   financeDate,
+    transferDate:           financeDate,
+    paymentDate:            payment.paymentDate || payment.date,
+    monthKey:               financeMonth,
+    party:                  vendorName,
+    vendorId:               invoice.vendorId || '',
+    vendorName:             vendorName,
+    category:               'จ่ายชำระเจ้าหนี้',
+    amount:                 Number(payment.amount) || 0,
+    method:                 payment.method || 'โอนเงิน',
+    referenceNo:            payment.ref || invoice.docNo || '',
+    originalPaymentMonth:   (payment.date||'').slice(0,7),
+    financeMonth:           financeMonth,
+    shiftedToNextOpenMonth: payment.shiftedToNextOpenMonth || false,
+    note:                   payment.shiftedReason || payment.note || '',
+    status:                 'confirmed',
+    syncStatus:             'linked',
+    createdAt:              payment.createdAt || new Date().toISOString(),
+    updatedAt:              new Date().toISOString(),
+    createdBy:              'ap_app',
+  };
+  try {
+    await _fbdb.collection('fin_transactions').doc(txDoc.id).set(txDoc);
+    _fbdb.collection('audit_logs').add({
+      action: 'AP_PAYMENT_SYNCED', app: 'ap', monthKey: financeMonth,
+      at: new Date().toISOString(),
+      detail: { invoiceId: invoice.id, paymentId: payment.id, amount: txDoc.amount,
+                docNo: invoice.docNo, paymentDate: txDoc.paymentDate, financeDate,
+                shifted: txDoc.shiftedToNextOpenMonth }
+    }).catch(()=>{});
+    return txDoc.id;
+  } catch(err) {
+    console.error('[AP→Finance] sync failed:', err);
+    return null;
+  }
+}
+
+function _apAddPendingSync(invoiceId, paymentId) {
+  try {
+    const q = JSON.parse(localStorage.getItem('ap_pending_sync') || '[]');
+    if (!q.find(x => x.invoiceId === invoiceId && x.paymentId === paymentId)) {
+      q.push({ invoiceId, paymentId, addedAt: new Date().toISOString() });
+      localStorage.setItem('ap_pending_sync', JSON.stringify(q));
+    }
+  } catch(e) {}
+}
+
+async function retrySyncAPQueue() {
+  if (!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
+  const q = JSON.parse(localStorage.getItem('ap_pending_sync') || '[]');
+  if (!q.length) { toast('ไม่มีรายการ sync ค้างอยู่', 'info'); return; }
+  let ok = 0; const remaining = [];
+  for (const item of q) {
+    const inv = (data.ap_invoices||[]).find(i => i.id === item.invoiceId);
+    if (!inv) continue;
+    const pmt = (inv.payments||[]).find(p => p.id === item.paymentId &&
+      (p.syncStatus === 'failed' || p.syncStatus === 'pending' || !p.syncStatus));
+    if (!pmt) continue;
+    let freshFinance;
+    try { freshFinance = await findNextOpenAPFinanceDate(pmt.paymentDate || pmt.date); }
+    catch(e) { remaining.push(item); continue; }
+    const updatedPmt = { ...pmt, financeDate: freshFinance.financeDate, financeMonth: freshFinance.financeMonth, shiftedToNextOpenMonth: freshFinance.shifted, shiftedReason: freshFinance.reason };
+    const txId = await syncAPPaymentToFinance(inv, updatedPmt);
+    if (txId) {
+      const finalPayments = (inv.payments||[]).map(p => p.id === pmt.id ? { ...p, ...updatedPmt, financeTransactionId: txId, syncStatus: 'synced' } : p);
+      await storeUpdate('ap_invoices', inv.id, { payments: finalPayments }).catch(()=>{});
+      Object.assign(inv, { payments: finalPayments });
+      syncLS('ap_invoices', data.ap_invoices);
+      ok++;
+    } else { remaining.push(item); }
+  }
+  localStorage.setItem('ap_pending_sync', JSON.stringify(remaining));
+  toast(`Retry: สำเร็จ ${ok} รายการ${remaining.length ? `, ยังค้าง ${remaining.length} รายการ` : ''}`, ok > 0 ? 'ok' : 'err');
+}
+window.retrySyncAPQueue = retrySyncAPQueue;
+
+// ══════════════════════════════════════
+// FIREBASE SYNC
+// ══════════════════════════════════════
+async function pullFromFirebase() {
+  if (!_fbdb) { toast('ไม่ได้เชื่อมต่อ Firebase', 'err'); return; }
+  setSyncStatus('syncing');
+  for (const col of SYNC_COLS) {
+    const rows = await fbGetAll(col);
+    if (rows !== null) {
+      lsSave(col, rows);
+      data[col] = rows;
+      if (col === 'companies') companies = rows;
+    }
+  }
+  setSyncStatus('online');
+  toast('ดึงข้อมูลจาก Firebase สำเร็จ', 'ok');
+  goPage(_currentPage);
+}
+
+async function pushToFirebase() {
+  if (!_fbdb) { toast('ไม่ได้เชื่อมต่อ Firebase', 'err'); return; }
+  setSyncStatus('syncing');
+  const batch = _fbdb.batch();
+  let count = 0;
+  for (const col of SYNC_COLS) {
+    const arr = data[col] || [];
+    for (const item of arr) {
+      const {id, ...rest} = item;
+      batch.set(_fbdb.collection(col).doc(id), {...rest, _syncedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge: true});
+      count++;
+    }
+  }
+  try { await batch.commit(); setSyncStatus('online'); toast(`Push สำเร็จ (${count} รายการ)`, 'ok'); }
+  catch(e) { setSyncStatus('error'); toast('Push ไม่สำเร็จ: ' + e.message, 'err'); }
+}
+
+function startListeners() {
+  SYNC_COLS.forEach(col => {
+    if (_listeners[col]) return;
+    _listeners[col] = _fbdb.collection(col).onSnapshot(snap => {
+      if (Date.now() - _lastLocalWrite < 3000) return;
+      const rows = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      lsSave(col, rows);
+      data[col] = rows;
+      if (col === 'companies') companies = rows;
+      if (_isFormOpen) {
+        _pendingRefreshCols.add(col);
+        toast(`⚠️ ข้อมูล ${col} อัปเดตจากเครื่องอื่น — จะโหลดใหม่เมื่อปิดฟอร์ม`, 'info');
+      } else {
+        goPage(_currentPage);
+      }
+    }, ()=>{});
+  });
+}
+
+function _checkPendingRefresh() {
+  if (_pendingRefreshCols.size > 0) { _pendingRefreshCols.clear(); goPage(_currentPage); }
+}
+
+// ══════════════════════════════════════
+// LOAD DATA
+// ══════════════════════════════════════
+async function loadData() {
+  setLoadMsg('โหลดข้อมูลจาก localStorage...');
+  for (const col of SYNC_COLS) {
+    const local = lsLoad(col);
+    if (local) { data[col] = local; if (col === 'companies') companies = local; }
+  }
+  setLoadMsg('เชื่อมต่อ Firebase...');
+  const fbOk = initFirebase();
+  if (fbOk) {
+    for (const col of SYNC_COLS) {
+      const rows = await fbGetAll(col);
+      if (rows !== null) { data[col] = rows; lsSave(col, rows); if (col === 'companies') companies = rows; }
+    }
+    startListeners();
+  }
+  document.getElementById('loading-screen').classList.add('fade-out');
+  setTimeout(() => { document.getElementById('loading-screen').style.display = 'none'; }, 500);
+  goPage('dashboard');
+}
+
+function setLoadMsg(m) { const el = document.getElementById('loading-msg'); if (el) el.textContent = m; }
+
+// ══════════════════════════════════════
+// SYNC STATUS UI
+// ══════════════════════════════════════
+function setSyncStatus(s) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  if (!dot) return;
+  dot.className = 'sync-dot ' + s;
+  lbl.textContent = s === 'online' ? 'ออนไลน์' : s === 'syncing' ? 'กำลังซิงค์...' : s === 'error' ? 'ข้อผิดพลาด' : 'ออฟไลน์';
+  if (s === 'online') document.getElementById('sync-last').textContent = 'อัปเดต: ' + new Date().toLocaleTimeString('th-TH');
+}
+
+// ══════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════
+const PAGE_TITLES = {
+  dashboard: 'Dashboard', invoices: 'ใบแจ้งหนี้ (AP)', payments: 'บันทึกจ่ายเงิน',
+  'report-aging': 'AP Aging Report', 'report-vendor': 'ค้างจ่ายรายเจ้าหนี้',
+  vendors: 'เจ้าหนี้ (Vendors)', companies: 'จัดการบริษัท', settings: 'ตั้งค่าระบบ',
+  'new-inv': 'สร้างใบแจ้งหนี้ AP',
+};
+
+function goPage(p) {
+  _currentPage = p;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navId = 'nav-' + p.replace('new-inv','invoices');
+  const navEl = document.getElementById(navId);
+  if (navEl) navEl.classList.add('active');
+  document.getElementById('topbar-title').textContent = PAGE_TITLES[p] || p;
+  document.getElementById('topbar-sub').textContent = '';
+  document.getElementById('topbar-actions').innerHTML = '';
+  const renders = {
+    dashboard: renderDashboard, invoices: renderInvoices, payments: renderPayments,
+    'report-aging': renderAgingReport, 'report-vendor': renderVendorReport,
+    vendors: renderVendors, companies: renderCompanies, settings: renderSettings,
+    'new-inv': () => renderNewInvoice(),
+  };
+  if (renders[p]) renders[p]();
+  closeSidebar();
+}
+window.goPage = goPage;
+
+// ══════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════
+function fmt(n) { return Number(n || 0).toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtDate(s) { if (!s) return '-'; try { const d = new Date(s); return d.toLocaleDateString('th-TH', {year:'numeric',month:'short',day:'numeric'}); } catch(e) { return s; } }
+function today() { return new Date().toISOString().slice(0,10); }
+function addDays(dateStr, days) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + parseInt(days)); return d.toISOString().slice(0,10); }
+function daysDiff(dateStr) { const d = new Date(dateStr + 'T00:00:00'); const now = new Date(); now.setHours(0,0,0,0); return Math.floor((d - now) / 86400000); }
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function invStatus(inv) {
+  const paid = (inv.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const total = Number(inv.totalAmount || 0);
+  if (inv.status === 'cancelled') return 'cancelled';
+  if (paid >= total) return 'paid';
+  if (paid > 0) return 'partial';
+  if (inv.dueDate && daysDiff(inv.dueDate) < 0) return 'overdue';
+  return 'pending';
+}
+
+function invPaid(inv) { return (inv.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0); }
+function invRemain(inv) { return Math.max(0, Number(inv.totalAmount || 0) - invPaid(inv)); }
+
+function statusBadge(s) {
+  const map = {pending:'badge-pending',partial:'badge-partial',paid:'badge-paid',overdue:'badge-overdue',cancelled:'badge-cancelled'};
+  const labels = {pending:'รอจ่าย',partial:'จ่ายบางส่วน',paid:'จ่ายแล้ว',overdue:'เกินกำหนด',cancelled:'ยกเลิก'};
+  return `<span class="badge ${map[s]||'badge-pending'}">${labels[s]||s}</span>`;
+}
+
+function getCompanyName(id) { const c = companies.find(x => x.id === id); return c ? c.name : id || '-'; }
+function getVendorName(id) { const v = (data.vendors || []).find(x => x.id === id); return v ? v.name : id || '-'; }
+
+function nextInvNo() {
+  const nums = (data.ap_invoices || []).map(i => {
+    const m = (i.docNo || '').match(/VINV-(\d+)/);
+    return m ? parseInt(m[1]) : 0;
+  });
+  const max = nums.length ? Math.max(...nums) : 0;
+  return 'VINV-' + String(max + 1).padStart(4, '0');
+}
+
+// ══════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════
+let _toastTimer;
+function toast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + type + ' show';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// ══════════════════════════════════════
+// MODAL HELPERS
+// ══════════════════════════════════════
+function openOverlay(id) { document.getElementById(id).classList.add('show'); _isFormOpen = true; }
+function closeOverlay(id) {
+  document.getElementById(id).classList.remove('show');
+  _isFormOpen = false;
+  _checkPendingRefresh();
+}
+function closeModal() {
+  document.querySelectorAll('.overlay').forEach(o => o.classList.remove('show'));
+  _isFormOpen = false;
+  _checkPendingRefresh();
+}
+window.closeModal = closeModal;
+
+// Conflict dialog
+function showConflictDialog(col, local, remote) {
+  return new Promise(resolve => {
+    document.getElementById('modal-conflict').innerHTML = `
+      <div class="modal-title">⚠️ ข้อมูลขัดแย้ง</div>
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:16px;">มีการแก้ไขข้อมูลนี้จากเครื่องอื่น (${escHtml(remote.updatedBy || '?')}) กรุณาเลือกว่าจะใช้ข้อมูลของใคร</p>
+      <div class="modal-footer">
+        <button class="btn btn-ghost btn-sm" onclick="_conflictResolve('cancel')">ยกเลิก</button>
+        <button class="btn btn-outline btn-sm" onclick="_conflictResolve('theirs')">ใช้ของเครื่องอื่น</button>
+        <button class="btn btn-primary btn-sm" onclick="_conflictResolve('mine')">ใช้ของฉัน</button>
+      </div>`;
+    openOverlay('ov-conflict');
+    window._conflictResolve = (choice) => { closeOverlay('ov-conflict'); resolve(choice); };
+  });
+}
+
+// ══════════════════════════════════════
+// SIDEBAR MOBILE
+// ══════════════════════════════════════
+function openSidebar() { document.getElementById('sidebar').classList.add('open'); document.getElementById('sb-backdrop').classList.add('show'); }
+function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sb-backdrop').classList.remove('show'); }
+
+// ══════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════
+function renderDashboard() {
+  const invs = data.ap_invoices || [];
+  const totalOutstanding = invs.filter(i => invStatus(i) !== 'paid' && invStatus(i) !== 'cancelled').reduce((s, i) => s + invRemain(i), 0);
+  const overdue = invs.filter(i => invStatus(i) === 'overdue').reduce((s, i) => s + invRemain(i), 0);
+  const dueThisMonth = invs.filter(i => {
+    const st = invStatus(i);
+    if (st === 'paid' || st === 'cancelled') return false;
+    if (!i.dueDate) return false;
+    const d = new Date(i.dueDate); const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).reduce((s, i) => s + invRemain(i), 0);
+  const paidThisMonth = invs.filter(i => {
+    const pmts = (i.payments || []).filter(p => { const d = new Date(p.date); const n = new Date(); return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth(); });
+    return pmts.length > 0;
+  }).reduce((s, i) => s + (i.payments||[]).filter(p => { const d = new Date(p.date); const n = new Date(); return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth(); }).reduce((a, p) => a + Number(p.amount||0), 0), 0);
+
+  // Aging
+  const aging = {current: 0, d30: 0, d60: 0, d90: 0, d90p: 0};
+  invs.forEach(i => {
+    const st = invStatus(i); if (st === 'paid' || st === 'cancelled') return;
+    const remain = invRemain(i); if (!remain) return;
+    const diff = i.dueDate ? daysDiff(i.dueDate) : 0;
+    if (diff >= 0) aging.current += remain;
+    else if (diff >= -30) aging.d30 += remain;
+    else if (diff >= -60) aging.d60 += remain;
+    else if (diff >= -90) aging.d90 += remain;
+    else aging.d90p += remain;
+  });
+  const agingTotal = aging.current + aging.d30 + aging.d60 + aging.d90 + aging.d90p || 1;
+
+  // Recent invoices
+  const recent = [...invs].sort((a, b) => (b.createdAt||'').localeCompare(a.createdAt||'')).slice(0, 5);
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card red"><div class="stat-label">ยอดค้างจ่ายทั้งหมด</div><div class="stat-value">฿${fmt(totalOutstanding)}</div><div class="stat-note">${invs.filter(i=>invStatus(i)!=='paid'&&invStatus(i)!=='cancelled').length} รายการ</div></div>
+      <div class="stat-card red"><div class="stat-label">เกินกำหนดชำระ</div><div class="stat-value">฿${fmt(overdue)}</div><div class="stat-note">${invs.filter(i=>invStatus(i)==='overdue').length} รายการ</div></div>
+      <div class="stat-card orange"><div class="stat-label">ครบกำหนดเดือนนี้</div><div class="stat-value">฿${fmt(dueThisMonth)}</div><div class="stat-note"></div></div>
+      <div class="stat-card green"><div class="stat-label">จ่ายแล้วเดือนนี้</div><div class="stat-value">฿${fmt(paidThisMonth)}</div><div class="stat-note"></div></div>
+    </div>
+    <div class="report-grid">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header"><span class="card-title">AP Aging Summary</span></div>
+        <div class="card-body">
+          ${agingBar('ยังไม่ถึงกำหนด', aging.current, agingTotal, '#15803d')}
+          ${agingBar('1–30 วัน', aging.d30, agingTotal, '#f97316')}
+          ${agingBar('31–60 วัน', aging.d60, agingTotal, '#c2410c')}
+          ${agingBar('61–90 วัน', aging.d90, agingTotal, '#b91c1c')}
+          ${agingBar('มากกว่า 90 วัน', aging.d90p, agingTotal, '#7f1d1d')}
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-header"><span class="card-title">ใบแจ้งหนี้ล่าสุด</span><button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="goPage('invoices')">ดูทั้งหมด</button></div>
+        <div class="card-body" style="padding:0">
+          ${recent.length ? `<table class="tbl"><thead><tr><th>เลขที่</th><th>เจ้าหนี้</th><th class="r">ค้างจ่าย</th><th>สถานะ</th></tr></thead><tbody>${recent.map(i=>`<tr><td class="mono" style="color:var(--accent);cursor:pointer" onclick="viewInvoice('${i.id}')">${escHtml(i.docNo)}</td><td>${escHtml(getVendorName(i.vendorId))}</td><td class="r mono">฿${fmt(invRemain(i))}</td><td>${statusBadge(invStatus(i))}</td></tr>`).join('')}</tbody></table>` : '<div class="empty"><div class="empty-icon">📭</div><p>ยังไม่มีข้อมูล</p></div>'}
+        </div>
+      </div>
+    </div>`;
+}
+
+function agingBar(label, val, total, color) {
+  const pct = Math.min(100, Math.round((val / total) * 100));
+  return `<div class="aging-row"><div class="aging-label">${label}</div><div class="aging-bar-wrap"><div class="aging-bar" style="width:${pct}%;background:${color}">${pct > 15 ? '฿' + fmt(val) : ''}</div></div><div class="aging-val" style="color:${color}">฿${fmt(val)}</div></div>`;
+}
+
+// ══════════════════════════════════════
+// INVOICES LIST
+// ══════════════════════════════════════
+function renderInvoices() {
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="goPage('new-inv')">+ สร้างใบแจ้งหนี้</button>`;
+  refreshInvTable();
+}
+
+function refreshInvTable() {
+  const f_co = document.getElementById('f-co')?.value || '';
+  const f_st = document.getElementById('f-st')?.value || '';
+  const f_q  = (document.getElementById('f-q')?.value || '').toLowerCase();
+
+  let rows = [...(data.ap_invoices || [])];
+  if (f_co) rows = rows.filter(i => i.companyId === f_co);
+  if (f_st) rows = rows.filter(i => invStatus(i) === f_st);
+  if (f_q)  rows = rows.filter(i => (i.docNo||'').toLowerCase().includes(f_q) || getVendorName(i.vendorId).toLowerCase().includes(f_q));
+  rows.sort((a, b) => (b.invoiceDate||'').localeCompare(a.invoiceDate||''));
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="filters">
+      <select id="f-co" onchange="refreshInvTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}" ${c.id===f_co?'selected':''}>${escHtml(c.name)}</option>`).join('')}</select>
+      <select id="f-st" onchange="refreshInvTable()">
+        <option value="">— ทุกสถานะ —</option>
+        <option value="pending" ${f_st==='pending'?'selected':''}>รอจ่าย</option>
+        <option value="partial" ${f_st==='partial'?'selected':''}>จ่ายบางส่วน</option>
+        <option value="overdue" ${f_st==='overdue'?'selected':''}>เกินกำหนด</option>
+        <option value="paid" ${f_st==='paid'?'selected':''}>จ่ายแล้ว</option>
+      </select>
+      <input id="f-q" placeholder="ค้นหาเลขที่ / เจ้าหนี้..." style="width:200px" value="${escHtml(f_q)}" oninput="refreshInvTable()">
+      <span style="font-size:12px;color:var(--ink4)">${rows.length} รายการ</span>
+    </div>
+    <div class="card">
+      ${rows.length === 0 ? '<div class="empty"><div class="empty-icon">📭</div><p>ไม่พบรายการ</p></div>' : `
+      <table class="tbl">
+        <thead><tr>
+          <th>เลขที่</th><th class="hide-mobile">ประเภท</th><th>บริษัท</th><th>เจ้าหนี้</th>
+          <th class="hide-mobile">วันที่</th><th class="hide-mobile">ครบกำหนด</th>
+          <th class="r">ยอดรวม</th><th class="r">ค้างจ่าย</th>
+          <th>สถานะ</th><th>ไฟล์</th><th></th>
+        </tr></thead>
+        <tbody>${rows.map(i => {
+          const st = invStatus(i); const diff = i.dueDate ? daysDiff(i.dueDate) : null;
+          const dueCls = diff !== null && diff < 0 && st !== 'paid' && st !== 'cancelled' ? 'style="color:var(--red);font-weight:700"' : '';
+          const canPay = st !== 'paid' && st !== 'cancelled';
+          return `<tr>
+            <td class="mono bold" style="color:var(--accent);cursor:pointer" onclick="viewInvoice('${i.id}')">${escHtml(i.docNo)}</td>
+            <td class="hide-mobile muted" style="font-size:11px">${escHtml(i.docType||'ใบแจ้งหนี้')}</td>
+            <td>${escHtml(getCompanyName(i.companyId))}</td>
+            <td>${escHtml(getVendorName(i.vendorId))}</td>
+            <td class="hide-mobile muted">${fmtDate(i.invoiceDate)}</td>
+            <td class="hide-mobile" ${dueCls}>${fmtDate(i.dueDate)}</td>
+            <td class="r mono">฿${fmt(i.totalAmount)}</td>
+            <td class="r mono bold" style="color:${invRemain(i)>0?'var(--red)':'var(--green)'}">฿${fmt(invRemain(i))}</td>
+            <td>${statusBadge(st)}</td>
+            <td class="c">${i.attachFile ? `<button class="btn btn-ghost btn-xs" onclick="viewAttach('${i.id}')">📎</button>` : '-'}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-ghost btn-xs" onclick="viewInvoice('${i.id}')">ดู</button>
+              ${canPay ? `<button class="btn btn-success btn-xs" onclick="openPaymentModal('${i.id}')" style="margin-left:4px">💸 จ่าย</button>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`}
+    </div>`;
+}
+window.refreshInvTable = refreshInvTable;
+
+// ══════════════════════════════════════
+// VIEW INVOICE
+// ══════════════════════════════════════
+function viewInvoice(id) {
+  const inv = (data.ap_invoices || []).find(x => x.id === id);
+  if (!inv) return;
+  const st = invStatus(inv);
+  const paid = invPaid(inv);
+  const remain = invRemain(inv);
+  const pct = Number(inv.totalAmount) > 0 ? Math.min(100, Math.round((paid / Number(inv.totalAmount)) * 100)) : 0;
+  const barColor = pct >= 100 ? 'green' : pct > 0 ? 'orange' : 'red';
+
+  document.getElementById('modal-invoice').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+      <div>
+        <div style="font-size:18px;font-weight:700;color:var(--ink)">${escHtml(inv.docNo)}</div>
+        <div style="font-size:12px;color:var(--ink4);margin-top:2px">${escHtml(inv.docType||'ใบแจ้งหนี้')} · ${fmtDate(inv.invoiceDate)} → ครบกำหนด ${fmtDate(inv.dueDate)}</div>
+      </div>
+      ${statusBadge(st)}
+    </div>
+    <div class="form-grid" style="margin-bottom:14px">
+      <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--ink4);margin-bottom:2px">บริษัท (ผู้ซื้อ)</div><div style="font-size:13px;font-weight:600">${escHtml(getCompanyName(inv.companyId))}</div></div>
+      <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--ink4);margin-bottom:2px">เจ้าหนี้ (Vendor)</div><div style="font-size:13px;font-weight:600">${escHtml(getVendorName(inv.vendorId))}</div></div>
+    </div>
+    ${inv.vendorRef ? `<div style="font-size:12px;color:var(--ink3);margin-bottom:6px">เลขที่เอกสารเจ้าหนี้: <b>${escHtml(inv.vendorRef)}</b></div>` : ''}
+    ${(inv.vendorBank||inv.vendorBankAcc) ? `<div style="font-size:12px;color:var(--ink3);margin-bottom:10px;padding:8px 12px;background:var(--blue-light);border-radius:var(--r);border-left:3px solid var(--blue-mid)">🏦 โอนเข้า: <b>${escHtml(inv.vendorBank||'')} ${escHtml(inv.vendorBankAcc||'')}</b>${inv.vendorBankName?` ชื่อบัญชี: <b>${escHtml(inv.vendorBankName)}</b>`:''}</div>` : (() => {
+      const vend = (data.vendors||[]).find(x=>x.id===inv.vendorId);
+      return vend?.bank||vend?.bankAcc ? `<div style="font-size:12px;color:var(--ink3);margin-bottom:10px;padding:8px 12px;background:var(--blue-light);border-radius:var(--r);border-left:3px solid var(--blue-mid)">🏦 โอนเข้า: <b>${escHtml(vend.bank||'')} ${escHtml(vend.bankAcc||'')}</b>${vend.bankName?` ชื่อบัญชี: <b>${escHtml(vend.bankName)}</b>`:''}</div>` : '';
+    })()}
+    <table class="items-tbl" style="margin-bottom:14px">
+      <thead><tr><th>รายละเอียด</th><th class="r">จำนวน</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th></tr></thead>
+      <tbody>${(inv.items||[]).map(it=>`<tr><td>${escHtml(it.desc)}</td><td class="r mono">${fmt(it.qty)}</td><td class="r mono">${fmt(it.price)}</td><td class="r mono">฿${fmt(Number(it.qty||0)*Number(it.price||0))}</td></tr>`).join('')}</tbody>
+    </table>
+    <div class="summary-box" style="margin-bottom:16px">
+      <div class="s-row"><span>ยอดก่อนภาษี</span><span class="val">฿${fmt(inv.subTotal)}</span></div>
+      ${Number(inv.vatAmt||0)>0?`<div class="s-row"><span>VAT ${inv.vatPct||7}%</span><span class="val">฿${fmt(inv.vatAmt)}</span></div>`:''}
+      ${Number(inv.whtAmt||0)>0?`<div class="s-row"><span>หัก ณ ที่จ่าย ${inv.whtPct||3}%</span><span class="val" style="color:var(--red)">-฿${fmt(inv.whtAmt)}</span></div>`:''}
+      <div class="s-row total"><span>ยอดสุทธิ</span><span class="val">฿${fmt(inv.totalAmount)}</span></div>
+      <div class="s-row paid"><span>จ่ายแล้ว</span><span class="val">฿${fmt(paid)}</span></div>
+      <div class="s-row remain"><span>ยังค้างจ่าย</span><span class="val">฿${fmt(remain)}</span></div>
+    </div>
+    <div class="progress-wrap" style="margin-bottom:16px"><div class="progress-bar ${barColor}" style="width:${pct}%"></div></div>
+    <div style="font-size:11px;color:var(--ink4);text-align:right;margin-bottom:14px">${pct}% ชำระแล้ว</div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--ink4);margin-bottom:8px">ประวัติการจ่ายเงิน</div>
+    ${(inv.payments||[]).length === 0 ? '<div style="font-size:12px;color:var(--ink4);margin-bottom:14px">ยังไม่มีการจ่ายเงิน</div>' :
+      (inv.payments||[]).map(p => {
+        const syncIcon = p.syncStatus === 'synced' ? '<span title="ลงบัญชี Finance แล้ว" style="color:var(--green);font-size:11px;margin-left:4px">✅ Finance</span>'
+          : p.syncStatus === 'failed' ? '<span title="sync Finance ไม่สำเร็จ" style="color:var(--red);font-size:11px;margin-left:4px">❌ Finance</span>'
+          : p.syncStatus === 'pending' ? '<span title="รอ sync Finance" style="color:var(--ink4);font-size:11px;margin-left:4px">⏳ Finance</span>' : '';
+        return `<div class="pmt-item"><div class="pmt-icon">💸</div><div class="pmt-info"><div style="font-size:13px;font-weight:600">${escHtml(p.method||'โอนเงิน')}${syncIcon}</div><div class="pmt-date">${fmtDate(p.date)}${p.ref?' · '+escHtml(p.ref):''}</div>${p.note?`<div class="pmt-note">${escHtml(p.note)}</div>`:''}</div><div class="pmt-amt">-฿${fmt(p.amount)}</div><button class="pmt-del" onclick="deletePayment('${inv.id}','${p.id}')" title="ลบ">🗑</button></div>`;
+      }).join('')}
+
+    ${inv.note ? `<div style="font-size:12px;color:var(--ink3);padding:10px;background:var(--bg2);border-radius:var(--r);margin-bottom:14px">📝 ${escHtml(inv.note)}</div>` : ''}
+    ${inv.attachFile ? `<div style="margin-bottom:14px"><button class="btn btn-outline btn-sm" onclick="viewAttach('${inv.id}')">📎 ดูไฟล์แนบ</button></div>` : ''}
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">ปิด</button>
+      <button class="btn btn-outline btn-sm" onclick="editInvoice('${inv.id}')">✏️ แก้ไข</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteInvoice('${inv.id}')">🗑 ลบ</button>
+      ${st !== 'paid' && st !== 'cancelled' ? `<button class="btn btn-success btn-sm" onclick="openPaymentModal('${inv.id}')">💸 บันทึกจ่ายเงิน</button>` : ''}
+    </div>`;
+  openOverlay('ov-invoice');
+}
+window.viewInvoice = viewInvoice;
+
+// ══════════════════════════════════════
+// NEW / EDIT INVOICE FORM
+// ══════════════════════════════════════
+function renderNewInvoice(editId) {
+  const inv = editId ? (data.ap_invoices||[]).find(x=>x.id===editId) : null;
+  const isEdit = !!inv;
+  document.getElementById('topbar-actions').innerHTML = '';
+  const vendors = data.vendors || [];
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${isEdit ? '✏️ แก้ไข '+escHtml(inv.docNo) : '➕ สร้างเอกสาร AP ใหม่'}</span>
+      </div>
+      <div class="card-body">
+        <div class="form-grid-4" style="margin-bottom:16px">
+          <div class="field">
+            <label>ประเภทเอกสาร</label>
+            <select id="f-docType">
+              <option value="ใบแจ้งหนี้" ${(inv?.docType==='ใบแจ้งหนี้'||!inv)?'selected':''}>ใบแจ้งหนี้</option>
+              <option value="ใบวางบิล" ${inv?.docType==='ใบวางบิล'?'selected':''}>ใบวางบิล</option>
+              <option value="ใบเสนอราคา" ${inv?.docType==='ใบเสนอราคา'?'selected':''}>ใบเสนอราคา</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>เลขที่เอกสาร</label>
+            <input id="f-docNo" value="${escHtml(inv?.docNo || nextInvNo())}" ${isEdit?'readonly':''}>
+          </div>
+          <div class="field">
+            <label>บริษัท (ผู้ซื้อ)</label>
+            <select id="f-companyId">
+              <option value="">— เลือกบริษัท —</option>
+              ${companies.map(c=>`<option value="${c.id}" ${inv?.companyId===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>เจ้าหนี้ (Vendor)</label>
+            <select id="f-vendorId" onchange="autofillVendor()">
+              <option value="">— เลือกเจ้าหนี้ —</option>
+              ${vendors.map(v=>`<option value="${v.id}" ${inv?.vendorId===v.id?'selected':''}>${escHtml(v.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-grid-4" style="margin-bottom:16px">
+          <div class="field">
+            <label>วันที่เอกสาร</label>
+            <input type="date" id="f-invoiceDate" value="${inv?.invoiceDate||today()}" onchange="calcDueDate()">
+          </div>
+          <div class="field">
+            <label>เงื่อนไขชำระ (วัน)</label>
+            <input type="number" id="f-payDays" value="${inv?.paymentDays||30}" min="0" onchange="calcDueDate()">
+          </div>
+          <div class="field">
+            <label>วันครบกำหนดชำระ</label>
+            <input type="date" id="f-dueDate" value="${inv?.dueDate||addDays(today(),30)}">
+          </div>
+          <div class="field">
+            <label>วิธีชำระเงิน</label>
+            <select id="f-payMethod">
+              <option value="โอนเงิน" ${inv?.payMethod==='โอนเงิน'?'selected':''}>โอนเงิน</option>
+              <option value="เช็ค" ${inv?.payMethod==='เช็ค'?'selected':''}>เช็ค</option>
+              <option value="เงินสด" ${inv?.payMethod==='เงินสด'?'selected':''}>เงินสด</option>
+            </select>
+          </div>
+        </div>
+        <!-- บัญชีธนาคารเจ้าหนี้ (จาก OCR หรือกรอกเอง) -->
+        <div class="form-grid" style="margin-bottom:16px" id="vendor-bank-row">
+          <div class="field">
+            <label>ธนาคารเจ้าหนี้ (สำหรับโอนเงิน)</label>
+            <input id="f-vendorBank" placeholder="เช่น ไทยพาณิชย์" value="${escHtml(inv?.vendorBank||'')}">
+          </div>
+          <div class="field">
+            <label>เลขบัญชีเจ้าหนี้</label>
+            <input id="f-vendorBankAcc" placeholder="เช่น 401-3-41893-7" value="${escHtml(inv?.vendorBankAcc||'')}">
+          </div>
+        </div>
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="field">
+            <label>ชื่อบัญชี (ผู้รับเงิน)</label>
+            <input id="f-vendorBankName" placeholder="เช่น นางสาวชัญญณัฏฐ์ คอยเอื้อชาติ" value="${escHtml(inv?.vendorBankName||'')}">
+          </div>
+          <div class="field">
+            <label>เลขที่เอกสารเจ้าหนี้</label>
+            <input id="f-vendorRef" placeholder="เลขที่เอกสารจากเจ้าหนี้ เช่น INV-2025-001" value="${escHtml(inv?.vendorRef||'')}">
+          </div>
+        </div>
+
+        <!-- LINE ITEMS -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--ink4);margin-bottom:8px">รายการสินค้า/บริการ</div>
+        <table class="items-tbl" id="items-table">
+          <thead><tr><th style="width:50%">รายละเอียด</th><th class="r" style="width:12%">จำนวน</th><th class="r" style="width:18%">ราคา/หน่วย</th><th class="r" style="width:15%">รวม</th><th style="width:5%"></th></tr></thead>
+          <tbody id="items-body"></tbody>
+        </table>
+        <button class="btn btn-ghost btn-xs" onclick="addItem()" style="margin-bottom:16px">+ เพิ่มรายการ</button>
+
+        <!-- TOTALS -->
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+          <div class="field" style="width:140px">
+            <label>VAT (%)</label>
+            <select id="f-vatPct" onchange="calcTotals()">
+              <option value="0" ${inv?.vatPct==0?'selected':''}>ไม่มี VAT</option>
+              <option value="7" ${(inv?.vatPct==7||!inv)?'selected':''}>7%</option>
+            </select>
+          </div>
+          <div class="field" style="width:140px">
+            <label>หัก ณ ที่จ่าย (%)</label>
+            <select id="f-whtPct" onchange="calcTotals()">
+              <option value="0" ${inv?.whtPct==0?'selected':''}>ไม่หัก</option>
+              <option value="1" ${inv?.whtPct==1?'selected':''}>1%</option>
+              <option value="3" ${(inv?.whtPct==3||!inv)?'selected':''}>3%</option>
+              <option value="5" ${inv?.whtPct==5?'selected':''}>5%</option>
+            </select>
+          </div>
+        </div>
+        <div class="summary-box">
+          <div class="s-row"><span>ยอดก่อนภาษี</span><span class="val" id="t-sub">฿0.00</span></div>
+          <div class="s-row"><span id="t-vat-label">VAT 7%</span><span class="val" id="t-vat">฿0.00</span></div>
+          <div class="s-row"><span id="t-wht-label">WHT 3%</span><span class="val" id="t-wht" style="color:var(--red)">-฿0.00</span></div>
+          <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="t-total">฿0.00</span></div>
+        </div>
+
+        <!-- NOTE -->
+        <div class="field" style="margin-top:16px">
+          <label>หมายเหตุ</label>
+          <textarea id="f-note" rows="2">${escHtml(inv?.note||'')}</textarea>
+        </div>
+
+        <!-- PRE-PAYMENT (จาก OCR หรือกรอกเอง) -->
+        <div id="prepmt-section" style="margin-top:16px;display:${inv?.prePmts?.length?'block':'none'}">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--ink4)">การชำระเงินที่มีอยู่แล้ว (ก่อนบันทึก)</div>
+            <button class="btn btn-ghost btn-xs" onclick="addPrePmt()">+ เพิ่ม</button>
+          </div>
+          <div id="prepmt-list"></div>
+          <div style="font-size:11px;color:var(--ink4);margin-top:4px">💡 ถ้าเอกสารนี้มีการชำระเงินบางส่วนไปแล้วก่อนที่จะบันทึกในระบบ ให้กรอกที่นี่</div>
+        </div>
+        <div id="prepmt-toggle" style="margin-top:10px;display:${inv?.prePmts?.length?'none':'block'}">
+          <button class="btn btn-ghost btn-xs" onclick="showPrePmt()">+ มีการชำระเงินก่อนหน้าแล้ว?</button>
+        </div>
+
+        <!-- FILE ATTACH + OCR -->
+        <div style="margin-top:14px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--ink4);margin-bottom:8px">แนบไฟล์ใบแจ้งหนี้/ใบเสนอราคา</div>
+          <div class="file-attach-zone" id="file-drop-zone" onclick="document.getElementById('file-inp').click()" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor=''" ondrop="handleDrop(event)">
+            <input type="file" id="file-inp" accept=".pdf,.jpg,.jpeg,.png" onchange="handleFile(event)">
+            <div style="font-size:22px;margin-bottom:6px">📎</div>
+            <div style="font-size:13px;color:var(--ink3)">คลิกหรือลากไฟล์มาวาง (PDF, JPG, PNG)</div>
+            <div style="font-size:11px;color:var(--ink4);margin-top:4px">ขนาดสูงสุด 5MB</div>
+          </div>
+          <div id="file-preview-wrap"></div>
+          ${inv?.attachFile ? `<div class="file-preview" id="existing-file-preview"><div class="file-icon">📄</div><div class="file-name">${escHtml(inv.attachFileName||'ไฟล์แนบ')}</div><div class="file-size">${escHtml(inv.attachFileSize||'')}</div><button class="file-del" onclick="clearFile()">✕</button></div>` : ''}
+          <div id="ocr-btn-wrap" style="margin-top:10px;display:none">
+            <button class="btn btn-primary btn-sm" id="btn-ocr" onclick="runOCR()">🤖 อ่านใบแจ้งหนี้อัตโนมัติ</button>
+            <span style="font-size:11px;color:var(--ink4);margin-left:10px">ใช้ AI อ่านข้อมูลจากไฟล์แล้วกรอกฟอร์มให้</span>
+          </div>
+          <div id="ocr-status" style="margin-top:8px"></div>
+        </div>
+      </div>
+      <div class="card-footer">
+        <button class="btn btn-ghost" onclick="goPage('invoices')">ยกเลิก</button>
+        <button class="btn btn-primary" onclick="saveInvoice(${isEdit?`'${editId}'`:'null'})">${isEdit?'💾 บันทึกการแก้ไข':'✅ บันทึกใบแจ้งหนี้'}</button>
+      </div>
+    </div>`;
+
+  _editAttachData = inv?.attachFile || null;
+  _editAttachName = inv?.attachFileName || '';
+  _editAttachSize = inv?.attachFileSize || '';
+  window._prePmts = [];
+
+  // Load items
+  const items = inv?.items || [{desc:'',qty:1,price:0}];
+  window._items = items.map(it => ({...it}));
+  renderItems();
+  calcTotals();
+  calcDueDate();
+}
+window.renderNewInvoice = renderNewInvoice;
+
+let _editAttachData = null, _editAttachName = '', _editAttachSize = '';
+let _pendingAttach = null;
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('file-drop-zone').style.borderColor = '';
+  const file = e.dataTransfer?.files?.[0];
+  if (file) processFile(file);
+}
+window.handleDrop = handleDrop;
+
+function handleFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  processFile(file);
+}
+window.handleFile = handleFile;
+
+function processFile(file) {
+  if (file.size > 5 * 1024 * 1024) { toast('ไฟล์ใหญ่เกิน 5MB', 'err'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    _pendingAttach = {data: ev.target.result, name: file.name, size: formatFileSize(file.size), type: file.type};
+    const wrap = document.getElementById('file-preview-wrap');
+    if (wrap) wrap.innerHTML = `
+      <div class="file-preview">
+        <div class="file-icon">${file.type.includes('pdf')?'📄':'🖼️'}</div>
+        <div class="file-name">${escHtml(file.name)}</div>
+        <div class="file-size">${formatFileSize(file.size)}</div>
+        <button class="file-del" onclick="clearFile()">✕</button>
+      </div>`;
+    const ocrWrap = document.getElementById('ocr-btn-wrap');
+    if (ocrWrap) ocrWrap.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearFile() {
+  _pendingAttach = null; _editAttachData = null;
+  const wrap = document.getElementById('file-preview-wrap'); if (wrap) wrap.innerHTML = '';
+  const ep = document.getElementById('existing-file-preview'); if (ep) ep.remove();
+  const ocrWrap = document.getElementById('ocr-btn-wrap'); if (ocrWrap) ocrWrap.style.display = 'none';
+  const ocrStatus = document.getElementById('ocr-status'); if (ocrStatus) ocrStatus.innerHTML = '';
+  const fi = document.getElementById('file-inp'); if (fi) fi.value = '';
+}
+window.clearFile = clearFile;
+
+function formatFileSize(b) { if (b < 1024) return b+'B'; if (b < 1048576) return (b/1024).toFixed(1)+'KB'; return (b/1048576).toFixed(1)+'MB'; }
+
+// ══════════════════════════════════════
+// OCR — อ่านใบแจ้งหนี้ด้วย Claude API
+// ══════════════════════════════════════
+async function runOCR() {
+  const attach = _pendingAttach || (_editAttachData ? {data: _editAttachData, name: _editAttachName, type: _editAttachData.startsWith('data:image') ? 'image/jpeg' : 'application/pdf'} : null);
+  if (!attach) { toast('กรุณาเลือกไฟล์ก่อน', 'err'); return; }
+
+  const btn = document.getElementById('btn-ocr');
+  const statusEl = document.getElementById('ocr-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังอ่านเอกสาร...';
+  statusEl.innerHTML = `<div style="font-size:12px;color:var(--ink3);padding:8px 12px;background:var(--accent-light);border-radius:var(--r);border-left:3px solid var(--accent)">🤖 AI กำลังวิเคราะห์เอกสาร กรุณารอสักครู่...</div>`;
+
+  try {
+    // แยก base64 data ออกจาก data URL
+    const dataUrl = attach.data;
+    const [header, b64] = dataUrl.split(',');
+    const mimeMatch = header.match(/data:([^;]+)/);
+    const mimeType = mimeMatch ? mimeMatch[1] : (attach.type || 'image/jpeg');
+    const isPdf = mimeType === 'application/pdf';
+
+    // build content block
+    const fileBlock = isPdf
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } }
+      : { type: 'image',    source: { type: 'base64', media_type: mimeType, data: b64 } };
+
+    // vendor list สำหรับ matching
+    const vendorList = (data.vendors||[]).map(v => `- id:${v.id} name:"${v.name}" taxId:"${v.taxId||''}"`).join('\n');
+
+    const prompt = `คุณเป็นผู้เชี่ยวชาญด้านบัญชีไทย กรุณาอ่านเอกสารนี้แล้วดึงข้อมูลออกมาให้ครบถ้วนและแม่นยำ
+
+รายชื่อเจ้าหนี้ในระบบ (ถ้าพบชื่อตรงกันให้ใส่ vendorId ด้วย):
+${vendorList || '(ยังไม่มีเจ้าหนี้ในระบบ)'}
+
+วันปัจจุบัน: ${today()} (ใช้อ้างอิงถ้าวันที่ในเอกสารเป็นรูปแบบย่อหรือปีพ.ศ.)
+
+ตอบเป็น JSON เท่านั้น ไม่มีข้อความอื่น:
+{
+  "docType": "ใบวางบิล หรือ ใบแจ้งหนี้ หรือ ใบเสนอราคา ตามที่ระบุในเอกสาร",
+  "vendorId": "id จาก list ด้านบน หรือ null",
+  "vendorName": "ชื่อผู้ออกเอกสาร/เจ้าหนี้ (ไม่ใช่ชื่อลูกค้า)",
+  "vendorTaxId": "เลขผู้เสียภาษีของผู้ออกเอกสาร 13 หลัก หรือ null",
+  "vendorRef": "เลขที่เอกสารของเจ้าหนี้ เช่น 69/005",
+  "vendorBank": "ชื่อธนาคารที่เจ้าหนี้ให้โอนเงินเข้า หรือ null",
+  "vendorBankAcc": "เลขบัญชีธนาคารของเจ้าหนี้ หรือ null",
+  "vendorBankName": "ชื่อบัญชีธนาคาร (ชื่อผู้รับเงิน) อาจเป็นชื่อบุคคลหรือนิติบุคคล หรือ null",
+  "invoiceDate": "YYYY-MM-DD วันที่ออกเอกสาร หรือ null",
+  "dueDate": "YYYY-MM-DD วันครบกำหนดชำระ หรือ null",
+  "paymentDays": จำนวนวันเครดิต (number) หรือ 30,
+  "items": [
+    {"desc": "รายละเอียดสินค้า/บริการ", "qty": จำนวน, "price": ราคาต่อหน่วย}
+  ],
+  "vatPct": 0 หรือ 7,
+  "whtPct": 0, 1, 3 หรือ 5,
+  "prePmts": [
+    {
+      "amount": จำนวนเงินที่ชำระแล้ว (number),
+      "date": "YYYY-MM-DD วันที่ชำระ",
+      "note": "หมายเหตุเช่น ชำระ 50%"
+    }
+  ],
+  "note": "หมายเหตุอื่นๆ เช่น ข้อมูลการโอนเงิน หรือ null"
+}
+
+สำคัญ:
+- prePmts คือการชำระที่ระบุในเอกสาร เช่น "ชำระแล้ว 50% วันที่ XX/XX/XX" ให้คำนวณยอดเงินจาก % ของยอดรวม
+- ถ้าไม่มีการชำระ ให้ prePmts = []
+- วันที่ปีพ.ศ. ให้แปลงเป็นปีค.ศ. (ลบ 543)
+- ผู้ออกเอกสาร (เจ้าหนี้) คือบริษัทที่อยู่ด้านบน/หัวกระดาษ ไม่ใช่ "ลูกค้า"`;
+
+
+    const claudeKey = localStorage.getItem('ap_claude_api_key') || '';
+    if (!claudeKey) { toast('กรุณาตั้งค่า Claude API Key ในหน้าตั้งค่าก่อน', 'err'); btn.disabled = false; btn.textContent = '🤖 อ่านใบแจ้งหนี้อัตโนมัติ'; statusEl.innerHTML = ''; return; }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [fileBlock, { type: 'text', text: prompt }]
+        }]
+      })
+    });
+
+    if (!response.ok) throw new Error('API ตอบกลับ ' + response.status);
+    const result = await response.json();
+    const text = (result.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('');
+
+    // parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('ไม่พบข้อมูล JSON ในคำตอบ');
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // กรอกฟอร์ม
+    applyOCRResult(parsed);
+
+    statusEl.innerHTML = `<div style="font-size:12px;color:var(--green);padding:8px 12px;background:var(--green-light);border-radius:var(--r);border-left:3px solid var(--green)">✅ อ่านเอกสารสำเร็จ — กรุณาตรวจสอบข้อมูลก่อนบันทึก</div>`;
+    btn.textContent = '🔄 อ่านใหม่';
+
+  } catch(e) {
+    console.error('OCR error:', e);
+    statusEl.innerHTML = `<div style="font-size:12px;color:var(--red);padding:8px 12px;background:var(--red-light);border-radius:var(--r);border-left:3px solid var(--red)">❌ อ่านไม่สำเร็จ: ${escHtml(e.message)} — กรุณากรอกข้อมูลเอง</div>`;
+    btn.textContent = '🔄 ลองใหม่';
+  }
+  btn.disabled = false;
+}
+window.runOCR = runOCR;
+
+function applyOCRResult(d) {
+  // docType
+  if (d.docType) { const el = document.getElementById('f-docType'); if(el) { ['ใบแจ้งหนี้','ใบวางบิล','ใบเสนอราคา'].forEach(t => { if(d.docType.includes(t)) el.value = t; }); } }
+  // Vendor
+  if (d.vendorId) { const sel = document.getElementById('f-vendorId'); if(sel) sel.value = d.vendorId; }
+  // Vendor ref
+  if (d.vendorRef) { const el = document.getElementById('f-vendorRef'); if(el) el.value = d.vendorRef; }
+  // Vendor bank
+  if (d.vendorBank) { const el = document.getElementById('f-vendorBank'); if(el) el.value = d.vendorBank; }
+  if (d.vendorBankAcc) { const el = document.getElementById('f-vendorBankAcc'); if(el) el.value = d.vendorBankAcc; }
+  if (d.vendorBankName) { const el = document.getElementById('f-vendorBankName'); if(el) el.value = d.vendorBankName; }
+  // Dates
+  if (d.invoiceDate) { const el = document.getElementById('f-invoiceDate'); if(el) el.value = d.invoiceDate; }
+  if (d.dueDate) { const el = document.getElementById('f-dueDate'); if(el) el.value = d.dueDate; }
+  if (d.paymentDays) { const el = document.getElementById('f-payDays'); if(el) el.value = d.paymentDays; }
+  // VAT / WHT
+  if (d.vatPct !== undefined) { const el = document.getElementById('f-vatPct'); if(el) el.value = String(d.vatPct); }
+  if (d.whtPct !== undefined) { const el = document.getElementById('f-whtPct'); if(el) el.value = String(d.whtPct); }
+  // Note
+  if (d.note) { const el = document.getElementById('f-note'); if(el && !el.value) el.value = d.note; }
+  // Items
+  if (d.items && d.items.length > 0) {
+    window._items = d.items.map(it => ({ desc: String(it.desc||''), qty: Number(it.qty)||1, price: Number(it.price)||0 }));
+    renderItems();
+  }
+  calcTotals();
+
+  // Pre-payments (ชำระแล้วก่อนบันทึก)
+  if (d.prePmts && d.prePmts.length > 0) {
+    window._prePmts = d.prePmts.map(p => ({
+      id: uid(), amount: Number(p.amount)||0, date: p.date||today(), note: p.note||'ชำระก่อนบันทึก', method: 'โอนเงิน'
+    }));
+    showPrePmt();
+    renderPrePmts();
+    const statusEl = document.getElementById('ocr-status');
+    const total = window._prePmts.reduce((s,p)=>s+p.amount,0);
+    if(statusEl) statusEl.innerHTML += `<div style="font-size:11px;color:var(--blue);padding:6px 10px;background:var(--blue-light);border-radius:var(--r);margin-top:6px;border-left:3px solid var(--blue)">💸 พบการชำระเงินก่อนหน้า <b>฿${fmt(total)}</b> — จะบันทึกเป็น payment อัตโนมัติเมื่อกดบันทึก</div>`;
+  }
+
+  // vendor not found warning
+  if (d.vendorName && !d.vendorId) {
+    const statusEl = document.getElementById('ocr-status');
+    if(statusEl) statusEl.innerHTML += `<div style="font-size:11px;color:var(--yellow);padding:6px 10px;background:var(--yellow-light);border-radius:var(--r);margin-top:6px;border-left:3px solid var(--yellow)">⚠️ เจ้าหนี้ "<b>${escHtml(d.vendorName)}</b>" ยังไม่มีในระบบ — กรุณาเพิ่มเจ้าหนี้ก่อน หรือเลือกจาก Dropdown</div>`;
+  }
+}
+window.applyOCRResult = applyOCRResult;
+
+// ── Pre-payment helpers ──
+window._prePmts = [];
+function showPrePmt() {
+  const sec = document.getElementById('prepmt-section'); if(sec) sec.style.display='block';
+  const tog = document.getElementById('prepmt-toggle'); if(tog) tog.style.display='none';
+  if(!window._prePmts.length) { window._prePmts=[{id:uid(),amount:0,date:today(),note:'',method:'โอนเงิน'}]; }
+  renderPrePmts();
+}
+window.showPrePmt = showPrePmt;
+
+function renderPrePmts() {
+  const el = document.getElementById('prepmt-list'); if(!el) return;
+  el.innerHTML = window._prePmts.map((p,i) => `
+    <div style="display:grid;grid-template-columns:120px 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px">
+      <div class="field">
+        <label style="font-size:10px">วันที่ชำระ</label>
+        <input type="date" value="${escHtml(p.date)}" onchange="updatePrePmt(${i},'date',this.value)">
+      </div>
+      <div class="field">
+        <label style="font-size:10px">จำนวนเงิน (฿)</label>
+        <input type="number" value="${p.amount}" min="0" step="0.01" onchange="updatePrePmt(${i},'amount',this.value)">
+      </div>
+      <div class="field">
+        <label style="font-size:10px">หมายเหตุ</label>
+        <input value="${escHtml(p.note)}" placeholder="เช่น ชำระ 50%" onchange="updatePrePmt(${i},'note',this.value)">
+      </div>
+      <button onclick="removePrePmt(${i})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:16px;padding:8px 4px" title="ลบ">✕</button>
+    </div>`).join('');
+}
+window.renderPrePmts = renderPrePmts;
+
+function addPrePmt() { window._prePmts.push({id:uid(),amount:0,date:today(),note:'',method:'โอนเงิน'}); renderPrePmts(); }
+window.addPrePmt = addPrePmt;
+function removePrePmt(i) { window._prePmts.splice(i,1); renderPrePmts(); }
+window.removePrePmt = removePrePmt;
+function updatePrePmt(i,f,v) { window._prePmts[i][f]=f==='amount'?Number(v):v; }
+window.updatePrePmt = updatePrePmt;
+
+function viewAttach(id) {
+  const inv = (data.ap_invoices||[]).find(x=>x.id===id);
+  if (!inv?.attachFile) return;
+  document.getElementById('modal-attach').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="modal-title" style="margin:0">📎 ${escHtml(inv.attachFileName||'ไฟล์แนบ')}</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
+    </div>
+    <div style="text-align:center">
+      ${inv.attachFile.startsWith('data:image') ?
+        `<img src="${inv.attachFile}" style="max-width:100%;max-height:60vh;border-radius:var(--r);border:1px solid var(--border)">` :
+        `<iframe src="${inv.attachFile}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:var(--r)"></iframe>`}
+    </div>
+    <div style="text-align:center;margin-top:12px">
+      <a href="${inv.attachFile}" download="${escHtml(inv.attachFileName||'attach')}" class="btn btn-outline btn-sm">⬇️ ดาวน์โหลด</a>
+    </div>`;
+  openOverlay('ov-attach');
+}
+window.viewAttach = viewAttach;
+
+function autofillVendor() {
+  const vendorId = document.getElementById('f-vendorId')?.value;
+  const bankEl    = document.getElementById('f-vendorBank');
+  const bankAccEl = document.getElementById('f-vendorBankAcc');
+  const bankNameEl= document.getElementById('f-vendorBankName');
+  const payDaysEl = document.getElementById('f-payDays');
+  // เคลียร์ field ธนาคารก่อนเสมอ เพื่อป้องกันข้อมูลเจ้าหนี้เดิมค้างอยู่
+  if (bankEl)     bankEl.value = '';
+  if (bankAccEl)  bankAccEl.value = '';
+  if (bankNameEl) bankNameEl.value = '';
+  if (!vendorId) return;
+  const v = (data.vendors||[]).find(x => x.id === vendorId);
+  if (!v) return;
+  if (bankEl && v.bank)         bankEl.value = v.bank;
+  if (bankAccEl && v.bankAcc)   bankAccEl.value = v.bankAcc;
+  if (bankNameEl && v.bankName) bankNameEl.value = v.bankName;
+  if (payDaysEl && v.paymentDays) { payDaysEl.value = v.paymentDays; calcDueDate(); }
+}
+window.autofillVendor = autofillVendor;
+
+function calcDueDate() {
+  const dt = document.getElementById('f-invoiceDate')?.value;
+  const days = parseInt(document.getElementById('f-payDays')?.value || 30);
+  if (dt) { const el = document.getElementById('f-dueDate'); if (el) el.value = addDays(dt, days); }
+}
+window.calcDueDate = calcDueDate;
+
+// ── Items ──
+function renderItems() {
+  const tbody = document.getElementById('items-body');
+  if (!tbody) return;
+  tbody.innerHTML = window._items.map((it, i) => `
+    <tr>
+      <td><input class="item-inp" placeholder="รายละเอียด" value="${escHtml(it.desc)}" onchange="updateItem(${i},'desc',this.value)"></td>
+      <td><input class="item-inp r" type="number" value="${it.qty||1}" min="0" step="0.01" onchange="updateItem(${i},'qty',this.value)"></td>
+      <td><input class="item-inp r" type="number" value="${it.price||0}" min="0" step="0.01" onchange="updateItem(${i},'price',this.value)"></td>
+      <td class="r mono" style="font-size:12px">฿${fmt(Number(it.qty||0)*Number(it.price||0))}</td>
+      <td><button onclick="removeItem(${i})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:13px" title="ลบ">✕</button></td>
+    </tr>`).join('');
+  calcTotals();
+}
+window.renderItems = renderItems;
+
+function addItem() { window._items.push({desc:'',qty:1,price:0}); renderItems(); }
+window.addItem = addItem;
+
+function removeItem(i) { window._items.splice(i,1); renderItems(); }
+window.removeItem = removeItem;
+
+function updateItem(i, field, val) { window._items[i][field] = val; renderItems(); }
+window.updateItem = updateItem;
+
+function calcTotals() {
+  const sub = window._items.reduce((s,it) => s + Number(it.qty||0)*Number(it.price||0), 0);
+  const vatPct = Number(document.getElementById('f-vatPct')?.value || 0);
+  const whtPct = Number(document.getElementById('f-whtPct')?.value || 0);
+  const vatAmt = sub * vatPct / 100;
+  const whtAmt = sub * whtPct / 100;
+  const total = sub + vatAmt - whtAmt;
+  const el = id => document.getElementById(id);
+  if (el('t-sub')) el('t-sub').textContent = '฿' + fmt(sub);
+  if (el('t-vat')) el('t-vat').textContent = '฿' + fmt(vatAmt);
+  if (el('t-vat-label')) el('t-vat-label').textContent = 'VAT ' + vatPct + '%';
+  if (el('t-wht')) el('t-wht').textContent = '-฿' + fmt(whtAmt);
+  if (el('t-wht-label')) el('t-wht-label').textContent = 'WHT ' + whtPct + '%';
+  if (el('t-total')) el('t-total').textContent = '฿' + fmt(total);
+}
+window.calcTotals = calcTotals;
+
+async function saveInvoice(editId) {
+  try {
+    const companyId = document.getElementById('f-companyId').value;
+    const vendorId = document.getElementById('f-vendorId').value;
+    const docNo = document.getElementById('f-docNo').value.trim();
+    const invoiceDate = document.getElementById('f-invoiceDate').value;
+    const dueDate = document.getElementById('f-dueDate').value;
+    if (!companyId) { toast('กรุณาเลือกบริษัท', 'err'); return; }
+    if (!vendorId) { toast('กรุณาเลือกเจ้าหนี้', 'err'); return; }
+    if (!docNo) { toast('กรุณาระบุเลขที่เอกสาร', 'err'); return; }
+    if (!invoiceDate) { toast('กรุณาระบุวันที่', 'err'); return; }
+    if (!window._items || window._items.length === 0 || !window._items.some(it => it.desc?.trim())) { toast('กรุณาเพิ่มรายการสินค้า/บริการอย่างน้อย 1 รายการ', 'err'); return; }
+
+    const sub = window._items.reduce((s,it) => s + Number(it.qty||0)*Number(it.price||0), 0);
+    const vatPct = Number(document.getElementById('f-vatPct').value);
+    const whtPct = Number(document.getElementById('f-whtPct').value);
+    const vatAmt = sub * vatPct / 100;
+    const whtAmt = sub * whtPct / 100;
+    const total = sub + vatAmt - whtAmt;
+
+    // attach
+    let attachFile = _editAttachData, attachFileName = _editAttachName, attachFileSize = _editAttachSize;
+    if (_pendingAttach) { attachFile = _pendingAttach.data; attachFileName = _pendingAttach.name; attachFileSize = _pendingAttach.size; }
+
+    const d = {
+      docType: document.getElementById('f-docType').value || 'ใบแจ้งหนี้',
+      companyId, vendorId, docNo,
+      vendorRef: document.getElementById('f-vendorRef')?.value.trim() || '',
+      vendorBank: document.getElementById('f-vendorBank').value.trim(),
+      vendorBankAcc: document.getElementById('f-vendorBankAcc').value.trim(),
+      vendorBankName: document.getElementById('f-vendorBankName').value.trim(),
+      invoiceDate, dueDate,
+      paymentDays: Number(document.getElementById('f-payDays').value || 30),
+      payMethod: document.getElementById('f-payMethod').value,
+      items: window._items.map(it => ({desc: it.desc, qty: Number(it.qty), price: Number(it.price)})),
+      subTotal: sub, vatPct, vatAmt, whtPct, whtAmt, totalAmount: total,
+      note: document.getElementById('f-note').value.trim(),
+      attachFile, attachFileName, attachFileSize,
+    };
+
+    if (editId) {
+      const ok = await storeUpdate('ap_invoices', editId, d);
+      if (ok) { syncLS('ap_invoices', data.ap_invoices); toast('แก้ไขสำเร็จ','ok'); goPage('invoices'); }
+    } else {
+      // pre-payments จาก OCR หรือกรอกเอง → บันทึกเป็น payments ทันที
+      const prePmts = (window._prePmts||[]).filter(p => Number(p.amount)>0).map(p => ({
+        ...p, id: p.id || uid(), method: p.method||'โอนเงิน'
+      }));
+      d.payments = prePmts;
+      window._prePmts = [];
+      const id = await storeAdd('ap_invoices', d);
+      if (id) { data.ap_invoices.push({id, ...d}); syncLS('ap_invoices', data.ap_invoices); toast('บันทึกใบแจ้งหนี้สำเร็จ'+(prePmts.length?` (มี ${prePmts.length} รายการชำระแล้ว)`:''), 'ok'); goPage('invoices'); }
+    }
+  } catch(e) { toast('เกิดข้อผิดพลาด: ' + e.message, 'err'); }
+}
+window.saveInvoice = saveInvoice;
+
+function editInvoice(id) {
+  closeModal();
+  _currentPage = 'new-inv';
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navEl = document.getElementById('nav-invoices'); if(navEl) navEl.classList.add('active');
+  document.getElementById('topbar-title').textContent = 'แก้ไขใบแจ้งหนี้ AP';
+  document.getElementById('topbar-actions').innerHTML = '';
+  renderNewInvoice(id);
+}
+window.editInvoice = editInvoice;
+
+async function deleteInvoice(id) {
+  if (!confirm('ต้องการลบใบแจ้งหนี้นี้?')) return;
+  data.ap_invoices = (data.ap_invoices||[]).filter(x => x.id !== id);
+  await storeDelete('ap_invoices', id);
+  syncLS('ap_invoices', data.ap_invoices);
+  closeModal(); toast('ลบสำเร็จ','ok'); goPage('invoices');
+}
+window.deleteInvoice = deleteInvoice;
+
+// ══════════════════════════════════════
+// PAYMENT MODAL (Partial Payment)
+// ══════════════════════════════════════
+function openPaymentModal(id) {
+  const inv = (data.ap_invoices||[]).find(x => x.id === id);
+  if (!inv) return;
+  _payingInvoice = inv;
+  const remain = invRemain(inv);
+  // ดึงข้อมูลธนาคาร: vendor master เป็นหลัก (ข้อมูลถูกต้องเสมอ) fallback ไป invoice fields
+  const vend = (data.vendors||[]).find(x => x.id === inv.vendorId);
+  const bankName    = vend?.bank     || inv.vendorBank    || '';
+  const bankAcc     = vend?.bankAcc  || inv.vendorBankAcc || '';
+  const bankAccName = vend?.bankName || inv.vendorBankName|| '';
+  const bankInfo = (bankName || bankAcc) ?
+    `<div style="background:var(--blue-light);border-left:3px solid var(--blue-mid);border-radius:var(--r);padding:10px 14px;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--blue);margin-bottom:4px">🏦 โอนเงินเข้าบัญชี</div>
+      <div style="font-size:13px;font-weight:600;color:var(--ink)">${escHtml(bankName)}${bankAcc ? ' · <span style="font-family:monospace">'+escHtml(bankAcc)+'</span>' : ''}</div>
+      ${bankAccName ? `<div style="font-size:12px;color:var(--ink3);margin-top:2px">ชื่อบัญชี: ${escHtml(bankAccName)}</div>` : ''}
+    </div>` : '';
+  document.getElementById('modal-payment').innerHTML = `
+    <div class="modal-title">💸 บันทึกจ่ายเงิน</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${escHtml(inv.docNo)} — ${escHtml(getVendorName(inv.vendorId))}</div>
+    ${bankInfo}
+    <div style="background:var(--red-light);padding:10px 14px;border-radius:var(--r);margin-bottom:16px;display:flex;justify-content:space-between">
+      <span style="font-size:12px;color:var(--red)">ยอดค้างจ่าย</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--red)">฿${fmt(remain)}</span>
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="field">
+        <label>วันที่จ่าย</label>
+        <input type="date" id="pmt-date" value="${today()}">
+      </div>
+      <div class="field">
+        <label>จำนวนเงิน (฿)</label>
+        <input type="number" id="pmt-amount" value="${remain.toFixed(2)}" min="0.01" step="0.01">
+      </div>
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="field">
+        <label>วิธีชำระ</label>
+        <select id="pmt-method">
+          <option>โอนเงิน</option><option>เช็ค</option><option>เงินสด</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>เลขที่อ้างอิง</label>
+        <input id="pmt-ref" placeholder="เลขที่เช็ค / หมายเลขอ้างอิง">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:16px">
+      <label>หมายเหตุ</label>
+      <input id="pmt-note" placeholder="หมายเหตุ">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-success btn-sm" onclick="confirmPayment()">✅ บันทึกการจ่าย</button>
+    </div>`;
+  closeOverlay('ov-invoice');
+  openOverlay('ov-payment');
+}
+window.openPaymentModal = openPaymentModal;
+
+async function confirmPayment() {
+  if (!_payingInvoice) return;
+  try {
+    const amount = Number(document.getElementById('pmt-amount').value);
+    const pmtDate = document.getElementById('pmt-date').value;
+    const method = document.getElementById('pmt-method').value;
+    const ref = document.getElementById('pmt-ref').value.trim();
+    const note = document.getElementById('pmt-note').value.trim();
+    if (!amount || amount <= 0) { toast('กรุณาระบุจำนวนเงิน', 'err'); return; }
+    const remain = invRemain(_payingInvoice);
+    if (amount > remain + 0.01) { toast(`จำนวนเงินเกินยอดค้างจ่าย (฿${fmt(remain)})`, 'err'); return; }
+
+    // หา financeDate (เลื่อนเดือนถ้า Finance ปิดงวด)
+    let financeInfo;
+    try { financeInfo = await findNextOpenAPFinanceDate(pmtDate); }
+    catch(e) { toast('เกิดข้อผิดพลาด: ' + e.message, 'err'); return; }
+    if (financeInfo.shifted) {
+      toast(`เดือน ${pmtDate.slice(0,7)} ปิดแล้ว — จะลงบัญชี Finance ในเดือน ${financeInfo.financeMonth} แทน`, 'info');
+    }
+
+    const pmt = {
+      id: uid(),
+      date: pmtDate, paymentDate: pmtDate,
+      financeDate: financeInfo.financeDate,
+      financeMonth: financeInfo.financeMonth,
+      originalPaymentMonth: pmtDate.slice(0,7),
+      shiftedToNextOpenMonth: financeInfo.shifted,
+      shiftedReason: financeInfo.reason,
+      amount, method, ref, note,
+      createdAt: new Date().toISOString(),
+      financeTransactionId: null,
+      syncStatus: 'pending',
+    };
+    const pmts = [...(_payingInvoice.payments || []), pmt];
+    const ok = await storeUpdate('ap_invoices', _payingInvoice.id, {payments: pmts});
+    if (ok) {
+      _payingInvoice.payments = pmts;
+      syncLS('ap_invoices', data.ap_invoices);
+      toast('บันทึกการจ่ายเงินสำเร็จ','ok');
+      closeModal();
+      goPage('invoices');
+      // sync ไป fin_transactions แบบ background
+      syncAPPaymentToFinance(_payingInvoice, pmt).then(txId => {
+        const syncSt = txId ? 'synced' : 'failed';
+        const finalPmts = (_payingInvoice.payments||[]).map(p =>
+          p.id === pmt.id ? {...p, financeTransactionId: txId||null, syncStatus: syncSt} : p);
+        storeUpdate('ap_invoices', _payingInvoice.id, {payments: finalPmts}).catch(()=>{});
+        Object.assign(_payingInvoice, {payments: finalPmts});
+        syncLS('ap_invoices', data.ap_invoices);
+        if (!txId) _apAddPendingSync(_payingInvoice.id, pmt.id);
+      }).catch(e => {
+        console.warn('[AP→Finance] background sync error:', e);
+        _apAddPendingSync(_payingInvoice.id, pmt.id);
+      });
+    }
+  } catch(e) { toast('เกิดข้อผิดพลาด: ' + e.message, 'err'); }
+}
+window.confirmPayment = confirmPayment;
+
+async function deletePayment(invId, pmtId) {
+  if (!confirm('ลบรายการจ่ายเงินนี้?')) return;
+  try {
+    const inv = (data.ap_invoices||[]).find(x => x.id === invId); if (!inv) return;
+    inv.payments = (inv.payments||[]).filter(p => p.id !== pmtId);
+    const ok = await storeUpdate('ap_invoices', invId, {payments: inv.payments});
+    if (ok) { syncLS('ap_invoices', data.ap_invoices); toast('ลบสำเร็จ','ok'); closeModal(); goPage('invoices'); }
+  } catch(e) { toast('เกิดข้อผิดพลาด: ' + e.message, 'err'); }
+}
+window.deletePayment = deletePayment;
+
+// ══════════════════════════════════════
+// PAYMENTS PAGE (all payments log)
+// ══════════════════════════════════════
+function renderPayments() {
+  const all = [];
+  (data.ap_invoices||[]).forEach(inv => {
+    (inv.payments||[]).forEach(p => {
+      all.push({...p, invId: inv.id, docNo: inv.docNo, vendorId: inv.vendorId, companyId: inv.companyId});
+    });
+  });
+  all.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const total = all.reduce((s,p) => s + Number(p.amount||0), 0);
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card"><div class="stat-label">ยอดจ่ายทั้งหมด</div><div class="stat-value" style="color:var(--red)">฿${fmt(total)}</div></div>
+      <div class="stat-card"><div class="stat-label">จำนวนรายการ</div><div class="stat-value">${all.length}</div></div>
+      <div class="stat-card"><div class="stat-label">จำนวนใบแจ้งหนี้</div><div class="stat-value">${new Set(all.map(p=>p.invId)).size}</div></div>
+    </div>
+    <div class="card">
+      ${all.length === 0 ? '<div class="empty"><div class="empty-icon">💸</div><p>ยังไม่มีประวัติการจ่ายเงิน</p></div>' : `
+      <table class="tbl">
+        <thead><tr><th>วันที่</th><th>เลขที่ AP</th><th>บริษัท</th><th>เจ้าหนี้</th><th>วิธีชำระ</th><th>อ้างอิง</th><th class="r">จำนวน (฿)</th></tr></thead>
+        <tbody>${all.map(p=>`<tr>
+          <td class="muted">${fmtDate(p.date)}</td>
+          <td class="mono" style="color:var(--accent);cursor:pointer" onclick="viewInvoice('${p.invId}')">${escHtml(p.docNo)}</td>
+          <td>${escHtml(getCompanyName(p.companyId))}</td>
+          <td>${escHtml(getVendorName(p.vendorId))}</td>
+          <td>${escHtml(p.method||'')}</td>
+          <td class="muted">${escHtml(p.ref||'-')}</td>
+          <td class="r mono bold" style="color:var(--red)">฿${fmt(p.amount)}</td>
+        </tr>`).join('')}</tbody>
+      </table>`}
+    </div>`;
+}
+
+// ══════════════════════════════════════
+// AP AGING REPORT
+// ══════════════════════════════════════
+function renderAgingReport() {
+  const invs = (data.ap_invoices||[]).filter(i => invStatus(i) !== 'paid' && invStatus(i) !== 'cancelled');
+  const buckets = [{label:'ยังไม่ถึงกำหนด',min:0,max:Infinity,color:'#15803d'},{label:'1–30 วัน',min:1,max:30,color:'#f97316'},{label:'31–60 วัน',min:31,max:60,color:'#c2410c'},{label:'61–90 วัน',min:61,max:90,color:'#b91c1c'},{label:'มากกว่า 90 วัน',min:91,max:Infinity,color:'#7f1d1d'}];
+
+  const aged = buckets.map(b => {
+    const rows = invs.filter(i => {
+      if (!i.dueDate) return b.min === 0;
+      const overDays = -daysDiff(i.dueDate);
+      if (overDays <= 0) return b.min === 0;
+      return overDays >= b.min && overDays <= b.max;
+    });
+    return {...b, rows, total: rows.reduce((s,i) => s + invRemain(i), 0)};
+  });
+  const grandTotal = aged.reduce((s,b) => s + b.total, 0) || 1;
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">AP Aging Report</span><span class="card-sub">ยอดค้างจ่ายจำแนกตามอายุหนี้</span></div>
+      <div class="card-body">
+        ${aged.map(b => agingBar(b.label, b.total, grandTotal, b.color)).join('')}
+        <div style="margin-top:14px;text-align:right;font-weight:700;font-family:'IBM Plex Mono',monospace">รวมทั้งหมด: ฿${fmt(aged.reduce((s,b)=>s+b.total,0))}</div>
+      </div>
+    </div>
+    ${aged.filter(b=>b.rows.length).map(b=>`
+    <div class="card">
+      <div class="card-header" style="background:${b.color}10;border-left:4px solid ${b.color}">
+        <span class="card-title" style="color:${b.color}">${b.label}</span>
+        <span class="card-sub" style="color:${b.color}">${b.rows.length} รายการ — ฿${fmt(b.total)}</span>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>เลขที่</th><th>เจ้าหนี้</th><th>บริษัท</th><th>ครบกำหนด</th><th class="r">ค้างจ่าย</th></tr></thead>
+        <tbody>${b.rows.map(i=>`<tr>
+          <td class="mono" style="color:var(--accent);cursor:pointer" onclick="viewInvoice('${i.id}')">${escHtml(i.docNo)}</td>
+          <td>${escHtml(getVendorName(i.vendorId))}</td>
+          <td>${escHtml(getCompanyName(i.companyId))}</td>
+          <td style="color:${b.color};font-weight:600">${fmtDate(i.dueDate)}</td>
+          <td class="r mono bold" style="color:${b.color}">฿${fmt(invRemain(i))}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`).join('')}`;
+}
+
+// ══════════════════════════════════════
+// VENDOR OUTSTANDING REPORT
+// ══════════════════════════════════════
+function renderVendorReport() {
+  const invs = (data.ap_invoices||[]).filter(i => invStatus(i) !== 'paid' && invStatus(i) !== 'cancelled');
+  const byVendor = {};
+  invs.forEach(i => {
+    const vId = i.vendorId || 'unknown';
+    if (!byVendor[vId]) byVendor[vId] = {vendorId: vId, count: 0, total: 0, overdue: 0};
+    byVendor[vId].count++;
+    byVendor[vId].total += invRemain(i);
+    if (invStatus(i) === 'overdue') byVendor[vId].overdue += invRemain(i);
+  });
+  const rows = Object.values(byVendor).sort((a,b) => b.total - a.total);
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      <div class="card-header"><span class="card-title">ค้างจ่ายรายเจ้าหนี้</span></div>
+      ${rows.length === 0 ? '<div class="empty" style="padding:30px"><div class="empty-icon">🎉</div><p>ไม่มียอดค้างจ่าย</p></div>' : `
+      <table class="tbl">
+        <thead><tr><th>เจ้าหนี้</th><th class="c">รายการ</th><th class="r">ยอดค้างจ่าย</th><th class="r">เกินกำหนด</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td style="font-weight:600">${escHtml(getVendorName(r.vendorId))}</td>
+          <td class="c">${r.count}</td>
+          <td class="r mono bold" style="color:var(--red)">฿${fmt(r.total)}</td>
+          <td class="r mono" style="color:${r.overdue>0?'var(--red)':'var(--ink4)'}">฿${fmt(r.overdue)}</td>
+        </tr>`).join('')}</tbody>
+      </table>`}
+    </div>`;
+}
+
+// ══════════════════════════════════════
+// VENDORS (เจ้าหนี้)
+// ══════════════════════════════════════
+function renderVendors() {
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openVendorModal()">+ เพิ่มเจ้าหนี้</button>`;
+  const vendors = data.vendors || [];
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      ${vendors.length === 0 ? '<div class="empty"><div class="empty-icon">🏪</div><p>ยังไม่มีเจ้าหนี้ กดปุ่ม "เพิ่มเจ้าหนี้" เพื่อเริ่มต้น</p></div>' : `
+      <table class="tbl">
+        <thead><tr>
+          <th>รหัส</th><th>ชื่อเจ้าหนี้</th><th class="hide-mobile">ผู้ติดต่อ</th>
+          <th class="hide-mobile">โทรศัพท์</th>
+          <th class="hide-mobile">บัญชีธนาคาร</th><th class="hide-mobile">ชื่อบัญชี</th>
+          <th>เงื่อนไข</th><th></th>
+        </tr></thead>
+        <tbody>${vendors.map(v=>`<tr>
+          <td class="mono muted">${escHtml(v.code||'-')}</td>
+          <td>
+            <div style="font-weight:600">${escHtml(v.name)}</div>
+            ${v.taxId?`<div class="mono muted" style="font-size:10px">${escHtml(v.taxId)}</div>`:''}
+          </td>
+          <td class="hide-mobile muted">${escHtml(v.contact||'-')}</td>
+          <td class="hide-mobile muted">${escHtml(v.phone||'-')}</td>
+          <td class="hide-mobile">
+            ${v.bank||v.bankAcc ? `<div style="font-size:12px;font-weight:600">${escHtml(v.bank||'')}</div><div class="mono muted" style="font-size:11px">${escHtml(v.bankAcc||'')}</div>` : '<span class="muted">-</span>'}
+          </td>
+          <td class="hide-mobile muted" style="font-size:12px">${escHtml(v.bankName||'-')}</td>
+          <td class="muted">${v.paymentDays?v.paymentDays+' วัน':'-'}</td>
+          <td style="display:flex;gap:4px">
+            <button class="btn btn-ghost btn-xs" onclick="openVendorModal('${v.id}')">แก้ไข</button>
+            <button class="btn btn-danger btn-xs" onclick="deleteVendor('${v.id}')">ลบ</button>
+          </td>
+        </tr>`).join('')}</tbody>
+      </table>`}
+    </div>`;
+}
+
+function openVendorModal(id) {
+  const v = id ? (data.vendors||[]).find(x=>x.id===id) : null;
+  document.getElementById('modal-vendor').innerHTML = `
+    <div class="modal-title">${v ? '✏️ แก้ไขเจ้าหนี้' : '🏪 เพิ่มเจ้าหนี้'}</div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="field"><label>รหัสเจ้าหนี้</label><input id="vf-code" value="${escHtml(v?.code||nextVendorCode())}"></div>
+      <div class="field"><label>ชื่อเจ้าหนี้ (บริษัท/ห้าง) *</label><input id="vf-name" value="${escHtml(v?.name||'')}"></div>
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="field"><label>เลขผู้เสียภาษี (13 หลัก)</label><input id="vf-taxId" maxlength="13" value="${escHtml(v?.taxId||'')}"></div>
+      <div class="field"><label>ที่อยู่</label><input id="vf-address" value="${escHtml(v?.address||'')}"></div>
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="field"><label>ผู้ติดต่อ</label><input id="vf-contact" placeholder="เช่น นางสาวชัญญณัฏฐ์ คอยเอื้อชาติ" value="${escHtml(v?.contact||'')}"></div>
+      <div class="field"><label>โทรศัพท์ผู้ติดต่อ</label><input id="vf-phone" value="${escHtml(v?.phone||'')}"></div>
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="field"><label>อีเมล</label><input id="vf-email" type="email" value="${escHtml(v?.email||'')}"></div>
+      <div class="field"><label>เงื่อนไขชำระ (วัน)</label><input type="number" id="vf-payDays" value="${v?.paymentDays||30}" min="0"></div>
+    </div>
+    <div style="border-top:1px solid var(--border);margin:4px 0 14px;padding-top:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--ink4);margin-bottom:10px">🏦 ข้อมูลบัญชีธนาคาร (สำหรับโอนเงิน)</div>
+      <div class="form-grid" style="margin-bottom:10px">
+        <div class="field"><label>ธนาคาร</label><input id="vf-bank" placeholder="เช่น ไทยพาณิชย์" value="${escHtml(v?.bank||'')}"></div>
+        <div class="field"><label>เลขบัญชี</label><input id="vf-bankAcc" placeholder="เช่น 401-3-41893-7" value="${escHtml(v?.bankAcc||'')}"></div>
+      </div>
+      <div class="form-grid" style="margin-bottom:10px">
+        <div class="field"><label>ชื่อบัญชี (ผู้รับเงิน)</label><input id="vf-bankName" placeholder="เช่น นางสาวชัญญณัฏฐ์ คอยเอื้อชาติ" value="${escHtml(v?.bankName||'')}"></div>
+        <div class="field"><label>หมายเหตุ</label><input id="vf-note" value="${escHtml(v?.note||'')}"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="saveVendor(${id?`'${id}'`:'null'})">${v?'บันทึก':'เพิ่มเจ้าหนี้'}</button>
+    </div>`;
+  openOverlay('ov-vendor');
+}
+window.openVendorModal = openVendorModal;
+
+function nextVendorCode() {
+  const nums = (data.vendors||[]).map(v=>{const m=(v.code||'').match(/VND-(\d+)/);return m?parseInt(m[1]):0;});
+  return 'VND-' + String((nums.length?Math.max(...nums):0)+1).padStart(4,'0');
+}
+
+async function saveVendor(id) {
+  const name = document.getElementById('vf-name').value.trim();
+  if (!name) { toast('กรุณาระบุชื่อเจ้าหนี้','err'); return; }
+  const taxId = document.getElementById('vf-taxId').value.trim();
+  if (taxId && !/^\d{13}$/.test(taxId)) { toast('เลขผู้เสียภาษีต้อง 13 หลัก','err'); return; }
+  const d = {
+    code: document.getElementById('vf-code').value.trim(),
+    name, taxId,
+    address: document.getElementById('vf-address').value.trim(),
+    contact: document.getElementById('vf-contact').value.trim(),
+    phone: document.getElementById('vf-phone').value.trim(),
+    email: document.getElementById('vf-email').value.trim(),
+    bank: document.getElementById('vf-bank').value.trim(),
+    bankAcc: document.getElementById('vf-bankAcc').value.trim(),
+    bankName: document.getElementById('vf-bankName').value.trim(),
+    paymentDays: Number(document.getElementById('vf-payDays').value||30),
+    note: document.getElementById('vf-note').value.trim(),
+  };
+  if (!data.vendors) data.vendors = [];
+  if (id) {
+    const ok = await storeUpdate('vendors', id, d);
+    if (ok) { Object.assign(data.vendors.find(x=>x.id===id)||{}, d); syncLS('vendors', data.vendors); toast('แก้ไขสำเร็จ','ok'); closeModal(); renderVendors(); }
+  } else {
+    const newId = await storeAdd('vendors', d);
+    if (newId) { data.vendors.push({id:newId,...d}); syncLS('vendors', data.vendors); toast('เพิ่มเจ้าหนี้สำเร็จ','ok'); closeModal(); renderVendors(); }
+  }
+}
+window.saveVendor = saveVendor;
+
+async function deleteVendor(id) {
+  if (!confirm('ต้องการลบเจ้าหนี้นี้?')) return;
+  data.vendors = (data.vendors||[]).filter(x => x.id !== id);
+  await storeDelete('vendors', id);
+  syncLS('vendors', data.vendors);
+  toast('ลบสำเร็จ','ok');
+  renderVendors();
+}
+window.deleteVendor = deleteVendor;
+
+// ══════════════════════════════════════
+// COMPANIES
+// ══════════════════════════════════════
+function renderCompanies() {
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openCompanyModal()">+ เพิ่มบริษัท</button>`;
+  document.getElementById('page-content').innerHTML = `
+    <div class="co-grid" id="co-list">
+      ${companies.length === 0 ? '<div style="font-size:13px;color:var(--ink4)">ยังไม่มีบริษัท</div>' :
+        companies.map(c=>`
+        <div class="card" style="margin:0">
+          <div class="card-body">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">${escHtml(c.name)}</div>
+            <div style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--ink4)">${escHtml(c.taxId||'-')}</div>
+            <div style="font-size:11px;color:var(--ink4);margin-top:2px">${escHtml(c.address||'')}</div>
+            <div style="display:flex;gap:6px;margin-top:10px">
+              <button class="btn btn-ghost btn-xs" onclick="openCompanyModal('${c.id}')">แก้ไข</button>
+              <button class="btn btn-danger btn-xs" onclick="deleteCompany('${c.id}')">ลบ</button>
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function openCompanyModal(id) {
+  const c = id ? companies.find(x=>x.id===id) : null;
+  document.getElementById('modal-company').innerHTML = `
+    <div class="modal-title">${c?'✏️ แก้ไขบริษัท':'🏛 เพิ่มบริษัท'}</div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="field span2"><label>ชื่อบริษัท *</label><input id="cf-name" value="${escHtml(c?.name||'')}"></div>
+    </div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="field"><label>เลขผู้เสียภาษี (13 หลัก)</label><input id="cf-taxId" maxlength="13" value="${escHtml(c?.taxId||'')}"></div>
+      <div class="field"><label>โทรศัพท์</label><input id="cf-phone" value="${escHtml(c?.phone||'')}"></div>
+    </div>
+    <div class="field" style="margin-bottom:16px"><label>ที่อยู่</label><textarea id="cf-address" rows="2">${escHtml(c?.address||'')}</textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="saveCompany(${id?`'${id}'`:'null'})">${c?'บันทึก':'เพิ่มบริษัท'}</button>
+    </div>`;
+  openOverlay('ov-company');
+}
+window.openCompanyModal = openCompanyModal;
+
+async function saveCompany(id) {
+  const name = document.getElementById('cf-name').value.trim();
+  if (!name) { toast('กรุณาระบุชื่อบริษัท','err'); return; }
+  const taxId = document.getElementById('cf-taxId').value.trim();
+  if (taxId && !/^\d{13}$/.test(taxId)) { toast('เลขผู้เสียภาษีต้อง 13 หลัก','err'); return; }
+  const d = { name, taxId, phone: document.getElementById('cf-phone').value.trim(), address: document.getElementById('cf-address').value.trim() };
+  if (id) {
+    const ok = await storeUpdate('companies', id, d);
+    if (ok) { Object.assign(companies.find(x=>x.id===id)||{},d); data.companies=companies; syncLS('companies',companies); toast('แก้ไขสำเร็จ','ok'); closeModal(); renderCompanies(); }
+  } else {
+    const newId = await storeAdd('companies', d);
+    if (newId) { const nc={id:newId,...d}; companies.push(nc); data.companies=companies; syncLS('companies',companies); toast('เพิ่มบริษัทสำเร็จ','ok'); closeModal(); renderCompanies(); }
+  }
+}
+window.saveCompany = saveCompany;
+
+async function deleteCompany(id) {
+  if (!confirm('ต้องการลบบริษัทนี้?')) return;
+  companies = companies.filter(x=>x.id!==id); data.companies=companies;
+  await storeDelete('companies',id); syncLS('companies',companies);
+  toast('ลบสำเร็จ','ok'); renderCompanies();
+}
+window.deleteCompany = deleteCompany;
+
+// ══════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════
+function renderSettings() {
+  const savedKey = localStorage.getItem('ap_claude_api_key') || '';
+  document.getElementById('page-content').innerHTML = `
+    <div class="card" style="max-width:500px">
+      <div class="card-header"><span class="card-title">🤖 Claude API Key (สำหรับ OCR)</span></div>
+      <div class="card-body">
+        <div class="field" style="margin-bottom:16px">
+          <label>Claude API Key</label>
+          <input id="s-claude-key" type="password" value="${escHtml(savedKey)}" placeholder="sk-ant-api03-...">
+          <span style="font-size:11px;color:var(--ink4)">เก็บใน localStorage เท่านั้น ไม่ส่งไปที่ใดนอกจาก Anthropic API</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="saveClaudeKey()">บันทึก API Key</button>
+          ${savedKey ? `<button class="btn btn-ghost btn-sm" onclick="clearClaudeKey()">ลบ Key</button>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="card" style="max-width:500px">
+      <div class="card-header"><span class="card-title">⚙️ ตั้งค่าระบบ</span></div>
+      <div class="card-body">
+        <div class="field" style="margin-bottom:16px">
+          <label>ชื่อเครื่อง (สำหรับ Optimistic Lock)</label>
+          <input id="s-device" value="${escHtml(_deviceName)}">
+          <span style="font-size:11px;color:var(--ink4)">ชื่อที่แสดงเมื่อมี conflict ระหว่างเครื่อง</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="saveDeviceName()">บันทึก</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="max-width:500px">
+      <div class="card-header"><span class="card-title">🗄️ ข้อมูลระบบ</span></div>
+      <div class="card-body">
+        <div style="font-size:13px;color:var(--ink3)">
+          <div>ใบแจ้งหนี้ AP: <b>${(data.ap_invoices||[]).length}</b> รายการ</div>
+          <div>เจ้าหนี้: <b>${(data.vendors||[]).length}</b> ราย</div>
+          <div>บริษัท: <b>${companies.length}</b> บริษัท</div>
+          <div style="margin-top:8px">Firebase: <b>${_fbdb ? '✅ เชื่อมต่อแล้ว' : '❌ ออฟไลน์'}</b></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="pullFromFirebase()">↓ Pull จาก Firebase</button>
+          <button class="btn btn-outline btn-sm" onclick="pushToFirebase()">↑ Push ไป Firebase</button>
+          <button class="btn btn-outline btn-sm" onclick="retrySyncAPQueue()">🔄 Retry AP→Finance${(()=>{const q=JSON.parse(localStorage.getItem('ap_pending_sync')||'[]');return q.length?` (${q.length})`:''})()}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function saveClaudeKey() {
+  const key = document.getElementById('s-claude-key').value.trim();
+  if (!key) { toast('กรุณากรอก API Key','err'); return; }
+  localStorage.setItem('ap_claude_api_key', key);
+  toast('บันทึก API Key แล้ว','ok');
+  renderSettings();
+}
+window.saveClaudeKey = saveClaudeKey;
+
+function clearClaudeKey() {
+  if (!confirm('ลบ Claude API Key?')) return;
+  localStorage.removeItem('ap_claude_api_key');
+  toast('ลบ API Key แล้ว','ok');
+  renderSettings();
+}
+window.clearClaudeKey = clearClaudeKey;
+
+function saveDeviceName() {
+  const name = document.getElementById('s-device').value.trim();
+  if (!name) return;
+  _deviceName = name;
+  localStorage.setItem(LS_DEVICE_NAME, name);
+  toast('บันทึกชื่อเครื่องแล้ว','ok');
+}
+window.saveDeviceName = saveDeviceName;
+
+// ══════════════════════════════════════
+// INIT
+// ══════════════════════════════════════
+document.addEventListener('DOMContentLoaded', loadData);
+</script>
+</body>
+</html>
