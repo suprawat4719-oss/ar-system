@@ -681,8 +681,8 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <div id="toast"></div>
 
 <script>
-const BUILD_TIME="2026-05-04 15:00";
-const BUILD_LABEL="v2.12 · 4 พ.ค. 2569";
+const BUILD_TIME="2026-05-27 12:00";
+const BUILD_LABEL="v2.13 · 27 พ.ค. 2569";
 const MONTHS_TH=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const CATS={
   income:["รับชำระลูกค้า","มัดจำโครงการ","รับเงินสด/โอน","ดอกเบี้ยรับ","รายได้อื่น"],
@@ -977,12 +977,14 @@ function ef(o={}){return{
 function isEmpType(t){return["payroll","employee_advance","employee_reimbursement","travel_expense"].includes(t);}
 
 // ─── ADVANCE SYNC GUARD ───────────────────────────────────────────────────────
+// รายการ category ของ payroll เก่า ที่ถือว่าเป็น "เบิกล่วงหน้า" (legacy support)
+const LEGACY_ADV_CATS=["เบิกล่วงหน้าเงินเดือน","เบิกค่าโปรเจ็กต์","เบิกด่วน","เบิกอื่นๆ"];
 function shouldSyncAdvance(tx){
   // ส่งไป Advance Tracker เฉพาะ employee_advance เท่านั้น
-  // รองรับข้อมูลเก่า: payroll + category "เบิกล่วงหน้าเงินเดือน"
+  // รองรับข้อมูลเก่า: payroll + category ใดก็ตามที่เป็น advance category
   // ห้ามส่ง: payroll ทั่วไป, travel_expense, employee_reimbursement
   return tx.type==="employee_advance"
-    ||(tx.type==="payroll"&&tx.category==="เบิกล่วงหน้าเงินเดือน");
+    ||(tx.type==="payroll"&&LEGACY_ADV_CATS.includes(tx.category));
 }
 
 // ดึง YYYY-MM จาก transaction สำหรับใช้เป็น doc key ของ advance_monthly
@@ -1069,6 +1071,11 @@ window.onload=async()=>{
 window.addEventListener('beforeunload', function(){
   try{localStorage.setItem("fin_txs",JSON.stringify(txs));}catch(e){}
   try{localStorage.setItem("fin_employees",JSON.stringify(employees));}catch(e){}
+  // ensure fin_pending_ids up-to-date เผื่อ offline → online ก่อนปิด tab
+  try{
+    const pendingIds=JSON.parse(localStorage.getItem("fin_pending_ids")||"[]");
+    if(pendingIds.length&&isOnline&&db) flushPendingToFirebase();
+  }catch(_){}
 });
 
 function saveTxs(){
@@ -1087,10 +1094,10 @@ function saveTxs(){
     batch.set(ref,tx);
   });
   batch.commit()
-    .then(()=>{
+    .then(async ()=>{
       localStorage.removeItem("fin_pending_ids");
       // sync เฉพาะ employee-related types ไปยัง finance_transactions
-      txs.filter(t=>isEmpType(t.type)).forEach(t=>saveFinanceTransaction(t));
+      await Promise.all(txs.filter(t=>isEmpType(t.type)).map(t=>saveFinanceTransaction(t)));
     })
     .catch(e=>console.warn("saveTxs Firebase error",e));
 }
@@ -1168,7 +1175,14 @@ async function createAdvanceRequest(tx){
     return;
   }
   const empId=tx.employeeId||tx.empId||"";
+  if(!empId){ console.warn("[advance_requests] skip: empId ว่างเปล่า — ไม่ sync",tx.id); return; }
   const emp=employees.find(e=>e.id===empId);
+  // preserve status ถ้า approved/rejected แล้ว (ป้องกัน reset กลับ pending_approval)
+  let existStatus="pending_approval";
+  try{
+    const existDoc=await db.collection("advance_requests").doc(tx.id).get();
+    if(existDoc.exists){const d=existDoc.data();if(d.status&&d.status!=="pending_approval")existStatus=d.status;}
+  }catch(_){}
   const now=new Date().toISOString();
   const req={
     id:tx.id,
@@ -1190,7 +1204,7 @@ async function createAdvanceRequest(tx){
     note:tx.note||"",
     ocrText:tx.ocrText||"",
     ocrConfidence:tx.ocrConfidence||0,
-    status:"pending_approval",
+    status:existStatus,
     syncStatus:"linked",
     createdAt:tx.createdAt||now,
     updatedAt:now,
@@ -1243,6 +1257,7 @@ async function syncAdvance(tx){
   const monthKey=getMonthKey(tx);
   if(!monthKey){ console.warn("[advance_monthly] no monthKey",tx.id); return; }
   const empId=tx.employeeId||tx.empId||"";
+  if(!empId){ console.warn("[advance_monthly] skip: empId ว่างเปล่า — ไม่ sync",tx.id); return; }
   const emp=employees.find(e=>e.id===empId);
   const now=new Date().toISOString();
   const data={
@@ -1634,7 +1649,7 @@ function isDupSlip(form, excludeId){
   });
 }
 
-function saveRight(){
+async function saveRight(){
   if(isEmpType(rForm.type)&&!rForm.empId){toast_("⚠️ กรุณาเลือกพนักงาน","#b45309");return;}
   if(!rForm.amount||!rForm.category){toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309");return;}
   if(!rForm.party&&!isEmpType(rForm.type)){ toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309"); return; }
@@ -1653,13 +1668,13 @@ function saveRight(){
     if(isEmpType(rForm.type)&&rForm.empId) syncPayrollToV2([rForm.empId]);
   } else {
     if(isDupSlip(rForm)){
-      showDupPopup(rForm, ()=>{
+      showDupPopup(rForm, async ()=>{
         const newTx={...rForm,id:uid(),amount:Number(rForm.amount),savedAt:new Date().toISOString(),monthKey:getMonthKey(rForm)};
         txs=[...txs,newTx];
         toast_("✅ บันทึกลงบัญชีแล้ว (บันทึกซ้ำ)","#16a34a");
         saveTxs(); clearRight(); render();
         if(isEmpType(newTx.type)&&newTx.empId) syncPayrollToV2([newTx.empId]);
-        if(shouldSyncAdvance(newTx)) saveFinanceTransaction(newTx);
+        if(shouldSyncAdvance(newTx)) await saveFinanceTransaction(newTx);
       });
       return;
     }
@@ -1668,7 +1683,7 @@ function saveRight(){
     toast_("✅ บันทึกลงบัญชีแล้ว","#16a34a");
     saveTxs(); clearRight(); render();
     if(isEmpType(newTx.type)&&newTx.empId) syncPayrollToV2([newTx.empId]);
-    if(shouldSyncAdvance(newTx)) saveFinanceTransaction(newTx);
+    if(shouldSyncAdvance(newTx)) await saveFinanceTransaction(newTx);
   }
 }
 
@@ -1793,7 +1808,9 @@ function getEmpDisplay(tx, showDept=true){
     if(emp) return showDept
       ? `<span style="font-weight:600">${emp.name}</span><span style="font-size:11px;color:#9ca3af;margin-left:4px">${emp.dept}</span>`
       : emp.name;
-    if(tx.empId) return `<span style="color:#9ca3af">กำลังโหลด...</span>`;
+    if(tx.empId) return employees.length>0
+      ? `<span style="color:#dc2626;font-size:11px">ไม่พบพนักงาน</span>`
+      : `<span style="color:#9ca3af">กำลังโหลด...</span>`;
     if(tx.party) return tx.party;
     return "—";
   }
@@ -1999,7 +2016,7 @@ function mPayrollEmpChange(empId){
 
 function setMType(v){mForm.type=v;mForm.category="";mForm.empId="";mForm.payrollType="";mForm.syncStatus="pending";renderMBody(false);}
 
-function saveForm(){
+async function saveForm(){
   if(isEmpType(mForm.type)&&!mForm.empId){toast_("⚠️ กรุณาเลือกพนักงาน","#b45309");return;}
   if(!mForm.amount||!mForm.category){toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309");return;}
   if(!assertMonthEditable_fin(getMonthKey(mForm))) return;
@@ -2016,16 +2033,16 @@ function saveForm(){
     txs=txs.map(t=>t.id===mForm.id?{...mForm,amount:Number(mForm.amount)}:t);
     toast_("✏️ แก้ไขแล้ว","#2563eb");saveTxs(); closeModal(); render();
     if(isEmpType(mForm.type)&&mForm.empId) syncPayrollToV2([mForm.empId]);
-    if(shouldSyncAdvance(mForm)) saveFinanceTransaction(mForm);
+    if(shouldSyncAdvance(mForm)) await saveFinanceTransaction(mForm);
   }else{
     if(isDupSlip(mForm)){
-      showDupPopup(mForm, ()=>{
+      showDupPopup(mForm, async ()=>{
         const newTx={...mForm,id:uid(),amount:Number(mForm.amount),savedAt:new Date().toISOString(),monthKey:getMonthKey(mForm)};
         txs=[...txs,newTx];
         toast_("✅ เพิ่มรายการแล้ว (บันทึกซ้ำ)","#16a34a");
         saveTxs(); closeModal(); render();
         if(isEmpType(newTx.type)&&newTx.empId) syncPayrollToV2([newTx.empId]);
-        if(shouldSyncAdvance(newTx)) saveFinanceTransaction(newTx);
+        if(shouldSyncAdvance(newTx)) await saveFinanceTransaction(newTx);
       });
       return;
     }
@@ -2033,7 +2050,7 @@ function saveForm(){
     txs=[...txs,newTx];toast_("✅ เพิ่มรายการแล้ว","#16a34a");
     saveTxs(); closeModal(); render();
     if(isEmpType(newTx.type)&&newTx.empId) syncPayrollToV2([newTx.empId]);
-    if(shouldSyncAdvance(newTx)) saveFinanceTransaction(newTx);
+    if(shouldSyncAdvance(newTx)) await saveFinanceTransaction(newTx);
   }
 }
 function closeModal(){

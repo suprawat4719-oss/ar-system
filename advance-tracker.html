@@ -319,8 +319,8 @@ select:focus,input:focus{outline:none;border-color:var(--blue)}
 
 <script>
 // ── VERSION ───────────────────────────────────────────────────────────────────
-var BUILD_TIME = "2026-05-04";
-var BUILD_LABEL = "v3.9";
+var BUILD_TIME = "2026-05-27";
+var BUILD_LABEL = "v3.10";
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 var db, emps=[], requests=[], ledger=[], curId=null, imgB64=null, imgMime="image/jpeg", isOnline=false;
@@ -618,7 +618,7 @@ async function loadMonthLocksFromFirebase(){
 function calculateEmployeeAdvance(empId){
   // advances = ทุก request ที่ไม่ถูกปฏิเสธ (source: Finance App + Advance App upload)
   var empReqs=requests.filter(function(r){
-    return r.employeeId===empId && r.status!=='rejected' && r.status!=='cancelled' && isAdvanceRecord(r);
+    return (r.employeeId||r.empId)===empId && r.status!=='rejected' && r.status!=='cancelled' && isAdvanceRecord(r);
   });
   var totalAdvance=empReqs.reduce(function(s,r){return s+Number(r.amount||0);},0);
   // รวม legacy transactions จาก emp.transactions[] ที่ไม่มีใน requests[]
@@ -630,7 +630,7 @@ function calculateEmployeeAdvance(empId){
   }
   // cleared = repayment + clear records ที่สร้างใน Advance App
   var empRecs=advanceRecords.filter(function(r){
-    return r.employeeId===empId && r.status!=='cancelled';
+    return (r.employeeId||r.empId)===empId && r.status!=='cancelled';
   });
   var totalCleared=empRecs.filter(function(r){return r.type==='repayment'||r.type==='clear';})
     .reduce(function(s,r){return s+Number(r.amount||0);},0);
@@ -667,7 +667,7 @@ async function saveAdvanceRecord(type, empId, amount, note, date){
     try{
       var docData=Object.assign({},rec); delete docData._localOnly;
       await db.collection('advance_records').doc(rec.id).set(docData);
-      advanceRecords[0]._localOnly=false;
+      rec._localOnly=false;
       saveLocalAdvRecs();
     }catch(e){console.warn('[advance_records] save:',e);}
   }
@@ -730,7 +730,7 @@ async function saveAdvRecMo(){
     var req={id:txId,requestId:txId,employeeId:empId,employeeName:emp?emp.name:'',employeeCode:emp?emp.employeeCode||'':'',amount:amt,date:date,category:cat,referenceNo:refNo,bankName:'-',receiverName:emp?emp.name:'',slipUrl:slipUrl,note:note,status:'approved',syncStatus:'pending',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),createdBy:'advance_tracker',_localOnly:true};
     requests.unshift(req);
     saveLocalReqs(); _hasPendingChanges=true;
-    if(isOnline&&db){try{var dReq=Object.assign({},req);delete dReq._localOnly;await db.collection('advance_requests').doc(txId).set(dReq);requests[0]._localOnly=false;saveLocalReqs();}catch(err){}}
+    if(isOnline&&db){try{var dReq=Object.assign({},req);delete dReq._localOnly;await db.collection('advance_requests').doc(txId).set(dReq);req._localOnly=false;saveLocalReqs();}catch(err){}}
     toast('✅ บันทึกเบิกแล้ว');
   } else {
     await saveAdvanceRecord(_advRecType, empId, amt, note, date);
@@ -746,10 +746,10 @@ function openHistoryMo(empId){
   document.getElementById('mo-history-title').textContent='📋 ประวัติ: '+(emp?emp.name:'');
   var calc=calculateEmployeeAdvance(empId);
   // advances from requests
-  var advs=requests.filter(function(r){return r.employeeId===empId&&r.status!=='rejected';});
+  var advs=requests.filter(function(r){return (r.employeeId||r.empId)===empId&&r.status!=='rejected';});
   advs.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
   // repayments / clears from advance_records
-  var reps=advanceRecords.filter(function(r){return r.employeeId===empId&&r.status!=='cancelled';});
+  var reps=advanceRecords.filter(function(r){return (r.employeeId||r.empId)===empId&&r.status!=='cancelled';});
   reps.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
   var advH=advs.length?advs.map(function(r){
     var stC=r.status==='approved'?'var(--green)':r.status==='rejected'?'var(--red)':'#F59E0B';
@@ -1239,7 +1239,7 @@ function moNavHtml(){
 function getMergedTx(emp){
   var txs=[];
   // 1. advance_requests (primary source — เฉพาะรายการเบิกล่วงหน้า)
-  requests.filter(function(r){ return r.employeeId===emp.id && isAdvanceRecord(r); }).forEach(function(r){
+  requests.filter(function(r){ return (r.employeeId||r.empId)===emp.id && isAdvanceRecord(r); }).forEach(function(r){
     txs.push({
       id:r.id, _fromReq:true,
       date:r.date||'-', bank:r.bankName||r.transferDate||'-',
@@ -1705,7 +1705,7 @@ async function delReq(reqId){
   // ลบออกจาก employee.transactions ด้วย
   var req=requests.find(function(r){return r.id===reqId;});
   if(req){
-    var emp=emps.find(function(e){return e.id===req.employeeId;});
+    var emp=emps.find(function(e){return e.id===(req.employeeId||req.empId);});
     if(emp&&emp.transactions){
       emp.transactions=emp.transactions.filter(function(t){return t.id!==reqId&&t.ref!==req.referenceNo;});
     }
@@ -1798,7 +1798,7 @@ async function deleteEmpModal(){
   var emp=emps.find(function(e){return e.id===_editEmpId;});
   if(!emp)return;
   // เช็คว่ามีรายการเบิกหรือไม่
-  var hasReqs=requests.some(function(r){return r.employeeId===emp.id;});
+  var hasReqs=requests.some(function(r){return (r.employeeId||r.empId)===emp.id;});
   var hasLegacy=(emp.transactions||[]).length>0;
   if(hasReqs||hasLegacy){
     toast('⚠️ มีรายการเบิกอยู่ — ต้องลบพนักงานผ่าน Finance App เท่านั้น');
@@ -1980,7 +1980,7 @@ async function saveTx(){
     try{
       var d=Object.assign({},req); delete d._localOnly;
       await db.collection('advance_requests').doc(txId).set(d);
-      requests[0]._localOnly=false;
+      req._localOnly=false;
     }catch(err){}
   }
   resetUp(); curId=eid; refSel(); renderDash();
