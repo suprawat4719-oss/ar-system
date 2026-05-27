@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.9.1 — 2026-05-19
+<!-- AR SYSTEM v2.9.2 — 2026-05-27 16:00
+     changelog v2.9.2: admAddPmt/admDelPmt/admEditPmt guard cancelled/draft status — ป้องกัน status เปลี่ยนโดยไม่ตั้งใจ
      changelog v2.9.1: แก้ dashboard aging bucket ผิด, สร้าง helper กลาง calcInvoiceStatus/calcInvoiceAgingBucket/calcInvoiceRemain, repair paidAmount อัตโนมัติ, เพิ่ม repairInvoices() + debugDashboard()
      changelog v2.9: รับชำระ AR ได้แม้เดือน Finance ปิดแล้ว โดยเลื่อน financeDate ไปเดือนถัดไปที่ยังเปิด, เพิ่ม audit trail paymentDate/financeDate, ปรับ retry sync, แก้ billing atomic write, บังคับ customerId, ปรับรายงานรับชำระ
      changelog v2.8: genDocNo async Firestore atomic counter (ป้องกันเลขซ้ำหลายเครื่อง), month lock check ใน confirmPayment ก่อน storeUpdate, syncStatus pending/synced/failed ใน payments[], _addPendingSync + retrySyncQueue, deleteCustomer check linked docs, invStatus timezone fix, openPayment oninput dedup, toast.warn CSS, renderPayments UTC+7 fix + retry button
@@ -20,7 +21,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.9.1 — 2026-05-19</title>
+<title>AR System | v2.9.2 — 2026-05-27</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -446,7 +447,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.9.1 — 2026-05-19</div>
+    <div class="logo-sub">v2.9.2 — 2026-05-27</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -5543,9 +5544,16 @@ function admAddPmt(invId){
   const inv=ADM.invoices.find(x=>x.id===invId); if(!inv) return;
   const amt=parseFloat(document.getElementById('adm-np-amt')?.value||0);
   if(amt<=0){admToast('กรุณากรอกจำนวน','err');return;}
+  // guard: ห้ามเปลี่ยน status ถ้า invoice เป็น cancelled หรือ draft
+  if(['cancelled','draft'].includes(inv.status)){
+    if(!confirm(`⚠️ Invoice นี้มีสถานะ "${inv.status}" — เพิ่ม payment แต่ไม่เปลี่ยนสถานะ\nยืนยันหรือไม่?`)) return;
+  }
   const pmt={id:admUid(),date:document.getElementById('adm-np-date').value,amount:amt,method:document.getElementById('adm-np-method').value,note:document.getElementById('adm-np-note').value};
   inv.payments=[...(inv.payments||[]),pmt]; inv.paidAmount=(inv.paidAmount||0)+amt;
-  if(inv.paidAmount>=inv.total) inv.status='paid'; else if(inv.paidAmount>0) inv.status='partial';
+  // ไม่เปลี่ยน status ถ้าเป็น cancelled/draft — ใช้ calcInvoiceStatus เป็น source of truth
+  if(!['cancelled','draft'].includes(inv.status)){
+    if(inv.paidAmount>=inv.total) inv.status='paid'; else if(inv.paidAmount>0) inv.status='partial';
+  }
   admSaveCol('invoices');
   // sync main
   const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
@@ -5558,8 +5566,11 @@ function admDelPmt(invId,pmtId){
   if(!confirm(`ลบ payment ${admFmt(pmt.amount)} บาท (${pmt.date}) ?`)) return;
   inv.payments=(inv.payments||[]).filter(p=>p.id!==pmtId);
   inv.paidAmount=Math.max(0,(inv.paidAmount||0)-pmt.amount);
-  if(inv.paidAmount<=0&&['paid','partial'].includes(inv.status)) inv.status='sent';
-  else if(inv.paidAmount>0&&inv.paidAmount<inv.total) inv.status='partial';
+  // ไม่เปลี่ยน status ถ้าเป็น cancelled/draft
+  if(!['cancelled','draft'].includes(inv.status)){
+    if(inv.paidAmount<=0&&['paid','partial'].includes(inv.status)) inv.status='sent';
+    else if(inv.paidAmount>0&&inv.paidAmount<inv.total) inv.status='partial';
+  }
   admSaveCol('invoices');
   const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
   admRenderPmtsModal(inv); admRenderInvTable(); admToast('ลบ payment เรียบร้อย','ok');
@@ -5574,7 +5585,10 @@ function admEditPmt(invId,pmtId){
   const nn=prompt('หมายเหตุ:',pmt.note||''); if(nn===null) return;
   const old=pmt.amount; pmt.date=nd; pmt.amount=na; pmt.method=nm; pmt.note=nn;
   inv.paidAmount=Math.max(0,(inv.paidAmount||0)-old+na);
-  if(inv.paidAmount>=inv.total) inv.status='paid'; else if(inv.paidAmount>0) inv.status='partial'; else inv.status='sent';
+  // ไม่เปลี่ยน status ถ้าเป็น cancelled/draft
+  if(!['cancelled','draft'].includes(inv.status)){
+    if(inv.paidAmount>=inv.total) inv.status='paid'; else if(inv.paidAmount>0) inv.status='partial'; else inv.status='sent';
+  }
   admSaveCol('invoices');
   const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
   admRenderPmtsModal(inv); admRenderInvTable(); admToast('แก้ไขเรียบร้อย','ok');

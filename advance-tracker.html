@@ -319,8 +319,8 @@ select:focus,input:focus{outline:none;border-color:var(--blue)}
 
 <script>
 // ── VERSION ───────────────────────────────────────────────────────────────────
-var BUILD_TIME = "2026-05-27";
-var BUILD_LABEL = "v3.10";
+var BUILD_TIME = "2026-05-27 16:00";
+var BUILD_LABEL = "v3.11";
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 var db, emps=[], requests=[], ledger=[], curId=null, imgB64=null, imgMime="image/jpeg", isOnline=false;
@@ -727,7 +727,7 @@ async function saveAdvRecMo(){
     emp.transactions.push(tx);
     saveLocal(); _hasPendingChanges=true;
     if(isOnline&&db) try{await db.collection('employees').doc(empId).update({transactions:emp.transactions});}catch(err){}
-    var req={id:txId,requestId:txId,employeeId:empId,employeeName:emp?emp.name:'',employeeCode:emp?emp.employeeCode||'':'',amount:amt,date:date,category:cat,referenceNo:refNo,bankName:'-',receiverName:emp?emp.name:'',slipUrl:slipUrl,note:note,status:'approved',syncStatus:'pending',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),createdBy:'advance_tracker',_localOnly:true};
+    var req={id:txId,requestId:txId,employeeId:empId,employeeName:emp?emp.name:'',employeeCode:emp?emp.employeeCode||'':'',amount:amt,date:date,transferDate:date,category:cat,referenceNo:refNo,bankName:'-',receiverName:emp?emp.name:'',slipUrl:slipUrl,note:note,status:'approved',syncStatus:'pending',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),createdBy:'advance_tracker',_localOnly:true};
     requests.unshift(req);
     saveLocalReqs(); _hasPendingChanges=true;
     if(isOnline&&db){try{var dReq=Object.assign({},req);delete dReq._localOnly;await db.collection('advance_requests').doc(txId).set(dReq);req._localOnly=false;saveLocalReqs();}catch(err){}}
@@ -1962,6 +1962,7 @@ async function saveTx(){
     employeeName:emp.name,
     amount:amt,
     date:tx.date,
+    transferDate:tx.date||'',
     category:document.getElementById('rcat').value||'เบิกล่วงหน้าเงินเดือน',
     referenceNo:refNo,
     bankName:tx.bank,
