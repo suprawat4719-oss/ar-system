@@ -140,7 +140,7 @@ select:focus,input:focus{outline:none;border-color:var(--blue)}
 <div class="hdr">
   <div style="flex:1">
     <h1>💼 เบิกล่วงหน้า
-      <span class="ver-badge" id="verBadge" title="...">v3.7</span><span id="advVersionBadge" style="font-size:10px;font-weight:600;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle">v1.0-db-unified</span>
+      <span class="ver-badge" id="verBadge" title="...">v3.12</span><span id="advVersionBadge" style="font-size:10px;font-weight:600;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle">v1.0-db-unified</span>
     </h1>
     <div class="hdr-sub">ระบบบันทึกเบิกเงินล่วงหน้าพนักงาน <span id="save-indicator"></span></div>
   </div>
@@ -159,6 +159,7 @@ select:focus,input:focus{outline:none;border-color:var(--blue)}
   <button class="tb" onclick="goTab('payroll',this)">💰 Payroll</button>
   <button class="tb" onclick="goTab('export',this)">📤 ส่งออก</button>
   <button class="tb" onclick="goTab('settings',this)">⚙️ ตั้งค่า</button>
+  <button class="tb" onclick="goTab('localdb',this)">🗃️ LocalDB</button>
 </div>
 
 <!-- ── DASHBOARD ── -->
@@ -319,8 +320,8 @@ select:focus,input:focus{outline:none;border-color:var(--blue)}
 
 <script>
 // ── VERSION ───────────────────────────────────────────────────────────────────
-var BUILD_TIME = "2026-05-27 16:00";
-var BUILD_LABEL = "v3.11";
+var BUILD_TIME = "2026-05-29 10:00";
+var BUILD_LABEL = "v3.17";
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 var db, emps=[], requests=[], ledger=[], curId=null, imgB64=null, imgMime="image/jpeg", isOnline=false;
@@ -613,12 +614,36 @@ async function loadMonthLocksFromFirebase(){
   }catch(e){ console.warn('[monthLocks] load:',e); }
 }
 
+// ── MONTH CLOSE (PER-EMPLOYEE) ────────────────────────────────────────────────
+// คนละระบบกับ monthLocks (global) — closedMonths ปิดต่อพนักงานแต่ละคน
+function isMonthClosed(empId, monthKey){
+  var emp=emps.find(function(e){return e.id===empId;});
+  if(!emp) return false;
+  return Array.isArray(emp.closedMonths)&&emp.closedMonths.indexOf(monthKey)>=0;
+}
+
+async function closeCurMonth(){
+  var emp=getEmp(); if(!emp) return;
+  if(isMonthClosed(emp.id,curMo)){toast('🔒 เดือนนี้ปิดแล้ว');return;}
+  if(!confirm('ยืนยันปิดเดือน '+moLabel(curMo)+' ?\nเมื่อปิดแล้วจะแก้ไขไม่ได้')) return;
+  if(!Array.isArray(emp.closedMonths)) emp.closedMonths=[];
+  emp.closedMonths.push(curMo);
+  saveLocal(); _hasPendingChanges=true;
+  if(isOnline&&db){
+    try{
+      await db.collection('employees').doc(emp.id).set({closedMonths:emp.closedMonths},{merge:true});
+    }catch(e){console.warn('[closeCurMonth]',e);}
+  }
+  renderDash(); renderPayroll();
+  toast('🔒 ปิดเดือน '+moLabel(curMo)+' เรียบร้อย');
+}
+
 // ── ADVANCE ACCOUNTING ────────────────────────────────────────────────────────
 // คำนวณยอดเบิกสะสม / เคลียร์แล้ว / คงค้าง ของพนักงาน
 function calculateEmployeeAdvance(empId){
   // advances = ทุก request ที่ไม่ถูกปฏิเสธ (source: Finance App + Advance App upload)
   var empReqs=requests.filter(function(r){
-    return (r.employeeId||r.empId)===empId && r.status!=='rejected' && r.status!=='cancelled' && isAdvanceRecord(r);
+    return (r.employeeId||r.empId)===empId && r.status==='approved' && isAdvanceRecord(r);
   });
   var totalAdvance=empReqs.reduce(function(s,r){return s+Number(r.amount||0);},0);
   // รวม legacy transactions จาก emp.transactions[] ที่ไม่มีใน requests[]
@@ -635,7 +660,18 @@ function calculateEmployeeAdvance(empId){
   var totalCleared=empRecs.filter(function(r){return r.type==='repayment'||r.type==='clear';})
     .reduce(function(s,r){return s+Number(r.amount||0);},0);
   var outstanding=Math.max(0, totalAdvance-totalCleared);
-  return{totalAdvance:totalAdvance, totalCleared:totalCleared, outstanding:outstanding};
+  // แยก outstanding ก่อนเดือนนี้ (ไม่รวมเบิกเดือนนี้)
+  var advThisMonth=empReqs.filter(function(r){
+    return (r.date||'').startsWith(curMo);
+  }).reduce(function(s,r){return s+Number(r.amount||0);},0);
+  // legacy ของเดือนนี้
+  if(emp){
+    getMergedTx(emp).filter(function(t){
+      return t._legacy && t.status!=='rejected' && (t.date||'').startsWith(curMo);
+    }).forEach(function(t){ advThisMonth+=Number(t.amount||0); });
+  }
+  var outstandingPrev=Math.max(0, totalAdvance-advThisMonth-totalCleared);
+  return{totalAdvance:totalAdvance, totalCleared:totalCleared, outstanding:outstanding, outstandingPrev:outstandingPrev, advThisMonth:advThisMonth};
 }
 
 // บันทึก advance_record (repayment | clear) ลง Firestore + local
@@ -644,6 +680,7 @@ async function saveAdvanceRecord(type, empId, amount, note, date){
   var now=new Date().toISOString();
   var d=date||now.slice(0,10);
   var mk=d.slice(0,7);
+  if(isMonthClosed(empId,mk)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return null;}
   if(!assertMonthEditable(mk)) return null;
   var rec={
     id:uid(),
@@ -707,10 +744,16 @@ async function saveAdvRecMo(){
   var note=document.getElementById('mo-advrec-note').value||'';
   var empId=_advRecEmpId;
   var mk=date.slice(0,7);
+  if(isMonthClosed(empId,mk)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
   if(!assertMonthEditable(mk)) return;
 
   if(_advRecType==='advance'){
-    // สร้าง advance_requests (ใช้ระบบเดิม + show ใน transaction list)
+    // Finance App = source of truth — ห้ามบันทึกเบิกจาก Advance Tracker โดยตรง
+    closeAdvRecMo();
+    alert('⚠️ กรุณาบันทึกการเบิกล่วงหน้าผ่าน Finance App เท่านั้น\n\nเพื่อให้ข้อมูลบัญชีและยอดเงินตรงกันทุกระบบ');
+    return;
+    // === ปิดการใช้งาน: code ด้านล่างไม่ถูกเรียกอีกต่อไป ===
+    // eslint-disable-next-line no-unreachable
     var cat=document.getElementById('mo-advrec-cat').value||'เบิกล่วงหน้าเงินเดือน';
     var refNo=(document.getElementById('mo-advrec-ref').value||'').trim();
     var slipUrl=(document.getElementById('mo-advrec-slip').value||'').trim();
@@ -795,7 +838,11 @@ function closeHistoryMo(){document.getElementById('mo-history').classList.remove
 
 async function deleteAdvRec(recId, empId){
   var rec=advanceRecords.find(function(r){return r.id===recId;});
-  if(rec&&!assertMonthEditable(rec.monthKey||'')) return;
+  if(rec){
+    var _mk=rec.monthKey||'';
+    if(isMonthClosed(empId,_mk)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
+    if(!assertMonthEditable(_mk)) return;
+  }
   if(!confirm('ต้องการลบรายการนี้?')) return;
   advanceRecords=advanceRecords.filter(function(r){return r.id!==recId;});
   saveLocalAdvRecs();
@@ -842,10 +889,23 @@ async function loadAdvanceByMonth(monthKey){
     // กรองเฉพาะรายการ "เบิกล่วงหน้า" เท่านั้น — ใช้ isAdvanceRecord() เป็นตัวกรองกลาง
     recs=recs.filter(isAdvanceRecord);
     monthlyRecords[monthKey]=recs;
-    // แปลงเป็น advance_requests format แล้ว merge (dedup by id)
+    // แปลงเป็น advance_requests format แล้ว merge (dedup by id + empId+month+amount+ref+date)
     var existing=new Set(requests.map(function(r){return r.id;}));
+    var existingKeys=new Set(requests.map(function(r){
+      var rp=r.referenceNo?('||ref:'+r.referenceNo):'';
+      var dp=r.transferDate?('||dt:'+r.transferDate):(r.date?('||dt:'+r.date):'');
+      return (r.employeeId||r.empId||'')+'|'+(r.monthKey||(r.date||'').slice(0,7))+'|'+Math.abs(Number(r.amount))+rp+dp;
+    }));
     var newReqs=recs
-      .filter(function(r){ return !existing.has(r.id); })
+      .filter(function(r){
+        if(existing.has(r.id)) return false;
+        var rp=r.referenceNo?('||ref:'+r.referenceNo):'';
+        var dp=r.transferDate?('||dt:'+r.transferDate):'';
+        var key=(r.employeeId||'')+'|'+(r.monthKey||monthKey)+'|'+Math.abs(Number(r.amount))+rp+dp;
+        if(existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      })
       .map(function(r){
         return {
           id:r.id,
@@ -867,7 +927,10 @@ async function loadAdvanceByMonth(monthKey){
           ocrText:r.ocrText||'',
           ocrConfidence:r.ocrConfidence||0,
           monthKey:r.monthKey||monthKey,
-          status:'approved',
+          status:(function(rid){
+            var ex=requests.find(function(rq){return rq.id===rid;});
+            return ex?ex.status:'approved';
+          }(r.id)),
           syncStatus:r.syncStatus||'linked',
           createdAt:r.createdAt||'',
           _fromMonthly:true,
@@ -1044,10 +1107,13 @@ async function syncDown(){
         return true;
       });
       if(rejCount>0){ addAuditLog('REJECT_SYNC_LOCKED_MONTH','multiple',{count:rejCount,source:'advance_requests'}); }
-      // รวมกับ local ที่ยังไม่ถูกล็อก
+      // รวมกับ local ที่ยังไม่ถูก sync (มี _localOnly flag) เท่านั้น
+      // ไม่เอา id ที่ Firestore ไม่มี — ถือว่าถูกลบแล้ว
       var localOnly=requests.filter(function(r){
+        if(allReqs.some(function(f){return f.id===r.id;})) return false; // มีใน server แล้ว
+        if(!r._localOnly) return false; // ไม่ใช่ local-only → ถูกลบจาก server
         var mk=(r.monthKey||(r.date||'').slice(0,7));
-        return !allReqs.some(function(f){return f.id===r.id;})&&!isMonthLocked(mk);
+        return !isMonthLocked(mk);
       });
       requests=[].concat(allReqs,localOnly);
       saveLocalReqs();
@@ -1272,6 +1338,7 @@ function goTab(t,btn){
   if(btn)btn.classList.add('on');
   if(t==='export')renderExp();
   if(t==='settings')renderSettings();
+  if(t==='localdb')ldbLoadKey();
   if(t==='payroll')renderPayroll();
 }
 
@@ -1285,23 +1352,22 @@ function renderPayroll(){
   var rows=emps.map(function(emp){
     var allTx=getMergedTx(emp);
     var moTx=allTx.filter(function(t){ return (t.date||'').startsWith(curMo); });
-    var approved=moTx.filter(function(t){return (t.status==='approved'||t._legacy)&&t.status!=='rejected';});
+    var approved=moTx.filter(function(t){return !t._fromReq||(t._fromReq&&t.status==='approved');});
     var pending=moTx.filter(function(t){return t.status==='pending_approval';});
     var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
     var moSal=getMoSalary(emp,curMo);var moCar=getMoCarry(emp,curMo);
     var totalAdv=approved.reduce(function(s,t){return s+Number(t.amount);},0);
-    var moRepaid=advanceRecords.filter(function(r){
-      return r.employeeId===emp.id&&r.status!=='cancelled'&&(r.type==='repayment'||r.type==='clear')&&r.monthKey===curMo;
-    }).reduce(function(s,r){return s+Number(r.amount||0);},0);
-    var totNet=Math.max(0,totalAdv-moRepaid);
+    // Option A: advance หักเต็มจำนวน — moRepaid บันทึกในบัญชีเบิกเท่านั้น ไม่กระทบ net salary
+    var totNet=totalAdv;
     var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
     var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
     var net=moSal+totalExtra-totalDeduct-moCar-totNet;
     var negStyle=net<0?'color:var(--red);font-weight:700':'color:var(--green);font-weight:700';
     var advCalc=calculateEmployeeAdvance(emp.id);
     var outStyle=advCalc.outstanding>0?'color:var(--red);font-weight:700':'color:var(--green);font-weight:700';
+    var empClosedBadge=isMonthClosed(emp.id,curMo)?'<span title="ปิดเดือนแล้ว" style="font-size:12px;margin-left:4px">🔒</span>':'';
     return'<tr style="border-bottom:1px solid var(--border)">'
-      +'<td style="padding:10px 12px;font-weight:600">'+'<span style="font-size:11px;color:var(--blue);font-family:monospace;font-weight:700">'+(emp.employeeCode||'...')+'</span><br>'+emp.name+(emp.dept?'<br><span style="font-size:11px;color:var(--gray)">'+emp.dept+'</span>':'')+(emp.bank?'<br><span style="font-size:11px;color:var(--blue)">🏦 '+emp.bank+'</span>':'')+'</td>'
+      +'<td style="padding:10px 12px;font-weight:600">'+'<span style="font-size:11px;color:var(--blue);font-family:monospace;font-weight:700">'+(emp.employeeCode||'...')+'</span><br>'+emp.name+empClosedBadge+(emp.dept?'<br><span style="font-size:11px;color:var(--gray)">'+emp.dept+'</span>':'')+(emp.bank?'<br><span style="font-size:11px;color:var(--blue)">🏦 '+emp.bank+'</span>':'')+'</td>'
       +'<td style="padding:10px 12px;text-align:right">'+fmtMoney(moSal)+'</td>'
       +'<td style="padding:10px 12px;text-align:right;color:var(--green)">'+fmtMoney(totalExtra)+'</td>'
       +'<td style="padding:10px 12px;text-align:right;color:var(--red)">'+fmtMoney(totalDeduct+moCar)+'</td>'
@@ -1321,12 +1387,10 @@ function renderPayroll(){
     var ex2=getEx(emp,curMo);var de2=getDe(emp,curMo);
     var sal2=getMoSalary(emp,curMo);var car2=getMoCarry(emp,curMo);
     var moTxAll=getMergedTx(emp).filter(function(t){ return (t.date||'').startsWith(curMo); });
-    var approved=moTxAll.filter(function(t){return t.status==='approved'||t._legacy;});
+    var approved=moTxAll.filter(function(t){return !t._fromReq||(t._fromReq&&t.status==='approved');});
     var totalAdv2=approved.reduce(function(s2,t){return s2+Number(t.amount);},0);
-    var moRepaid2=advanceRecords.filter(function(r){
-      return r.employeeId===emp.id&&r.status!=='cancelled'&&(r.type==='repayment'||r.type==='clear')&&r.monthKey===curMo;
-    }).reduce(function(s2,r){return s2+Number(r.amount||0);},0);
-    var totNet2=Math.max(0,totalAdv2-moRepaid2);
+    // Option A: advance หักเต็มจำนวน
+    var totNet2=totalAdv2;
     var net=sal2+((ex2.ot||0)+(ex2.travel||0)+(ex2.phone||0)+(ex2.other||0))-((de2.absent||0)+(de2.insurance||0)+(de2.social||0))-car2-totNet2;
     return s+net;
   },0);
@@ -1465,18 +1529,16 @@ function getMoCarry(emp, mo){
   var prevCarry=hasPrevPrevData?0:(emp.carry||0);
   if(hasPrevPrevData){
     var ppAdv=getMoTotalAdv(emp,prevPrevMo);
-    var ppNet=calcNetRaw(emp,prevPrevMo,ppAdv,emp.carry||0);
+    // Option A: advance หักเต็มจำนวน — moRepaid ไม่กระทบ carry
+    var ppAdvNet=ppAdv;
+    var ppNet=calcNetRaw(emp,prevPrevMo,ppAdvNet,emp.carry||0);
     prevCarry=ppNet<0?Math.abs(ppNet):0;
   }
 
   // คำนวณ net จริงของ prevMo ด้วย prevCarry ที่ถูกต้อง
   var prevAdv=getMoTotalAdv(emp,prevMo);
-  var prevRepaid=advanceRecords.filter(function(r){
-    return r.employeeId===emp.id&&r.status!=='cancelled'
-      &&(r.type==='repayment'||r.type==='clear')
-      &&r.monthKey===prevMo;
-  }).reduce(function(s,r){return s+Number(r.amount||0);},0);
-  var prevAdvNet=Math.max(0,prevAdv-prevRepaid);
+  // Option A: advance หักเต็มจำนวน — moRepaid ไม่กระทบ carry
+  var prevAdvNet=prevAdv;
   var prevNet=calcNetRaw(emp,prevMo,prevAdvNet,prevCarry);
 
   return prevNet<0?Math.abs(prevNet):0;
@@ -1489,21 +1551,27 @@ function renderDash(){
   if(!emp){c.innerHTML='<div class="empty"><div class="ei">👤</div><p>เพิ่มพนักงานก่อนเริ่มใช้งาน</p></div>';return;}
   var allTx=getMergedTx(emp);
   var moTx=allTx.filter(function(t){ return (t.date||'').startsWith(curMo); });
-  // ไม่นับรายการที่ถูกปฏิเสธ (rejected) ในยอดรวม
-  var moTxActive=moTx.filter(function(t){ return t.status!=='rejected'; });
+  // นับเฉพาะ approved — ใช้ logic เดียวกับ getMoTotalAdv (ไม่นับ pending, ไม่นับ rejected)
+  var moTxActive=moTx.filter(function(t){ return !t._fromReq||(t._fromReq&&t.status==='approved'); });
   var tot=moTxActive.reduce(function(s,t){return s+Number(t.amount);},0);
   var moRepaid=advanceRecords.filter(function(r){
     return r.employeeId===emp.id&&r.status!=='cancelled'
       &&(r.type==='repayment'||r.type==='clear')&&r.monthKey===curMo;
   }).reduce(function(s,r){return s+Number(r.amount||0);},0);
-  var totNet=Math.max(0,tot-moRepaid);
+  // Option A: เบิกหักจากเงินเดือนเต็มจำนวน — moRepaid (หักคืน/เคลียร์) บันทึกเฉพาะบัญชีเบิก ไม่กระทบ net salary
+  var totNet=tot;
   var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
   var moSalary=getMoSalary(emp,curMo);
   var moCarry=getMoCarry(emp,curMo);
   var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
   var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
+  // คำนวณยอดสุทธิ: เงินเดือน + รายได้เพิ่ม - รายการหัก - ยกมาเดือนก่อน - เบิกเดือนนี้
+  var advCalcPre=calculateEmployeeAdvance(emp.id);
+  var outstandingAll=advCalcPre.outstanding||0;
   var net=moSalary+totalExtra-totalDeduct-moCarry-totNet;
   var pos=net>=0;
+  // per-employee month close flag (ต่างจาก isMonthLocked ซึ่ง global)
+  var isClosed=isMonthClosed(emp.id,curMo);
 
   // pending requests count (filtered to month)
   var pendCount=moTx.filter(function(t){return t._fromReq&&t.status==='pending_approval';}).length;
@@ -1526,15 +1594,16 @@ function renderDash(){
       }
       if(t._legacy) stBadge+=' <span style="font-size:10px;color:#94A3B8">legacy</span>';
       var apBtns='';
-      if(isReq&&t.status==='pending_approval'){
+      if(isReq&&t.status==='pending_approval'&&!isMonthLocked(curMo)&&!isClosed){
         apBtns='<div class="ap-btns">'
           +'<button class="btnx btnx-g" onclick="approveReq(\''+t.id+'\')">✓ อนุมัติ</button>'
           +'<button class="btnx btnx-r" onclick="rejectReq(\''+t.id+'\')">✕ ปฏิเสธ</button>'
           +'</div>';
       }
-      var delBtn=isReq
+      var _txLocked=isMonthLocked(curMo)||isClosed;
+      var delBtn=_txLocked?'':(isReq
         ?'<button class="del" onclick="delReq(\''+t.id+'\')">🗑️</button>'
-        :'<button class="del" onclick="delTxById(\''+t.id+'\')">🗑️</button>';
+        :'<button class="del" onclick="delTxById(\''+t.id+'\')">🗑️</button>');
       return'<div class="txc">'
         +'<div class="txi '+statusCls+'">'+statusIcon+'</div>'
         +'<div class="txinfo">'
@@ -1573,27 +1642,33 @@ function renderDash(){
       :''
     )
     +'<div class="adv-act-btns">'
-      +'<button class="adv-act-btn" onclick="openAdvRecMo(\'advance\',\''+emp.id+'\')" style="background:#FEF3C7;color:#92400E'+(isMonthLocked(curMo)?';opacity:.4;pointer-events:none':'')+'">➕ บันทึกเบิก</button>'
-      +'<button class="adv-act-btn" onclick="openAdvRecMo(\'repayment\',\''+emp.id+'\')" style="background:var(--green-bg);color:#166534'+(isMonthLocked(curMo)?';opacity:.4;pointer-events:none':'')+'">↩ หักคืน</button>'
-      +'<button class="adv-act-btn" onclick="openAdvRecMo(\'clear\',\''+emp.id+'\')" style="background:#DBEAFE;color:#1E40AF'+(isMonthLocked(curMo)?';opacity:.4;pointer-events:none':'')+'">✅ เคลียร์ยอด</button>'
+      +'<button class="adv-act-btn" disabled title="บันทึกเบิกต้องทำใน Finance App เท่านั้น" style="background:#F3F4F6;color:#9CA3AF;opacity:.5;cursor:not-allowed">➕ บันทึกเบิก (ใช้ Finance App)</button>'
+      +'<button class="adv-act-btn" onclick="openAdvRecMo(\'repayment\',\''+emp.id+'\')" style="background:var(--green-bg);color:#166534'+((isMonthLocked(curMo)||isClosed)?';opacity:.4;pointer-events:none':'')+'">↩ หักคืน</button>'
+      +'<button class="adv-act-btn" onclick="openAdvRecMo(\'clear\',\''+emp.id+'\')" style="background:#DBEAFE;color:#1E40AF'+((isMonthLocked(curMo)||isClosed)?';opacity:.4;pointer-events:none':'')+'">✅ เคลียร์ยอด</button>'
       +'<button class="adv-act-btn" onclick="openHistoryMo(\''+emp.id+'\')" style="background:#F3F4F6;color:var(--navy)">📋 ประวัติ</button>'
     +'</div>'
     +(isMonthLocked(curMo)
-      ?''
-      :'<div style="text-align:right;margin-top:4px">'
-        +'<button onclick="lockMonth(\''+curMo+'\')" style="background:none;border:1px solid #E5E7EB;border-radius:7px;color:var(--gray);font-size:11px;padding:4px 10px;cursor:pointer;font-family:inherit">🔒 ปิดเดือนนี้</button>'
-      +'</div>'
+      ?''  // global lock — banner unlock แสดงอยู่แล้วด้านบน
+      :isClosed
+        ?'<div style="text-align:right;margin-top:4px"><span style="display:inline-block;background:#FEE2E2;color:#991B1B;padding:4px 12px;border-radius:7px;font-size:11px;font-weight:700">🔒 ปิดแล้ว</span></div>'
+        :'<div style="text-align:right;margin-top:4px"><button onclick="closeCurMonth()" style="background:none;border:1px solid #E5E7EB;border-radius:7px;color:var(--gray);font-size:11px;padding:4px 10px;cursor:pointer;font-family:inherit">🔒 ปิดเดือนนี้</button></div>'
     );
 
   c.innerHTML=
-    '<div class="emp-card">'
+    (isClosed
+      ?'<div style="background:#FEE2E2;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px">'
+        +'<span style="font-size:18px">🔒</span>'
+        +'<span style="font-weight:700;color:#991B1B;font-size:13px">เดือนนี้ปิดแล้ว — ดูข้อมูลได้อย่างเดียว</span>'
+        +'</div>'
+      :'')
+    +'<div class="emp-card">'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between">'
         +'<div><div class="nm">'+emp.name+'</div>'
         +'<div class="sub">'+(emp.dept?emp.dept+(emp.bank?' · ':''):'')+''+(emp.bank||'')+'</div></div>'
         +'<button onclick="openMo(\''+emp.id+'\')" style="background:rgba(255,255,255,.1);border:none;border-radius:6px;color:#94A3B8;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit">✏️ แก้ไข</button>'
       +'</div>'
       +'<div class="grid2">'
-        +'<div class="fi"><label>ฐานเงินเดือน (บาท)</label><input type="number" value="'+(moSalary||'')+'" placeholder="กรอกเงินเดือน" onchange="updSalary(this.value)"></div>'
+        +'<div class="fi"><label>ฐานเงินเดือน (บาท)</label><input type="number" value="'+(moSalary||'')+'" placeholder="กรอกเงินเดือน" onchange="updSalary(this.value)"'+(isClosed?' disabled':'')+' ></div>'
         +'<div class="fi"><label>ยกมาเดือนก่อน (อัตโนมัติ)</label>'
           +'<div style="background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);border-radius:8px;padding:7px 9px;font-size:13px;color:'+(moCarry>0?'#FCA5A5':'#94A3B8')+'">'+(moCarry>0?'-฿'+fmt(moCarry):'ไม่มียอดค้าง')+'</div>'
         +'</div>'
@@ -1601,20 +1676,20 @@ function renderDash(){
       +'<div class="xsec">'
         +'<div class="xt">➕ รายได้เพิ่มเติม</div>'
         +'<div class="xgrid">'
-          +'<div class="xfi"><label>ค่าล่วงเวลา</label><input type="number" id="x_ot" value="'+(ex.ot||'')+'" placeholder="0"></div>'
-          +'<div class="xfi"><label>ค่าเดินทาง</label><input type="number" id="x_travel" value="'+(ex.travel||'')+'" placeholder="0"></div>'
-          +'<div class="xfi"><label>ค่าโทร</label><input type="number" id="x_phone" value="'+(ex.phone||'')+'" placeholder="0"></div>'
-          +'<div class="xfi"><label>รายรับอื่นๆ</label><input type="number" id="x_other" value="'+(ex.other||'')+'" placeholder="0"></div>'
+          +'<div class="xfi"><label>ค่าล่วงเวลา</label><input type="number" id="x_ot" value="'+(ex.ot||'')+'" placeholder="0"'+(isClosed?' disabled':'')+' ></div>'
+          +'<div class="xfi"><label>ค่าเดินทาง</label><input type="number" id="x_travel" value="'+(ex.travel||'')+'" placeholder="0"'+(isClosed?' disabled':'')+' ></div>'
+          +'<div class="xfi"><label>ค่าโทร</label><input type="number" id="x_phone" value="'+(ex.phone||'')+'" placeholder="0"'+(isClosed?' disabled':'')+' ></div>'
+          +'<div class="xfi"><label>รายรับอื่นๆ</label><input type="number" id="x_other" value="'+(ex.other||'')+'" placeholder="0"'+(isClosed?' disabled':'')+' ></div>'
         +'</div>'
       +'</div>'
       +'<div class="xsec" style="margin-top:8px">'
         +'<div class="xt" style="color:#FCA5A5">➖ รายการหัก</div>'
         +'<div class="xgrid">'
-          +'<div class="xfi"><label>ขาด/ลา/มาสาย</label><input type="number" id="d_absent" value="'+(de.absent||'')+'" placeholder="0"></div>'
-          +'<div class="xfi"><label>หักเงินประกัน</label><input type="number" id="d_insurance" value="'+(de.insurance||'')+'" placeholder="0"></div>'
-          +'<div class="xfi full"><label>หักประกันสังคม</label><input type="number" id="d_social" value="'+(de.social||'')+'" placeholder="0"></div>'
+          +'<div class="xfi"><label>ขาด/ลา/มาสาย</label><input type="number" id="d_absent" value="'+(de.absent||'')+'" placeholder="0"'+(isClosed?' disabled':'')+' ></div>'
+          +'<div class="xfi"><label>หักเงินประกัน</label><input type="number" id="d_insurance" value="'+(de.insurance||'')+'" placeholder="0"'+(isClosed?' disabled':'')+' ></div>'
+          +'<div class="xfi full"><label>หักประกันสังคม</label><input type="number" id="d_social" value="'+(de.social||'')+'" placeholder="0"'+(isClosed?' disabled':'')+' ></div>'
         +'</div>'
-        +'<button onclick="saveExtras()" style="margin-top:10px;width:100%;padding:9px;border:none;border-radius:8px;background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💾 บันทึกรายได้ / หัก</button>'
+        +'<button onclick="saveExtras()" '+(isClosed?'disabled ':'')+'style="margin-top:10px;width:100%;padding:9px;border:none;border-radius:8px;background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:600;'+(isClosed?'opacity:.4;cursor:not-allowed;':'cursor:pointer;')+'font-family:inherit">💾 บันทึกรายได้ / หัก</button>'
       +'</div>'
     +'</div>'
     +'<div class="expbox" style="margin-bottom:12px">'
@@ -1622,13 +1697,14 @@ function renderDash(){
       +(totalExtra>0?'<div class="exprow"><span style="color:var(--gray)">รายได้เพิ่มเติม</span><span style="font-weight:600;color:var(--green)">+฿'+fmt(totalExtra)+'</span></div>':'')
       +(totalDeduct>0?'<div class="exprow"><span style="color:var(--gray)">รายการหัก</span><span style="font-weight:600;color:var(--red)">-฿'+fmt(totalDeduct)+'</span></div>':'')
       +(moCarry>0?'<div class="exprow"><span style="color:var(--gray)">ยกมาเดือนก่อน <span style="font-size:10px;color:#94A3B8">(อัตโนมัติ)</span></span><span style="font-weight:600;color:var(--red)">-฿'+fmt(moCarry)+'</span></div>':'')
-      +(moRepaid>0
-        ?'<div class="exprow" style="font-size:11px;color:var(--gray)">'
-          +'<span>↳ เบิกเดือนนี้: ฿'+fmt(tot)+'&nbsp;&nbsp;หักคืน: ฿'+fmt(moRepaid)+'</span>'
-          +'<span style="color:var(--blue)">คงค้าง: ฿'+fmt(totNet)+'</span>'
-          +'</div>'
+      +(tot>0
+        ?'<div class="exprow"><span style="color:var(--gray)">เบิกล่วงหน้าเดือนนี้</span><span style="font-weight:600;color:var(--red)">-฿'+fmt(tot)+'</span></div>'
+          +(moRepaid>0
+            ?'<div class="exprow" style="font-size:11px;color:#94A3B8;padding-top:0">'
+              +'<span>↳ หักคืน/เคลียร์เดือนนี้ ฿'+fmt(moRepaid)+' (บันทึกในบัญชีเบิกล่วงหน้าแล้ว)</span>'
+              +'</div>'
+            :'')
         :'')
-      +'<div class="exprow"><span style="color:var(--gray)">คงค้างเบิก '+moLabel(curMo)+'</span><span style="font-weight:600;color:var(--blue)">-฿'+fmt(totNet)+'</span></div>'
       +'<div class="exprow last"><span style="font-weight:600">ยอดสุทธิที่ได้รับ</span><span style="font-weight:700;color:'+(pos?'var(--green)':'var(--red)')+'">'+(pos?'+':'')+'฿'+fmt(net)+'</span></div>'
     +'</div>'
     +'<div class="sum2" style="margin-top:0">'
@@ -1642,6 +1718,7 @@ function renderDash(){
 // ── EXTRAS ────────────────────────────────────────────────────────────────────
 async function saveExtras(){
   var e=getEmp();if(!e)return;
+  if(isMonthClosed(e.id,curMo)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
   if(!assertMonthEditable(curMo)) return;
   // บันทึกแบบ per-month เท่านั้น — ไม่แตะ global e.extras/e.deducts
   // เพื่อให้แต่ละเดือนเป็นอิสระจากกันอย่างสมบูรณ์
@@ -1657,6 +1734,7 @@ async function saveExtras(){
 }
 async function updSalary(v){
   var e=getEmp();if(!e)return;
+  if(isMonthClosed(e.id,curMo)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
   if(!assertMonthEditable(curMo)) return;
   var val=parseFloat(v)||0;
   // บันทึกแบบ per-month
@@ -1677,6 +1755,7 @@ async function delTxById(txId){
   var e=getEmp();if(!e)return;
   var req=requests.find(function(r){return r.id===txId;});
   var mk=(req&&(req.monthKey||(req.date||'').slice(0,7)))||curMo;
+  if(isMonthClosed(e.id,mk)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
   if(!assertMonthEditable(mk)) return;
   if(!confirm('ลบรายการนี้?'))return;
   e.transactions=(e.transactions||[]).filter(function(t){
@@ -1687,9 +1766,13 @@ async function delTxById(txId){
   renderDash(); toast('🗑️ ลบรายการแล้ว');
 }
 async function delTx(i){
-  var e=getEmp();if(!e||!confirm('ลบรายการนี้?'))return;
+  var e=getEmp();if(!e)return;
   var allTx=getMergedTx(e);
   var tx=allTx[i]; if(!tx) return;
+  var _mk=(tx.monthKey||(tx.date||'').slice(0,7))||curMo;
+  if(isMonthClosed(e.id,_mk)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
+  if(!assertMonthEditable(_mk)) return;
+  if(!confirm('ลบรายการนี้?'))return;
   e.transactions=(e.transactions||[]).filter(function(t,idx){
     return !(t.id===tx.id||(t.ref&&t.ref===tx.ref));
   });
@@ -1700,6 +1783,8 @@ async function delTx(i){
 async function delReq(reqId){
   var req0=requests.find(function(r){return r.id===reqId;});
   var mk0=(req0&&(req0.monthKey||(req0.date||'').slice(0,7)))||curMo;
+  var eid0=(req0&&(req0.employeeId||req0.empId))||curId;
+  if(isMonthClosed(eid0,mk0)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
   if(!assertMonthEditable(mk0)) return;
   if(!confirm('ลบคำขอนี้?'))return;
   // ลบออกจาก employee.transactions ด้วย
@@ -1723,6 +1808,8 @@ async function approveReq(reqId){
   var req=requests.find(function(r){return r.id===reqId;});
   if(!req) return;
   var mk=(req.monthKey||(req.date||'').slice(0,7));
+  var eid=(req.employeeId||req.empId)||curId;
+  if(isMonthClosed(eid,mk)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
   if(!assertMonthEditable(mk)) return;
   if(!confirm('อนุมัติคำขอนี้?'))return;
   await setReqStatus(reqId,'approved');
@@ -1734,6 +1821,8 @@ async function rejectReq(reqId){
   var req=requests.find(function(r){return r.id===reqId;});
   if(!req) return;
   var mk=(req.monthKey||(req.date||'').slice(0,7));
+  var eid=(req.employeeId||req.empId)||curId;
+  if(isMonthClosed(eid,mk)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
   if(!assertMonthEditable(mk)) return;
   if(!confirm('ปฏิเสธคำขอนี้?'))return;
   await setReqStatus(reqId,'rejected');
@@ -1922,6 +2011,11 @@ async function analyzeSlip(){
 }
 
 async function saveTx(){
+  // Finance App = source of truth — ห้ามบันทึกเบิกจาก tab อัพโหลดสลิปโดยตรง
+  alert('⚠️ กรุณาบันทึกการเบิกล่วงหน้าผ่าน Finance App เท่านั้น\n\nเพื่อให้ข้อมูลบัญชีและยอดเงินตรงกันทุกระบบ');
+  return;
+  // === ปิดการใช้งาน: code ด้านล่างไม่ถูกเรียกอีกต่อไป ===
+  // eslint-disable-next-line no-unreachable
   var eid=document.getElementById('sel2').value;
   var emp=emps.find(function(e){return e.id===eid;});
   if(!emp){toast('กรุณาเลือกพนักงานก่อน');return;}
@@ -1929,6 +2023,7 @@ async function saveTx(){
   if(!amt||amt<=0){toast('กรุณากรอกจำนวนเงิน');return;}
   var txDateRaw=normDate(document.getElementById('rd').value)||new Date().toISOString().slice(0,10);
   var txMk=txDateRaw.slice(0,7);
+  if(isMonthClosed(eid,txMk)){alert('เดือนนี้ปิดแล้ว ไม่สามารถแก้ไขได้');return;}
   if(!assertMonthEditable(txMk)) return;
   var refNo=(document.getElementById('rr').value||'').trim();
   var txId=uid();
@@ -2068,7 +2163,8 @@ function printSlip(eidOverride){
   html+='.summary{border:2px solid #0D1B2A;border-radius:8px;padding:14px;margin-bottom:14px}';
   html+='.srow{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid #eee}.srow:last-child{border-bottom:none;font-size:16px;font-weight:700;padding-top:10px;margin-top:4px}';
   html+='.pos{color:#16A34A}.neg{color:#DC2626}.footer{text-align:center;font-size:11px;color:#aaa;margin-top:16px}@media print{body{padding:10px}}</style></head><body>';
-  html+='<div class="hd"><h1>💼 สลิปเงินเดือน</h1><p>วันที่ออกสลิป: '+dateStr+' · '+BUILD_LABEL+'</p></div>';
+  var slipClosed=isMonthClosed(emp.id,curMo);
+  html+='<div class="hd"><h1>💼 สลิปเงินเดือน'+(slipClosed?' <span style="background:#FEE2E2;color:#991B1B;font-size:13px;padding:2px 10px;border-radius:20px;vertical-align:middle">🔒 ปิดเดือนแล้ว</span>':'')+'</h1><p>วันที่ออกสลิป: '+dateStr+' · '+BUILD_LABEL+'</p></div>';
   html+='<div class="sec"><h3>ข้อมูลพนักงาน</h3>';
   html+='<div class="row2"><span class="lbl">ชื่อ-นามสกุล</span><span class="val">'+emp.name+'</span></div>';
   if(emp.dept)html+='<div class="row2"><span class="lbl">แผนก</span><span class="val">'+emp.dept+'</span></div>';
@@ -2119,19 +2215,29 @@ function expCSV(eid){
 function cpTxt(eid){
   var emp=emps.find(function(e){return e.id===eid;});if(!emp)return;
   var allTx=getMergedTx(emp);
-  var moTxTxt=allTx.filter(function(t){return (t.date||'').startsWith(curMo);});
+  // เหมือนกับ renderDash: กรองเฉพาะ approved ของเดือนนี้
+  var moTxAll=allTx.filter(function(t){return (t.date||'').startsWith(curMo);});
+  var moTxApproved=moTxAll.filter(function(t){return !t._fromReq||(t._fromReq&&t.status==='approved');});
   var ex=getEx(emp,curMo);var de=getDe(emp,curMo);
   var moSalary=getMoSalary(emp,curMo);var moCarry=getMoCarry(emp,curMo);
-  var tot=moTxTxt.reduce(function(s,t){return s+Number(t.amount);},0);
+  var tot=moTxApproved.reduce(function(s,t){return s+Number(t.amount);},0);
+  // Option A: advance หักเต็มจำนวน — moRepaid บันทึกบัญชีเบิกเท่านั้น ไม่กระทบ net salary
+  var moRepaid=advanceRecords.filter(function(r){
+    return r.employeeId===emp.id&&r.status!=='cancelled'&&(r.type==='repayment'||r.type==='clear')&&r.monthKey===curMo;
+  }).reduce(function(s,r){return s+Number(r.amount||0);},0);
+  var totNet=tot;
   var totalExtra=(ex.ot||0)+(ex.travel||0)+(ex.phone||0)+(ex.other||0);
   var totalDeduct=(de.absent||0)+(de.insurance||0)+(de.social||0);
-  var net=moSalary+totalExtra-totalDeduct-moCarry-tot;
+  var net=moSalary+totalExtra-totalDeduct-moCarry-totNet;
   var t='รายการเบิกล่วงหน้า — '+emp.name+' ('+moLabel(curMo)+')\n'+'='.repeat(36)+'\n';
-  moTxTxt.forEach(function(x,i){t+=(i+1)+'. '+fmtDate(x.date)+' | '+(x.category||x.bank)+' | ผู้รับ: '+(x.recipient||'-')+' | ฿'+Number(x.amount).toLocaleString('th-TH')+(x._fromReq?' ['+x.status+']':'')+'\n';});
+  moTxApproved.forEach(function(x,i){t+=(i+1)+'. '+fmtDate(x.date)+' | '+(x.category||x.bank)+' | ผู้รับ: '+(x.recipient||'-')+' | ฿'+Number(x.amount).toLocaleString('th-TH')+'\n';});
   t+='='.repeat(36)+'\nเงินเดือน: ฿'+moSalary.toLocaleString('th-TH')+'\n';
   if(totalExtra)t+='รายได้เพิ่ม: +฿'+totalExtra.toLocaleString('th-TH')+'\n';
   if(totalDeduct)t+='รายการหัก: -฿'+totalDeduct.toLocaleString('th-TH')+'\n';
-  t+='รวมเบิก: ฿'+tot.toLocaleString('th-TH')+'\nยอดสุทธิ: '+(net>=0?'+':'')+'฿'+net.toLocaleString('th-TH')+'\n';
+  if(moCarry)t+='ยกมาเดือนก่อน: -฿'+moCarry.toLocaleString('th-TH')+'\n';
+  if(tot)t+='เบิกล่วงหน้า: -฿'+tot.toLocaleString('th-TH')+'\n';
+  if(moRepaid)t+='[หักคืน/เคลียร์บัญชีเบิก: ฿'+moRepaid.toLocaleString('th-TH')+']\n';
+  t+='ยอดสุทธิ: '+(net>=0?'+':'')+'฿'+net.toLocaleString('th-TH')+'\n';
   navigator.clipboard.writeText(t).then(function(){toast('📋 คัดลอกแล้ว');});
 }
 
@@ -2182,5 +2288,296 @@ window.onload=function(){
   }
 };
 </script>
+
+<!-- ── LOCAL DB EDITOR PAGE ── -->
+<div class="pg" id="pg-localdb">
+  <div style="background:#fff;border-radius:8px;padding:0;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:12px">
+    <div style="background:#1e293b;padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:#fff">
+      <span style="font-weight:700;font-size:14px">🗃️ LocalStorage Editor</span>
+      <select id="ldbKeySelect" onchange="ldbLoadKey()" style="background:#0f172a;border:1px solid #475569;color:#e2e8f0;border-radius:5px;padding:5px 10px;font-size:12px">
+        <option value="advance_requests_local">⏩ advance_requests</option>
+        <option value="advance_records_local">📄 advance_records</option>
+        <option value="advance_tracker_v2">👤 employees</option>
+        <option value="advance_ledger_local">📒 advance_ledger</option>
+        <option value="advance_month_locks">🔒 month_locks</option>
+      </select>
+      <input id="ldbSearch" placeholder="🔍 ค้นหา..." oninput="ldbFilter()" style="background:#0f172a;border:1px solid #475569;color:#e2e8f0;border-radius:5px;padding:5px 10px;font-size:12px;width:180px">
+      <span id="ldbCount" style="font-size:11px;color:#94a3b8"></span>
+      <button onclick="ldbLoadKey()" style="background:#166534;color:#bbf7d0;border:none;border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600;margin-left:auto">🔄 Reload</button>
+      <button onclick="ldbDeleteSelected()" id="ldbDelSelBtn" disabled style="background:#7f1d1d;color:#fca5a5;border:none;border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600">🗑 ลบที่เลือก (<span id="ldbSelCount">0</span>)</button>
+    </div>
+    <div style="overflow:auto;max-height:60vh;background:#0f172a">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#e2e8f0">
+        <thead id="ldbThead"></thead>
+        <tbody id="ldbTbody"></tbody>
+      </table>
+    </div>
+    <div style="padding:6px 14px;background:#1e293b;font-size:11px;color:#94a3b8;border-top:1px solid #334155">
+      ℹ️ อ่านจาก memory + localStorage · การลบจะมีผลทันที (ไม่ต้อง reload)
+    </div>
+  </div>
+  <div id="ldbEditorPanel" style="display:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span style="font-weight:700;font-size:14px;color:#1e293b" id="ldbEditorTitle">แก้ไข</span>
+      <button onclick="ldbCloseEditor()" style="margin-left:auto;background:#94a3b8;color:#fff;border:none;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer">✕ ปิด</button>
+      <button onclick="ldbSaveDoc()" style="background:#16a34a;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:12px;cursor:pointer;font-weight:600">💾 บันทึก</button>
+      <button onclick="ldbDeleteDoc()" style="background:#dc2626;color:#fff;border:none;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;font-weight:600">🗑 ลบ</button>
+    </div>
+    <div id="ldbEditorFields" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px"></div>
+  </div>
+</div>
+
+<script>
+// ─── LOCAL DB EDITOR ──────────────────────────────────────────────────────────
+var _ldbKey = 'advance_requests_local';
+var _ldbAll = [];
+var _ldbFiltered = [];
+var _ldbSelected = new Set();
+var _ldbEditDoc = null;
+
+var LDB_COLS = {
+  advance_requests_local: ['id','date','transferDate','employeeName','amount','category','status','syncStatus','_localOnly'],
+  advance_records_local:  ['id','date','employeeName','amount','category','status','monthKey'],
+  advance_tracker_v2:     ['id','name','employeeCode','dept','limit','active'],
+  advance_ledger_local:   ['id','employeeId','employeeName','monthKey','totalAmount'],
+  advance_month_locks:    ['id','monthKey','locked','lockedAt'],
+};
+
+function ldbGetSourceData() {
+  if(_ldbKey === 'advance_requests_local' && typeof requests !== 'undefined') return {arr:requests, name:'requests (memory)'};
+  if(_ldbKey === 'advance_records_local' && typeof advanceRecords !== 'undefined') return {arr:advanceRecords, name:'advanceRecords (memory)'};
+  if(_ldbKey === 'advance_tracker_v2' && typeof emps !== 'undefined') return {arr:emps, name:'emps (memory)'};
+  if(_ldbKey === 'advance_ledger_local' && typeof ledger !== 'undefined') return {arr:ledger, name:'ledger (memory)'};
+  if(_ldbKey === 'advance_month_locks' && typeof monthLocks !== 'undefined') {
+    var arr = Object.entries(monthLocks||{}).map(function(kv){
+      return Object.assign({id:kv[0], monthKey:kv[0]}, typeof kv[1]==='object'?kv[1]:{value:kv[1]});
+    });
+    return {arr:arr, name:'monthLocks (memory)'};
+  }
+  // fallback localStorage
+  try{
+    var raw = localStorage.getItem(_ldbKey);
+    if(!raw) return {arr:[], name:'localStorage (empty)'};
+    var p = JSON.parse(raw);
+    return {arr: Array.isArray(p)?p:[], name:'localStorage'};
+  }catch(e){return {arr:[],name:'error: '+e.message};}
+}
+
+function ldbLoadKey() {
+  _ldbKey = document.getElementById('ldbKeySelect').value;
+  _ldbSelected.clear();
+  _ldbEditDoc = null;
+  document.getElementById('ldbEditorPanel').style.display = 'none';
+  var src = ldbGetSourceData();
+  _ldbAll = (src.arr||[]).map(function(d,i){
+    if(typeof d !== 'object' || d === null) return {_idx:i, value:d};
+    return Object.assign({}, d, {_idx:i});
+  });
+  document.getElementById('ldbCount').textContent = _ldbAll.length + ' รายการ · ' + src.name;
+  ldbFilter();
+}
+
+function ldbFilter() {
+  var q = (document.getElementById('ldbSearch').value||'').toLowerCase();
+  _ldbFiltered = q ? _ldbAll.filter(function(d){
+    return JSON.stringify(d).toLowerCase().indexOf(q) >= 0;
+  }) : _ldbAll.slice();
+  ldbRender();
+}
+
+function ldbRender() {
+  var cols = LDB_COLS[_ldbKey] || Object.keys(_ldbAll[0]||{}).filter(function(k){return k!=='_idx';}).slice(0,8);
+  var th = '<tr style="background:#1e293b"><th style="width:30px;padding:7px 8px"><input type="checkbox" onchange="ldbToggleAll()"></th><th style="padding:7px 8px;color:#94a3b8;font-size:10px;text-align:left">#</th>';
+  cols.forEach(function(c){ th += '<th style="padding:7px 8px;color:#94a3b8;font-weight:700;text-align:left;white-space:nowrap;border-bottom:2px solid #334155">'+c+'</th>'; });
+  th += '<th style="padding:7px 8px;width:50px"></th></tr>';
+  document.getElementById('ldbThead').innerHTML = th;
+
+  if(!_ldbFiltered.length) {
+    document.getElementById('ldbTbody').innerHTML = '<tr><td colspan="'+(cols.length+3)+'" style="text-align:center;padding:30px;color:#64748b">ไม่มีข้อมูล</td></tr>';
+    ldbUpdateSelUI();
+    return;
+  }
+
+  var rows = _ldbFiltered.map(function(d, i){
+    var idx = d._idx;
+    var sel = _ldbSelected.has(String(idx));
+    var isEdit = _ldbEditDoc && _ldbEditDoc._idx === idx;
+    var bg = isEdit ? 'background:#1e3a5f' : sel ? 'background:#1a2535' : '';
+    var row = '<tr style="border-bottom:1px solid #1a2535;cursor:pointer;'+bg+'" onclick="ldbOpenEditor('+idx+')">';
+    row += '<td style="padding:6px 8px;text-align:center" onclick="event.stopPropagation();ldbToggleSel('+idx+')"><input type="checkbox" '+(sel?'checked':'')+'></td>';
+    row += '<td style="padding:6px 8px;color:#64748b;font-size:10px">'+(i+1)+'</td>';
+    cols.forEach(function(c){
+      var v = d[c];
+      if(v === undefined || v === null){ row += '<td style="padding:6px 8px;color:#334155">—</td>'; return; }
+      if(c==='status'){
+        var sc = v==='approved'?'#22c55e':v==='rejected'?'#ef4444':v==='pending_approval'?'#f59e0b':'#94a3b8';
+        row += '<td style="padding:6px 8px;color:'+sc+';font-weight:600;font-size:11px">'+v+'</td>'; return;
+      }
+      if(c==='syncStatus'){
+        var sc2 = v==='linked'?'#22c55e':v==='error'?'#ef4444':'#f59e0b';
+        row += '<td style="padding:6px 8px;color:'+sc2+';font-size:11px">●'+v+'</td>'; return;
+      }
+      if(c==='amount'){
+        row += '<td style="padding:6px 8px;font-weight:700;color:#4ade80;white-space:nowrap">฿'+Number(v).toLocaleString('th-TH',{minimumFractionDigits:2})+'</td>'; return;
+      }
+      if(c==='_localOnly'){
+        row += '<td style="padding:6px 8px"><span style="font-size:10px;color:'+(v?'#f59e0b':'#22c55e')+'">'+(v?'local':'synced')+'</span></td>'; return;
+      }
+      if(typeof v==='object'){ row += '<td style="padding:6px 8px;color:#64748b;font-size:10px">[obj]</td>'; return; }
+      var s = String(v);
+      var esc = s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+      row += '<td style="padding:6px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc+'">'+( s.length>30?s.slice(0,30)+'…':s)+'</td>';
+    });
+    row += '<td style="padding:6px 8px"><button onclick="event.stopPropagation();ldbDeleteOne('+idx+')" style="background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer">🗑</button></td>';
+    row += '</tr>';
+    return row;
+  }).join('');
+  document.getElementById('ldbTbody').innerHTML = rows;
+  ldbUpdateSelUI();
+}
+
+function ldbToggleSel(idx) {
+  var k = String(idx);
+  if(_ldbSelected.has(k)) _ldbSelected.delete(k); else _ldbSelected.add(k);
+  ldbUpdateSelUI(); ldbRender();
+}
+
+function ldbToggleAll() {
+  if(_ldbSelected.size >= _ldbFiltered.length) _ldbSelected.clear();
+  else _ldbFiltered.forEach(function(d){ _ldbSelected.add(String(d._idx)); });
+  ldbUpdateSelUI(); ldbRender();
+}
+
+function ldbUpdateSelUI() {
+  var n = _ldbSelected.size;
+  document.getElementById('ldbSelCount').textContent = n;
+  document.getElementById('ldbDelSelBtn').disabled = n === 0;
+}
+
+function ldbOpenEditor(idx) {
+  var doc = _ldbAll.find(function(d){ return d._idx === idx; });
+  if(!doc) return;
+  _ldbEditDoc = doc;
+  document.getElementById('ldbEditorTitle').textContent = '✏️ แก้ไข — id: ' + (doc.id||String(idx));
+  document.getElementById('ldbEditorPanel').style.display = 'block';
+
+  var priority = ['id','date','transferDate','employeeName','employeeCode','amount','category','status','syncStatus','monthKey','_localOnly'];
+  var keys = [];
+  priority.forEach(function(k){ if(k in doc) keys.push(k); });
+  Object.keys(doc).forEach(function(k){ if(k !== '_idx' && keys.indexOf(k) < 0) keys.push(k); });
+
+  var html = keys.map(function(k){
+    var v = doc[k];
+    if(typeof v === 'object' && v !== null) v = JSON.stringify(v);
+    else v = (v === undefined || v === null) ? '' : String(v);
+    var isP = priority.indexOf(k) >= 0;
+    var tag = v.length > 60 ? 'textarea' : 'input';
+    var esc = v.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    return '<div><div style="font-size:10px;color:'+(isP?'#1d4ed8':'#64748b')+';font-weight:700;margin-bottom:3px;text-transform:uppercase">'+k+'</div>'
+      +'<'+tag+' id="lef_'+k+'" style="border:1px solid #cbd5e1;border-radius:5px;padding:5px 8px;font-size:12px;width:100%;font-family:inherit;'+(tag==='textarea'?'height:60px;resize:vertical':'')+'" '+(tag==='input'?'value="'+esc+'"':'')+' oninput="this.style.borderColor=\'#f59e0b\'">'+( tag==='textarea'?esc:'')+'</'+tag+'></div>';
+  }).join('');
+  document.getElementById('ldbEditorFields').innerHTML = html;
+  ldbRender();
+}
+
+function ldbCloseEditor() {
+  _ldbEditDoc = null;
+  document.getElementById('ldbEditorPanel').style.display = 'none';
+  ldbRender();
+}
+
+function ldbGetSrcArr() {
+  if(_ldbKey === 'advance_requests_local' && typeof requests !== 'undefined') return requests;
+  if(_ldbKey === 'advance_records_local' && typeof advanceRecords !== 'undefined') return advanceRecords;
+  if(_ldbKey === 'advance_tracker_v2' && typeof emps !== 'undefined') return emps;
+  if(_ldbKey === 'advance_ledger_local' && typeof ledger !== 'undefined') return ledger;
+  return null;
+}
+
+function ldbPersistSource() {
+  // save back to localStorage based on source type
+  try {
+    if(_ldbKey === 'advance_requests_local' && typeof saveLocalReqs === 'function') saveLocalReqs();
+    else if(_ldbKey === 'advance_records_local' && typeof saveLocalAdvRecs === 'function') saveLocalAdvRecs();
+    else if(_ldbKey === 'advance_tracker_v2' && typeof saveLocal === 'function') saveLocal();
+    else if(_ldbKey === 'advance_ledger_local' && typeof saveLocalLedger === 'function') saveLocalLedger();
+    else {
+      var arr = ldbGetSrcArr();
+      if(arr) localStorage.setItem(_ldbKey, JSON.stringify(arr));
+    }
+  } catch(e){ console.warn('ldbPersist error:', e); }
+}
+
+function ldbSaveDoc() {
+  if(!_ldbEditDoc) return;
+  var updated = Object.assign({}, _ldbEditDoc);
+  Object.keys(_ldbEditDoc).filter(function(k){return k!=='_idx';}).forEach(function(k){
+    var el = document.getElementById('lef_'+k);
+    if(!el) return;
+    var raw = el.value, orig = _ldbEditDoc[k];
+    if(typeof orig === 'number') updated[k] = Number(raw)||0;
+    else if(typeof orig === 'boolean') updated[k] = raw === 'true';
+    else { try{updated[k]=JSON.parse(raw);}catch(_){updated[k]=raw;} }
+  });
+  delete updated._idx;
+
+  var arr = ldbGetSrcArr();
+  if(arr) {
+    var idx = _ldbEditDoc._idx;
+    arr[idx] = Object.assign({}, arr[idx], updated);
+    ldbPersistSource();
+  }
+  // refresh display
+  ldbLoadKey();
+  toast('💾 บันทึกแล้ว');
+}
+
+function ldbDeleteDoc() {
+  if(!_ldbEditDoc) return;
+  var label = _ldbEditDoc.id || _ldbEditDoc.employeeName || String(_ldbEditDoc._idx);
+  if(!confirm('ยืนยันลบ?\n\n'+label)) return;
+  ldbDoDelete([_ldbEditDoc._idx]);
+  ldbCloseEditor();
+}
+
+function ldbDeleteOne(idx) {
+  var doc = _ldbAll.find(function(d){ return d._idx === idx; });
+  var label = doc ? (doc.id||doc.employeeName||String(idx)) : String(idx);
+  if(!confirm('ยืนยันลบ?\n\n'+label)) return;
+  ldbDoDelete([idx]);
+  if(_ldbEditDoc && _ldbEditDoc._idx === idx) ldbCloseEditor();
+}
+
+function ldbDeleteSelected() {
+  if(!_ldbSelected.size) return;
+  if(!confirm('ยืนยันลบ '+_ldbSelected.size+' รายการ?')) return;
+  var idxs = [..._ldbSelected].map(Number);
+  ldbDoDelete(idxs);
+  _ldbSelected.clear();
+}
+
+function ldbDoDelete(idxList) {
+  var arr = ldbGetSrcArr();
+  if(!arr) {
+    // fallback: ลบจาก localStorage โดยตรง
+    try {
+      var raw = localStorage.getItem(_ldbKey);
+      var p = raw ? JSON.parse(raw) : [];
+      if(Array.isArray(p)) {
+        p = p.filter(function(d,i){ return idxList.indexOf(i) < 0; });
+        localStorage.setItem(_ldbKey, JSON.stringify(p));
+      }
+    } catch(e){}
+  } else {
+    // ลบจาก array โดยใช้ index
+    idxList.sort(function(a,b){return b-a;}); // ลบจากท้ายมาก่อน
+    idxList.forEach(function(i){ arr.splice(i, 1); });
+    ldbPersistSource();
+  }
+  ldbLoadKey();
+  toast('🗑 ลบ '+idxList.length+' รายการแล้ว');
+}
+</script>
+
 </body>
 </html>

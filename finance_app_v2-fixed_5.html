@@ -263,6 +263,16 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .emp-stat .el{color:#6b7280}
 .emp-stat .ev{font-weight:600;color:#111827}
 .emp-card-foot{padding:8px 12px;border-top:1px solid #f3f4f6;display:flex;gap:6px;justify-content:flex-end;background:#fafafa}
+.raw-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center}
+.raw-modal-overlay.open{display:flex}
+.raw-modal{background:#fff;border-radius:12px;width:min(96vw,900px);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+.raw-modal-head{padding:14px 18px;border-bottom:1px solid #e9ecef;display:flex;align-items:center;gap:10px;background:#1e293b;color:#fff}
+.raw-modal-body{overflow-y:auto;flex:1;padding:0}
+.raw-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.raw-tbl th{background:#f8fafc;padding:7px 10px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:700;position:sticky;top:0;z-index:1}
+.raw-tbl td{padding:6px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+.raw-tbl tr:hover td{background:#fef9c3}
+.raw-badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700}
 .emp-type-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
 .et-advance{background:#fef3c7;color:#d97706}
 .et-expense{background:#fee2e2;color:#dc2626}
@@ -436,6 +446,7 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <div class="tb-title">บัญชีรายรับรายจ่ายบริษัท &nbsp;—&nbsp; <span class="mo" id="topMo"></span><span id="versionBadge" style="font-size:10px;font-weight:600;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle;letter-spacing:.02em;cursor:help" title="คลิกเพื่อดูรายละเอียด">v2.5-db-unified</span></div>
     <span id="fb-status" style="font-size:11px;font-weight:600;color:#6b7280;white-space:nowrap">⏳ กำลังโหลด...</span>
     <button class="btn btn-gray btn-sm" onclick="pullFromFirebase()" title="โหลดข้อมูลล่าสุดจาก Firebase มาบันทึกในเครื่อง" style="font-size:11px;padding:4px 10px">🔄 โหลดจาก Firebase</button>
+    <button class="btn btn-gray btn-sm" onclick="pushLocalToFirebase()" title="Push ข้อมูล Local ทั้งหมดขึ้น Firebase (ใช้ครั้งแรกเมื่อย้ายจาก Local มา Firebase)" style="font-size:11px;padding:4px 10px;color:#92400e;border-color:#fcd34d;background:#fffbeb">📤 Push Local → Firebase</button>
     <button class="btn btn-teal" onclick="toast_('✅ พร้อมตรวจแก้แล้ว','#0d9488')">✓ พร้อมตรวจแก้</button>
     <div class="mo-nav">
       <button onclick="navMo(-1)">◀</button>
@@ -681,8 +692,8 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <div id="toast"></div>
 
 <script>
-const BUILD_TIME="2026-05-27 15:30";
-const BUILD_LABEL="v2.15 · 27 พ.ค. 2569";
+const BUILD_TIME="2026-05-29 11:00";
+const BUILD_LABEL="v2.19 · 29 พ.ค. 2569";
 const MONTHS_TH=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const CATS={
   income:["รับชำระลูกค้า","มัดจำโครงการ","รับเงินสด/โอน","ดอกเบี้ยรับ","รายได้อื่น"],
@@ -715,12 +726,7 @@ const DEFAULT_PAYROLL_TYPES=[
   {id:"other",label:"เบิกอื่นๆ",color:"#374151",bg:"#f3f4f6",icon:"📋"},
 ];
 
-// ─── EMPLOYEE DEFAULT DATA ────────────────────────────────────────────────────
-const DEFAULT_EMPLOYEES=[
-  {id:"emp1",name:"สมชาย ใจดี",dept:"ฝ่ายขาย",limit:5000,payrollTypes:["advance","expense"],active:true,note:""},
-  {id:"emp2",name:"แอน วิไล",dept:"ฝ่ายบัญชี",limit:3000,payrollTypes:["expense","welfare"],active:true,note:""},
-  {id:"emp3",name:"วิชัย รักดี",dept:"ฝ่ายปฏิบัติการ",limit:8000,payrollTypes:["advance","expense","ot"],active:true,note:""},
-];
+const DEFAULT_EMPLOYEES=[];
 
 let txs=[],curMo=getCurMo(),curFilter="all",selId=null,curPg="dashboard";
 let rForm={},rOcrFilled=false,rOcrPrev=null;
@@ -833,6 +839,56 @@ function removeSyncRetry(txId){
   }catch(_){}
 }
 
+// ─── CLEAN DUPLICATE ADVANCE REQUESTS ────────────────────────────────────────
+// ลบรายการ employee_advance ซ้ำที่มี empId + monthKey + amount เดียวกัน
+// เก็บรายการที่ syncStatus==="linked" หรือ id เก่าสุด ไว้ 1 รายการ
+async function cleanDupAdvance(silent){
+  var seen={};
+  var toDelete=[];
+  var sorted=[].concat(txs).sort(function(a,b){
+    return (a.savedAt||a.id||"") < (b.savedAt||b.id||"") ? -1 : 1;
+  });
+  sorted.forEach(function(t){
+    if(t.type!=="employee_advance"||!t.empId) return;
+    var mk=getMonthKey(t);
+    // เพิ่ม referenceNo และ transferDate ใน key เพื่อป้องกันลบรายการจริงที่เบิกซ้ำจำนวนเท่ากัน
+    var refPart=t.referenceNo?("||ref:"+t.referenceNo):("");
+    var datePart=t.transferDate?("||dt:"+t.transferDate):(t.date?("||dt:"+t.date):"");
+    var key=t.empId+"|"+mk+"|"+Math.abs(Number(t.amount))+refPart+datePart;
+    if(!seen[key]){
+      seen[key]=t.id;
+    } else {
+      var keepId=seen[key];
+      var keepTx=txs.find(function(x){return x.id===keepId;});
+      if(t.syncStatus==="linked" && keepTx && keepTx.syncStatus!=="linked"){
+        toDelete.push(keepId);
+        seen[key]=t.id;
+      } else {
+        toDelete.push(t.id);
+      }
+    }
+  });
+  if(!toDelete.length){
+    if(!silent) toast_("\u2705 \u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e0b\u0e49\u0e33","#16a34a");
+    return 0;
+  }
+  for(var i=0;i<toDelete.length;i++){
+    var did=toDelete[i];
+    txs=txs.filter(function(t){return t.id!==did;});
+    if(isOnline&&db){
+      try{ await db.collection("fin_transactions").doc(did).delete(); }
+      catch(e){ console.warn("[cleanDup] Firebase fail",did,e); }
+      try{ await db.collection("advance_requests").doc(did).delete(); }
+      catch(e){}
+    }
+  }
+  saveTxs();
+  render();
+  if(!silent) toast_("\ud83e\uddf9 \u0e25\u0e1a\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e0b\u0e49\u0e33 "+toDelete.length+" \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23\u0e41\u0e25\u0e49\u0e27","#0d9488",5000);
+  console.log("[cleanDupAdvance]",toDelete);
+  return toDelete.length;
+}
+
 async function processSyncRetryQueue(){
   if(!isOnline||!db) return;
   try{
@@ -871,6 +927,29 @@ async function processSyncRetryQueue(){
 }
 
 // ─── FIREBASE LOAD HELPERS ────────────────────────────────────────────────────
+async function pushLocalToFirebase(){
+  if(!isOnline||!db){ alert('ไม่ได้เชื่อมต่อ Firebase กรุณารอสักครู่แล้วลองใหม่'); return; }
+  const localTxs = JSON.parse(localStorage.getItem('fin_txs')||'[]');
+  if(!localTxs.length){ alert('ไม่พบข้อมูลใน Local'); return; }
+  if(!confirm(`พบ ${localTxs.length} รายการใน Local\nต้องการ Push ขึ้น Firebase ทั้งหมดใช่ไหม?\n\n(รายการที่มีอยู่แล้วใน Firebase จะถูก overwrite)`)) return;
+  let ok=0, fail=0;
+  const toast=document.createElement('div');
+  toast.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;z-index:9999';
+  toast.textContent='⏳ กำลัง Push...';
+  document.body.appendChild(toast);
+  for(const t of localTxs){
+    try{
+      const td=Object.assign({},t);
+      await db.collection('fin_transactions').doc(td.id).set(td);
+      ok++;
+      if(ok%20===0) toast.textContent=`⏳ Push แล้ว ${ok}/${localTxs.length}...`;
+    } catch(e){ fail++; console.warn('push fail:',t.id,e); }
+  }
+  toast.textContent=`✅ Push สำเร็จ ${ok} รายการ${fail?` | ❌ ล้มเหลว ${fail} รายการ`:''}`;
+  setTimeout(()=>toast.remove(), 4000);
+  if(ok>0) await loadFromFirebase();
+}
+
 async function loadFromFirebase(){
   // รอ Firebase SDK โหลดเสร็จ (max 5 วินาที)
   let waited = 0;
@@ -922,7 +1001,7 @@ async function loadFromFirebase(){
     } else {
       // ถ้า Firestore ว่าง → ใช้ข้อมูล localStorage หรือ seed
       const r=localStorage.getItem("fin_txs");
-      txs=r?JSON.parse(r):seed();
+      txs=r?JSON.parse(r):[];
     }
     // โหลด employees (ใช้ collection เดิมของ advance-tracker)
     const empSnap=await db.collection("employees").get();
@@ -974,12 +1053,14 @@ async function loadFromFirebase(){
     await migratePayrollEmpIds();
     // retry sync ที่ล้มเหลวครั้งก่อน (advance_requests / advance_monthly)
     await processSyncRetryQueue();
+    // ลบรายการ employee_advance ซ้ำอัตโนมัติหลังโหลดข้อมูล
+    await cleanDupAdvance(true);
   } catch(err){
     console.warn("Firebase offline, using localStorage",err);
     isOnline=false;
     setFbStatus("offline");
     // fallback localStorage
-    try{const r=localStorage.getItem("fin_txs");txs=r?JSON.parse(r):seed();}catch{txs=seed();}
+    try{const r=localStorage.getItem("fin_txs");txs=r?JSON.parse(r):[];}catch{txs=[];}
     try{const c=localStorage.getItem("fin_cats");if(c){dynCats=JSON.parse(c);Object.assign(CATS,dynCats);}}catch{}
     try{const e=localStorage.getItem("fin_employees");employees=e?JSON.parse(e):JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));}catch{employees=JSON.parse(JSON.stringify(DEFAULT_EMPLOYEES));}
     try{const p=localStorage.getItem("fin_ptypes");payrollTypes=p?JSON.parse(p):JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));}catch{payrollTypes=JSON.parse(JSON.stringify(DEFAULT_PAYROLL_TYPES));}
@@ -1046,7 +1127,7 @@ function isEmpType(t){return["payroll","employee_advance","employee_reimbursemen
 
 // ─── ADVANCE SYNC GUARD ───────────────────────────────────────────────────────
 // รายการ category ของ payroll เก่า ที่ถือว่าเป็น "เบิกล่วงหน้า" (legacy support)
-const LEGACY_ADV_CATS=["เบิกล่วงหน้าเงินเดือน","เบิกค่าโปรเจ็กต์","เบิกด่วน","เบิกอื่นๆ"];
+const LEGACY_ADV_CATS=["เบิกล่วงหน้าเงินเดือน","เบิกค่าโปรเจ็กต์","เบิกด่วน"];
 function shouldSyncAdvance(tx){
   // ส่งไป Advance Tracker เฉพาะ employee_advance เท่านั้น
   // รองรับข้อมูลเก่า: payroll + category ใดก็ตามที่เป็น advance category
@@ -1057,13 +1138,14 @@ function shouldSyncAdvance(tx){
 
 // ดึง YYYY-MM จาก transaction สำหรับใช้เป็น doc key ของ advance_monthly
 function getMonthKey(tx){
-  return(tx.transferDate||tx.date||"").slice(0,7);
+  // ใช้ date เป็น primary เสมอ — transferDate คือวันโอนบนสลิปซึ่งอาจข้ามเดือน
+  return(tx.date||tx.transferDate||"").slice(0,7);
 }
 
-// ─── DATE HELPERS — ใช้ transferDate เป็น source of truth ───────────────────
-// ได้วันที่จริงของ transaction (slip date > entry date)
+// ─── DATE HELPERS — ใช้ date เป็น source of truth ────────────────────────────
+// date = วันที่บันทึกรายการ (primary), transferDate = วันที่บนสลิป (อาจต่างเดือน)
 function getTxDate(tx){
-  return normalizeDate(tx.transferDate||tx.date||tx.createdAt||"");
+  return normalizeDate(tx.date||tx.transferDate||tx.createdAt||"");
 }
 function getTxMonth(tx){
   const d=getTxDate(tx);
@@ -1079,23 +1161,11 @@ function getCurrentMonthTxs(){
 // types ที่นับเป็น "รายจ่าย" (ลบออกจาก net)
 function isExpenseType(t){return t!=="income";}
 
-function seed(){
-  const[y,mo]=curMo.split("-");const d=n=>`${y}-${mo}-${String(n).padStart(2,"0")}`;
-  return[
-    {id:uid(),date:d(2),type:"income",party:"ABC Corporation",category:"รับชำระลูกค้า",amount:350000,method:"โอนธนาคาร",status:"confirmed",note:"Invoice #001",slipUrl:""},
-    {id:uid(),date:d(5),type:"expense",party:"ซัพพลายเออร์ไทย",category:"อุปกรณ์สำนักงาน",amount:45000,method:"โอนธนาคาร",status:"confirmed",note:"",slipUrl:""},
-    {id:uid(),date:d(8),type:"payroll",party:"คุณสมชาย ใจดี",category:"ค่าน้ำมัน",amount:3500,method:"โอนธนาคาร",status:"pending",note:"เบิกค่าน้ำมันประจำเดือน",slipUrl:""},
-    {id:uid(),date:d(10),type:"income",party:"XYZ Company",category:"มัดจำโครงการ",amount:200000,method:"พร้อมเพย์",status:"confirmed",note:"",slipUrl:""},
-    {id:uid(),date:d(12),type:"expense",party:"การไฟฟ้านครหลวง",category:"ค่าสาธารณูปโภค",amount:12000,method:"โอนธนาคาร",status:"confirmed",note:"",slipUrl:""},
-    {id:uid(),date:d(15),type:"payroll",party:"คุณแอน วิไล",category:"ค่าเดินทาง",amount:1800,method:"เงินสด",status:"pending",note:"ค่าเดินทางไปประชุม",slipUrl:""},
-    {id:uid(),date:d(18),type:"income",party:"ลูกค้า DEF-22",category:"รับเงินสด/โอน",amount:85000,method:"โอนธนาคาร",status:"confirmed",note:"",slipUrl:""},
-  ];
-}
 
 window.onload=async()=>{
   setFbStatus("loading");
   // โหลด localStorage ก่อนเพื่อให้แสดงผลเร็ว (ไม่รอ Firebase)
-  try{const r=localStorage.getItem("fin_txs");txs=r?JSON.parse(r):seed();}catch{txs=seed();}
+  try{const r=localStorage.getItem("fin_txs");txs=r?JSON.parse(r):[];}catch{txs=[];}
   // แจ้งผู้ใช้ถ้ามีข้อมูล offline รอ sync
   const _pending=JSON.parse(localStorage.getItem("fin_pending_ids")||"[]");
   if(_pending.length>0) setTimeout(()=>toast_(`⏳ มี ${_pending.length} รายการรอ sync ขึ้น Firebase`,"#d97706"),800);
@@ -1172,7 +1242,12 @@ function saveTxs(){
       // การ sync จะทำ explicitly ที่ call site แต่ละจุด (saveRight/saveForm/Drive import)
       // และใน flushPendingToFirebase() สำหรับ record ที่สร้างตอน offline
     })
-    .catch(e=>console.warn("saveTxs Firebase error",e));
+    .catch(e=>{
+      console.warn("saveTxs Firebase error",e);
+      let dirty=JSON.parse(localStorage.getItem("fin_pending_ids")||"[]");
+      txs.forEach(t=>{if(!dirty.includes(t.id))dirty.push(t.id);});
+      localStorage.setItem("fin_pending_ids",JSON.stringify(dirty));
+    });
 }
 
 // ─── EMPLOYEE MATCHING ────────────────────────────────────────────────────────
@@ -1256,12 +1331,9 @@ async function createAdvanceRequest(tx){
   const empId=tx.employeeId||tx.empId||"";
   if(!empId){ console.warn("[advance_requests] skip: empId ว่างเปล่า — ไม่ sync",tx.id); return; }
   const emp=employees.find(e=>e.id===empId);
-  // preserve status ถ้า approved/rejected แล้ว (ป้องกัน reset กลับ pending_approval)
-  let existStatus="pending_approval";
-  try{
-    const existDoc=await db.collection("advance_requests").doc(tx.id).get();
-    if(existDoc.exists){const d=existDoc.data();if(d.status&&d.status!=="pending_approval")existStatus=d.status;}
-  }catch(_){}
+  // Finance App = source of truth — เขียนทับเสมอ ไม่ preserve ค่าเดิมจาก Advance Tracker
+  // employee_advance = เงินโอนแล้ว → approved เสมอ; payroll legacy ใช้ status เดิม
+  const finStatus=(tx.type==="employee_advance"||tx.status==="confirmed")?"approved":"pending_approval";
   const now=new Date().toISOString();
   const req={
     id:tx.id,
@@ -1273,6 +1345,7 @@ async function createAdvanceRequest(tx){
     date:tx.date||nowISO(),
     transferDate:tx.transferDate||tx.date||nowISO(),
     transferTime:tx.transferTime||tx.slipTime||"",
+    type:tx.type||"",
     category:tx.category||"",
     payrollType:tx.payrollType||"",
     bankName:tx.bankName||tx.method||"",
@@ -1283,7 +1356,7 @@ async function createAdvanceRequest(tx){
     note:tx.note||"",
     ocrText:tx.ocrText||"",
     ocrConfidence:tx.ocrConfidence||0,
-    status:existStatus,
+    status:finStatus,
     syncStatus:"linked",
     createdAt:tx.createdAt||now,
     updatedAt:now,
@@ -1341,13 +1414,17 @@ async function syncAdvance(tx){
   if(!empId){ console.warn("[advance_monthly] skip: empId ว่างเปล่า — ไม่ sync",tx.id); return; }
   const emp=employees.find(e=>e.id===empId);
   const now=new Date().toISOString();
+  const finStatusMonthly=(tx.type==="employee_advance"||tx.status==="confirmed")?"approved":"pending_approval";
   const data={
     id:tx.id,
+    type:tx.type||"",
+    createdBy:"finance_app",
     monthKey,
     transferDate:tx.transferDate||tx.date||"",
     transferTime:tx.transferTime||tx.slipTime||"",
     amount:Number(tx.amount)||0,
     employeeId:empId,
+    employeeCode:emp?emp.employeeCode||"":tx.employeeCode||"",
     employeeName:emp?emp.name:(tx.employeeName||tx.party||""),
     category:tx.category||"",
     payrollType:tx.payrollType||"",
@@ -1359,10 +1436,28 @@ async function syncAdvance(tx){
     slipUrl:tx.slipUrl||"",
     ocrText:tx.ocrText||"",
     ocrConfidence:tx.ocrConfidence||0,
+    status:finStatusMonthly,
     syncStatus:"linked",
     createdAt:tx.createdAt||now,
     updatedAt:now,
   };
+  // เช็ค duplicate ก่อนเขียน — empId+month+amount+date ตรงกันถึงจะถือว่าซ้ำ
+  // ถ้ามี referenceNo ต่างกันถือว่าไม่ซ้ำ (เบิก 2 ครั้งเท่ากันแต่คนละสลิป)
+  const existingSnap=await db.collection("advance_monthly").doc(monthKey).collection("records").get();
+  const dupExists=existingSnap.docs.some(function(d){
+    if(d.id===tx.id) return false; // ตัวเดียวกัน OK
+    var dd=d.data();
+    if(!( dd.employeeId===empId && Math.abs(Number(dd.amount))===Math.abs(Number(data.amount)) )) return false;
+    // ถ้าทั้งคู่มี referenceNo และต่างกัน → ไม่ใช่ duplicate
+    if(dd.referenceNo && data.referenceNo && dd.referenceNo!==data.referenceNo) return false;
+    // เพิ่ม date check: ต่างวันกันถือว่าไม่ซ้ำ
+    if(dd.transferDate && data.transferDate && dd.transferDate!==data.transferDate) return false;
+    return true;
+  });
+  if(dupExists){
+    console.warn("[advance_monthly] duplicate detected, skip:",tx.id,"month:",monthKey);
+    return;
+  }
   const ref=db.collection("advance_monthly").doc(monthKey).collection("records").doc(tx.id);
   try{
     await ref.set(data,{merge:true});
@@ -1374,6 +1469,77 @@ async function syncAdvance(tx){
 }
 
 // ─── MIGRATE ข้อมูลเก่าทั้งหมดไป advance_monthly ────────────────────────────
+// Force Resync: เขียนทับ advance_requests ทั้งหมดด้วยข้อมูลจาก Finance App
+// และลบ orphan records ที่สร้างจาก Advance Tracker (createdBy=advance_tracker)
+async function forceResyncAllAdvances(){
+  if(!isOnline||!db){toast_("⚠️ ต้องออนไลน์ก่อน Force Resync","#b45309");return;}
+  if(!confirm(
+    "⚠️ Force Resync ทั้งหมด?\n\n" +
+    "• เขียนทับ advance_requests ด้วยข้อมูล Finance App ทุกรายการ\n" +
+    "• ลบรายการที่สร้างจาก Advance Tracker (ไม่มีใน Finance App)\n\n" +
+    "ข้อมูลที่บันทึกจาก Advance Tracker โดยตรงจะหายถาวร\nดำเนินการต่อ?"
+  )) return;
+
+  toast_("🔄 กำลัง Force Resync...","#0d9488");
+  const advTxs=txs.filter(t=>shouldSyncAdvance(t));
+  const advTxIds=new Set(advTxs.map(t=>t.id));
+  let written=0,deleted=0,errors=0;
+
+  // 1. เขียนทับทุก advance_requests จาก Finance App
+  for(const tx of advTxs){
+    try{ await createAdvanceRequest(tx); written++; }
+    catch(e){ errors++; console.warn("[forceResync] write failed:",tx.id,e.message); }
+  }
+
+  // 2. ลบ orphan records (createdBy=advance_tracker ที่ไม่มีใน fin_transactions)
+  try{
+    const snap=await db.collection("advance_requests").where("createdBy","==","advance_tracker").get();
+    for(const doc of snap.docs){
+      if(!advTxIds.has(doc.id)){
+        await db.collection("advance_requests").doc(doc.id).delete();
+        deleted++;
+      }
+    }
+  }catch(e){ console.warn("[forceResync] delete orphan failed:",e.message); }
+
+  toast_(
+    `✅ Force Resync เสร็จ: เขียน ${written} รายการ · ลบ orphan ${deleted} รายการ`+
+    (errors?` · ผิดพลาด ${errors}`:""),
+    "#16a34a", 8000
+  );
+}
+
+// ─── RESYNC เดือนที่ระบุ (ไม่ลบ) ─────────────────────────────────────────────
+// ใช้แก้ข้อมูลเดือนเก่าที่ status/type ผิด โดยไม่ลบรายการจาก Advance Tracker
+async function resyncMonthAdvances(monthKey){
+  if(!isOnline||!db){toast_("⚠️ ต้องออนไลน์ก่อน","#b45309");return;}
+  if(!monthKey){
+    monthKey=prompt("ระบุเดือนที่ต้องการ sync ใหม่ (YYYY-MM):",curMo);
+    if(!monthKey)return;
+  }
+  const advTxs=txs.filter(t=>shouldSyncAdvance(t)&&getMonthKey(t)===monthKey);
+  if(!advTxs.length){
+    toast_(`ไม่มีรายการเบิกล่วงหน้าในเดือน ${monthKey}`,"#6b7280");
+    return;
+  }
+  if(!confirm(
+    `🔄 Resync เดือน ${monthKey}?\n\n`+
+    `• อัปเดต ${advTxs.length} รายการใน advance_requests + advance_monthly\n`+
+    `• status employee_advance → approved\n`+
+    `• ไม่ลบรายการใด\n\nดำเนินการต่อ?`
+  ))return;
+  toast_(`🔄 กำลัง resync ${advTxs.length} รายการ เดือน ${monthKey}...`,"#0d9488");
+  let ok=0,errors=0;
+  for(const tx of advTxs){
+    try{ await createAdvanceRequest(tx); ok++; }
+    catch(e){ errors++; console.warn("[resyncMonth]",tx.id,e.message); }
+  }
+  toast_(
+    `✅ Resync ${monthKey}: ${ok} รายการ`+(errors?` · ผิดพลาด ${errors}`:""),
+    "#16a34a", 6000
+  );
+}
+
 async function migrateOldData(){
   if(!isOnline||!db){toast_("⚠️ ต้องออนไลน์ก่อน Migrate","#b45309");return;}
   if(!confirm("Migrate รายการเบิกล่วงหน้าทั้งหมดจาก finance_transactions → advance_monthly?\n(ใช้เวลาสักครู่)")) return;
@@ -1411,47 +1577,16 @@ async function syncAdvanceReqsForEmp(empId){
     return;
   }
   toast_(`🔄 กำลัง sync ${advTxs.length} รายการ${emp?" ("+emp.name+")":""}...`,"#0d9488");
-  let created=0,updated=0,errors=0;
+  let synced=0,errors=0;
   for(const tx of advTxs){
     try{
-      const snap=await db.collection("advance_requests").doc(tx.id).get();
-      if(snap.exists){
-        // อัปเดต fields ทั้งหมดที่อาจขาด
-        const empId=tx.employeeId||tx.empId||"";
-        const emp2=employees.find(e=>e.id===empId);
-        const now2=new Date().toISOString();
-        await db.collection("advance_requests").doc(tx.id).set({
-          id:tx.id,
-          employeeId:empId,
-          employeeName:emp2?emp2.name:(tx.employeeName||tx.party||""),
-          amount:Number(tx.amount)||0,
-          date:tx.date||"",
-          transferDate:tx.transferDate||tx.date||"",
-          transferTime:tx.transferTime||tx.slipTime||"",
-          category:tx.category||"",
-          payrollType:tx.payrollType||"",
-          bankName:tx.bankName||tx.method||"",
-          receiverName:tx.receiverName||"",
-          referenceNo:tx.referenceNo||"",
-          slipFileId:tx.slipFileId||"",
-          slipUrl:tx.slipUrl||"",
-          note:tx.note||"",
-          ocrText:tx.ocrText||"",
-          ocrConfidence:tx.ocrConfidence||0,
-          syncStatus:"linked",
-          updatedAt:now2,
-        },{merge:true});
-        // update local
-        txs=txs.map(t=>t.id===tx.id?{...t,syncStatus:"linked"}:t);
-        updated++;
-      } else {
-        await createAdvanceRequest(tx);
-        created++;
-      }
+      // ใช้ createAdvanceRequest ซึ่งเขียน type/status/createdBy ครบทุก field
+      await createAdvanceRequest(tx);
+      synced++;
     }catch(e){errors++;console.warn("[syncAdvReq]",tx.id,e);}
   }
   toast_(
-    `✅ ${emp?emp.name:"ทุกคน"}: สร้าง ${created} · อัปเดต ${updated}${errors?` · ผิดพลาด ${errors}`:""}`,
+    `✅ ${emp?emp.name:"ทุกคน"}: sync ${synced} รายการ${errors?` · ผิดพลาด ${errors}`:""}`,
     "#16a34a", 5000
   );
   render();
@@ -1716,6 +1851,17 @@ function isDupSlip(form, excludeId){
   var ref=(form.referenceNo||"").trim();
   if(ref && txs.some(function(t){ return t.id!==excludeId && (t.referenceNo||"").trim()===ref; }))
     return true;
+  // เช็ค employee_advance ซ้ำด้วย empId + monthKey (ป้องกันกรอกชื่อผิดแล้วหลุดเช็ค)
+  if(form.type==="employee_advance" && form.empId){
+    var mk=getMonthKey(form);
+    if(txs.some(function(t){
+      if(t.id===excludeId) return false;
+      return t.type==="employee_advance"
+        && t.empId===form.empId
+        && getMonthKey(t)===mk
+        && String(Number(t.amount))===String(Number(form.amount));
+    })) return true;
+  }
   var hasTime = form.slipTime && form.slipTime.trim() !== "";
   return txs.some(function(t){
     if(t.id === excludeId) return false;
@@ -1724,9 +1870,12 @@ function isDupSlip(form, excludeId){
       // มีเวลา → เช็คเฉพาะ date + slipTime
       return (t.slipTime || "").trim() === form.slipTime.trim();
     } else {
-      // ไม่มีเวลา → fallback เช็ค date + amount + party
+      // ไม่มีเวลา → fallback เช็ค date + amount + party หรือ empId
       return String(Number(t.amount)) === String(Number(form.amount))
-        && (t.party || "").trim() === (form.party || "").trim();
+        && (
+          (form.empId && t.empId && t.empId === form.empId)
+          || (t.party || "").trim() === (form.party || "").trim()
+        );
     }
   });
 }
@@ -1748,6 +1897,7 @@ async function saveRight(){
     toast_("✏️ แก้ไขแล้ว","#2563eb");
     saveTxs(); clearRight(); render();
     if(isEmpType(rForm.type)&&rForm.empId) syncPayrollToV2([rForm.empId]);
+    if(shouldSyncAdvance(rForm)) await saveFinanceTransaction(rForm);
   } else {
     if(isDupSlip(rForm)){
       showDupPopup(rForm, async ()=>{
@@ -1800,13 +1950,18 @@ function approveTx(id){
   txs=txs.map(t=>t.id===id?{...t,status:"confirmed"}:t);
   saveTxs(); toast_("✅ อนุมัติแล้ว","#16a34a"); render();
   if(tx&&tx.type==="payroll"&&tx.empId) syncPayrollToV2([tx.empId]);
-  // sync สถานะไปยัง advance_requests เฉพาะเบิกล่วงหน้าพนักงาน
+  // sync สถานะไปยัง advance_requests และ advance_monthly เฉพาะเบิกล่วงหน้าพนักงาน
   if(tx&&shouldSyncAdvance(tx)&&isOnline&&db){
-    db.collection("advance_requests").doc(id).set({
-      status:"approved",
-      approvedAt:new Date().toISOString(),
-      syncStatus:"linked"
-    },{merge:true}).catch(e=>console.warn("[approveTx] advance_requests sync failed:",e));
+    const nowApprove=new Date().toISOString();
+    const approveUpdate={status:"approved",approvedAt:nowApprove,syncStatus:"linked"};
+    db.collection("advance_requests").doc(id).set(approveUpdate,{merge:true})
+      .catch(e=>console.warn("[approveTx] advance_requests sync failed:",e));
+    const mkApprove=getMonthKey(tx);
+    if(mkApprove){
+      db.collection("advance_monthly").doc(mkApprove).collection("records").doc(id)
+        .set({status:"approved",approvedAt:nowApprove},{merge:true})
+        .catch(e=>console.warn("[approveTx] advance_monthly sync failed:",e));
+    }
   }
 }
 function delTx(id){
@@ -1815,7 +1970,23 @@ function delTx(id){
   if(!confirm("ลบรายการนี้?"))return;
   txs=txs.filter(t=>t.id!==id);
   if(selId===id)clearRight();
-  saveTxs(); toast_("🗑 ลบแล้ว","#dc2626"); render();
+  saveTxs();
+  if(isOnline&&db){
+    db.collection("fin_transactions").doc(id).delete()
+      .catch(e=>console.warn("[delTx] fin_transactions delete failed:",e));
+    db.collection("finance_transactions").doc(id).delete()
+      .catch(e=>console.warn("[delTx] finance_transactions delete failed:",e));
+    if(tx&&shouldSyncAdvance(tx)){
+      const monthKey=getMonthKey(tx);
+      db.collection("advance_requests").doc(id).delete()
+        .catch(e=>console.warn("[delTx] advance_requests delete failed:",e));
+      if(monthKey){
+        db.collection("advance_monthly").doc(monthKey).collection("records").doc(id).delete()
+          .catch(e=>console.warn("[delTx] advance_monthly delete failed:",e));
+      }
+    }
+  }
+  toast_("🗑 ลบแล้ว","#dc2626"); render();
   if(tx&&tx.type==="payroll"&&tx.empId) syncPayrollToV2([tx.empId]);
 }
 
@@ -2012,7 +2183,12 @@ function renderReport(mTxs){
 }
 
 // ─── MODAL ────────────────────────────────────────────────────────────────────
-function openAdd(){mForm=ef();mOcrFilled=false;mOcrPrev=null;showModal(false);}
+function openAdd(){
+  const today=nowISO();
+  const todayMo=today.slice(0,7);
+  const defaultDate=(curMo&&curMo!==todayMo)?(curMo+"-01"):today;
+  mForm=ef({date:defaultDate});mOcrFilled=false;mOcrPrev=null;showModal(false);
+}
 function openEdit(id){const tx=txs.find(t=>t.id===id);if(!tx)return;mForm={...tx,amount:String(tx.amount)};mOcrFilled=false;mOcrPrev=null;showModal(true);}
 
 function showModal(isEdit){
@@ -2109,6 +2285,7 @@ async function saveForm(){
   if(!mForm.party){toast_("⚠️ กรุณากรอกข้อมูลให้ครบ","#b45309");return;}
   mForm.employeeId=mForm.empId||"";
   mForm.employeeName=emp?emp.name:"";
+  mForm.employeeCode=emp?emp.employeeCode||"":"";
   if(!mForm.syncStatus) mForm.syncStatus=emp?"linked":"pending";
 
   if(mForm.id){
@@ -2566,6 +2743,15 @@ function getFilteredAll(){
   }).sort((a,b)=>getTxDate(a).localeCompare(getTxDate(b)));
 }
 
+// re-render แล้วคืน focus + cursor position ให้ช่องค้นหา
+function renderAllPreserveSearch(){
+  const s=document.querySelector("#pg-all .srch");
+  const p=s?s.selectionStart:null;
+  renderAll();
+  const ns=document.querySelector("#pg-all .srch");
+  if(ns){ns.focus();if(p!==null)try{ns.setSelectionRange(p,p);}catch(_){}}
+}
+
 function renderAll(){
   const pg=document.getElementById("pg-all");
   const filtered=getFilteredAll();
@@ -2615,7 +2801,7 @@ function renderAll(){
       <div class="sum-card"><div class="lbl">รอตรวจสอบ</div><div class="val" style="color:#7c3aed;font-size:22px">${pend} รายการ</div><div class="sub">ยังไม่ยืนยัน</div></div>
     </div>
     <div class="all-bar">
-      <input class="srch" type="search" placeholder="🔍 ค้นหา ชื่อ / หมวดหมู่ / หมายเหตุ / วันที่…" value="${allSearch}" oninput="allSearch=this.value;allPg=1;renderAll()">
+      <input class="srch" type="search" placeholder="🔍 ค้นหา ชื่อ / หมวดหมู่ / หมายเหตุ / วันที่…" value="${allSearch}" oninput="allSearch=this.value;allPg=1;renderAllPreserveSearch()">
       <div class="filter-grp">${tabHtml}</div>
       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;white-space:nowrap;padding:4px 6px;border:1px solid #e5e7eb;border-radius:7px;background:${allShowAllMonths?"#eff6ff":"#f9fafb"}">
         <input type="checkbox" ${allShowAllMonths?"checked":""} onchange="allShowAllMonths=this.checked;allPg=1;renderAll()" style="width:13px;height:13px;cursor:pointer">
@@ -2718,6 +2904,7 @@ function renderEmployees(){
       <div class="emp-card-foot">
         <button class="btn btn-gray btn-sm" onclick="quickPayroll('${e.id}')">➕ บันทึกเบิก</button>
         <button class="btn btn-blue btn-sm" onclick="syncAdvanceReqsForEmp('${e.id}')" title="ส่งรายการเบิกล่วงหน้าของพนักงานคนนี้ไปยัง Advance Tracker">📤 Sync ล่วงหน้า</button>
+        <button class="btn btn-gray btn-sm" onclick="openRawModal('${e.id}',${i})" title="ดู/ลบรายการทั้งหมดของพนักงานคนนี้โดยตรงจากฐานข้อมูล" style="color:#7c3aed;border-color:#ddd6fe">🗃️ Raw</button>
       </div>
     </div>`;
   }).join("")||`<div style="grid-column:1/-1;background:#fff;border-radius:8px;border:1px solid #e9ecef;padding:36px;text-align:center;color:#9ca3af"><div style="font-size:28px;margin-bottom:8px">👥</div>ยังไม่มีพนักงาน<br><span style="font-size:12px">กด "+ เพิ่มพนักงาน" ด้านบน</span></div>`;
@@ -2739,8 +2926,11 @@ function renderEmployees(){
     <div class="pg-sub">จัดการรายชื่อพนักงาน · กำหนดวงเงินเบิก · ประเภทการเบิกที่ได้รับสิทธิ์</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-blue" onclick="openEmpModal(-1)">➕ เพิ่มพนักงาน</button>
-      <button class="btn btn-teal" onclick="syncAdvanceReqsForEmp(null)" title="ส่งรายการเบิกล่วงหน้าของทุกพนักงานไปยัง advance_requests (Advance Tracker)">📤 Sync ล่วงหน้าทุกคน</button>
+      <button class="btn btn-teal" onclick="syncAdvanceReqsForEmp(null)" title="sync ล่วงหน้าทุกคนทุกเดือน (type/status/createdBy ครบ)">📤 Sync ล่วงหน้าทุกคน</button>
+      <button class="btn btn-blue btn-sm" onclick="resyncMonthAdvances(null)" title="sync ล่วงหน้าเดือนที่ระบุ — ไม่ลบข้อมูล Advance Tracker" style="background:#2563eb;color:#fff;font-weight:600">📅 Resync เดือน</button>
+      <button class="btn btn-red btn-sm" onclick="forceResyncAllAdvances()" title="เขียนทับ advance_requests ทั้งหมดด้วยข้อมูล Finance App + ลบรายการ Advance Tracker" style="background:#dc2626;color:#fff;font-weight:700">🔄 Force Resync (เขียนทับ)</button>
       <button class="btn btn-gray btn-sm" onclick="migrateOldData()" title="ย้ายข้อมูลเก่าจาก finance_transactions → advance_monthly (ทำครั้งแรกครั้งเดียว)" style="margin-top:6px">🔀 Migrate → advance_monthly</button>
+      <button class="btn btn-gray btn-sm" onclick="cleanDupAdvance(false)" title="ลบรายการเบิกล่วงหน้าที่ซ้ำกัน (empId+เดือน+จำนวน เดียวกัน)" style="margin-top:6px;color:#b45309">🧹 ลบรายการซ้ำ</button>
       <button class="btn btn-gray" onclick="showPg('settings')" style="margin-left:auto">⚙️ ตั้งค่าประเภทเบิก</button>
     </div>
     <div class="emp-grid">${empCards}</div>
@@ -3156,9 +3346,15 @@ async function pullFromFirebase(){
         return true;
       });
       if(pullRejCount>0) addAuditLog_fin('REJECT_PULL_LOCKED_MONTH','multiple',{count:pullRejCount,source:'pullFromFirebase'});
-      // รวม: Firebase (เดือนไม่ล็อก) + local (เดือนล็อก)
+      // รวม: Firebase (เดือนไม่ล็อก) + local (เดือนล็อก) + local-only (ยังไม่ sync ขึ้น Firebase)
       const fbIds=new Set(filteredFbTxs.map(t=>t.id));
-      const mergedTxs=[...filteredFbTxs,...lockedLocalTxs.filter(t=>!fbIds.has(t.id))];
+      const lockedIds=new Set(lockedLocalTxs.map(t=>t.id));
+      const localOnlyTxs=txs.filter(t=>{
+        if(fbIds.has(t.id)||lockedIds.has(t.id)) return false;
+        const mk=getMonthKey(t);
+        return !mk||!isMonthLocked_fin(mk);
+      });
+      const mergedTxs=[...filteredFbTxs,...lockedLocalTxs.filter(t=>!fbIds.has(t.id)),...localOnlyTxs];
       txs=mergedTxs;
       localStorage.setItem("fin_txs",JSON.stringify(txs));
     }
@@ -3273,6 +3469,111 @@ async function migratePayrollEmpIds(){
     render();
   }
 }
+
+// ─── RAW TRANSACTION VIEWER ──────────────────────────────────────────────────
+var _rawEmpId = null;
+var _rawEmpName = "";
+
+function openRawModal(empId, empIdx){
+  _rawEmpId = empId;
+  var empObj = (typeof empIdx === "number") ? employees[empIdx] : employees.find(function(e){return e.id===empId;});
+  _rawEmpName = empObj ? empObj.name : empId;
+  document.getElementById("rawModalTitle").textContent = "🗃️ รายการทั้งหมด — " + _rawEmpName + (empObj&&empObj.employeeCode?" ("+empObj.employeeCode+")":"");
+  // เติม filter เดือน
+  var sel = document.getElementById("rawFilterMonth");
+  var months = [...new Set(txs.filter(t=>t.empId===empId).flatMap(t=>[
+    (t.date||"").slice(0,7),(t.transferDate||"").slice(0,7)
+  ]).filter(Boolean))].sort().reverse();
+  sel.innerHTML = '<option value="">ทุกเดือน</option>' + months.map(m=>'<option value="'+m+'">'+m+'</option>').join("");
+  // set default เดือนปัจจุบัน
+  if(months.includes(curMo)) sel.value = curMo; else sel.value = "";
+  document.getElementById("rawFilterType").value = "";
+  renderRawTable();
+  document.getElementById("rawModal").classList.add("open");
+}
+
+function closeRawModal(){
+  document.getElementById("rawModal").classList.remove("open");
+  _rawEmpId = null;
+}
+
+function renderRawTable(){
+  var filterMonth = document.getElementById("rawFilterMonth").value;
+  var filterType  = document.getElementById("rawFilterType").value;
+  var rows = txs.filter(function(t){
+    if(t.empId !== _rawEmpId) return false;
+    if(filterMonth){
+      // เช็คทั้ง date และ transferDate
+      var d1 = (t.date||"").slice(0,7);
+      var d2 = (t.transferDate||"").slice(0,7);
+      if(d1 !== filterMonth && d2 !== filterMonth) return false;
+    }
+    if(filterType && t.type !== filterType) return false;
+    return true;
+  }).sort(function(a,b){
+    var da = a.date||""; var db = b.date||"";
+    return da > db ? -1 : da < db ? 1 : 0;
+  });
+
+  document.getElementById("rawModalCount").textContent = rows.length + " รายการ";
+
+  var syncColor = {linked:"#16a34a", pending:"#d97706", error:"#dc2626"};
+  var typeLabel = {employee_advance:"⏩ advance", payroll:"💰 payroll", expense:"▼ expense", income:"▲ income"};
+
+  var html = rows.map(function(t, i){
+    var sc = syncColor[t.syncStatus] || "#9ca3af";
+    var tl = typeLabel[t.type] || t.type || "-";
+    var amt = Number(t.amount);
+    var amtColor = amt < 0 ? "#dc2626" : "#16a34a";
+    return '<tr onclick="showRawDetail(&quot;'+t.id+'&quot;)" style="cursor:pointer">'
+      + '<td style="color:#9ca3af">'+(i+1)+'</td>'
+      + '<td style="font-size:11px;white-space:nowrap">'+(t.date||"-")+(t.transferDate&&t.transferDate!==t.date?'<br><span style="color:#9ca3af">tr:'+t.transferDate+'</span>':'')+'</td>'
+      + '<td><span class="raw-badge" style="background:'+sc+'20;color:'+sc+'">'+(tl)+'</span></td>'
+      + '<td style="color:#475569">'+(t.category||"-")+'</td>'
+      + '<td style="font-weight:700;color:'+amtColor+';white-space:nowrap">฿'+Math.abs(amt).toLocaleString("th-TH",{minimumFractionDigits:2})+'</td>'
+      + '<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(t.party||"")+'">'+(t.party||"-")+'</td>'
+      + '<td><span style="color:'+sc+';font-size:11px;font-weight:600">'+(t.syncStatus||"-")+'</span></td>'
+      + '<td style="font-size:11px;color:#94a3b8">'+(t.monthKey||getMonthKey(t)||"-")+'</td>'
+      + '<td><button onclick="event.stopPropagation();rawDelTx(&quot;'+t.id+'&quot;)" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:2px 8px;cursor:pointer;font-size:11px">🗑 ลบ</button></td>'
+      + '</tr>';
+  }).join("");
+
+  if(!html) html = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9ca3af">ไม่มีรายการ</td></tr>';
+  document.getElementById("rawTbody").innerHTML = html;
+}
+
+function showRawDetail(id){
+  var t = txs.find(function(x){return x.id===id;});
+  if(!t) return;
+  alert("ID: " + t.id + "\n\n" + JSON.stringify(t, null, 2));
+}
+
+async function rawDelTx(id){
+  var t = txs.find(function(x){return x.id===id;});
+  if(!t){ alert("ไม่พบรายการ"); return; }
+  var msg = "⚠️ ยืนยันลบรายการนี้จาก Firebase?\n\n"
+    + "ID: " + id + "\n"
+    + "วันที่: " + (t.date||"-") + "\n"
+    + "ประเภท: " + (t.type||"-") + "\n"
+    + "จำนวน: ฿" + Math.abs(Number(t.amount)).toLocaleString() + "\n"
+    + "party: " + (t.party||"-") + "\n\n"
+    + "การลบไม่สามารถกู้คืนได้!";
+  if(!confirm(msg)) return;
+  // ลบจาก local
+  txs = txs.filter(function(x){return x.id!==id;});
+  // ลบจาก Firebase
+  if(isOnline && db){
+    try{ await db.collection("fin_transactions").doc(id).delete(); }
+    catch(e){ console.warn("[rawDel] fin_transactions fail",e); }
+    try{ await db.collection("advance_requests").doc(id).delete(); }
+    catch(e){}
+  }
+  saveTxs();
+  render();
+  renderRawTable();
+  toast_("🗑 ลบแล้ว: " + id.slice(0,8) + "...", "#dc2626", 4000);
+}
+
 </script>
 
 <!-- DUPLICATE SLIP CONFIRM POPUP — ต้องอยู่นอก #main เพื่อให้ z-index ทำงานถูกต้อง -->
@@ -3292,6 +3593,52 @@ async function migratePayrollEmpIds(){
         <button class="dup-cancel" onclick="closeDupPopup()">✕ ยกเลิก / ไม่บันทึก</button>
         <button class="dup-confirm" onclick="dupConfirmSave()">✓ บันทึกซ้ำต่อไป</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── RAW TRANSACTION VIEWER MODAL ─────────────────────────────────────── -->
+<div class="raw-modal-overlay" id="rawModal" onclick="if(event.target===this)closeRawModal()">
+  <div class="raw-modal">
+    <div class="raw-modal-head">
+      <span style="font-size:16px">🗃️</span>
+      <span id="rawModalTitle" style="font-weight:700;font-size:14px;flex:1">รายการ Raw</span>
+      <span id="rawModalCount" style="font-size:12px;opacity:.7;margin-right:12px"></span>
+      <button onclick="closeRawModal()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:13px">✕ ปิด</button>
+    </div>
+    <div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e9ecef;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;color:#64748b">กรอง:</span>
+      <select id="rawFilterMonth" onchange="renderRawTable()" style="font-size:12px;padding:3px 8px;border:1px solid #cbd5e1;border-radius:5px">
+        <option value="">ทุกเดือน</option>
+      </select>
+      <select id="rawFilterType" onchange="renderRawTable()" style="font-size:12px;padding:3px 8px;border:1px solid #cbd5e1;border-radius:5px">
+        <option value="">ทุกประเภท</option>
+        <option value="employee_advance">⏩ เบิกล่วงหน้า</option>
+        <option value="payroll">💰 payroll</option>
+        <option value="expense">▼ รายจ่าย</option>
+      </select>
+      <span style="margin-left:auto;font-size:11px;color:#94a3b8">คลิกแถวเพื่อดู ID · กดปุ่มแดงเพื่อลบจาก Firebase</span>
+    </div>
+    <div class="raw-modal-body">
+      <table class="raw-tbl">
+        <thead>
+          <tr>
+            <th style="width:30px">#</th>
+            <th>วันที่</th>
+            <th>ประเภท</th>
+            <th>หมวด</th>
+            <th>จำนวน</th>
+            <th>party</th>
+            <th>syncStatus</th>
+            <th>monthKey</th>
+            <th style="width:60px">ลบ</th>
+          </tr>
+        </thead>
+        <tbody id="rawTbody"></tbody>
+      </table>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid #e9ecef;font-size:11px;color:#94a3b8;background:#f8fafc">
+      ⚠️ การลบที่นี่จะลบออกจาก <b>fin_transactions</b> และ <b>advance_requests</b> ใน Firebase ทันที ไม่สามารถกู้คืนได้
     </div>
   </div>
 </div>
