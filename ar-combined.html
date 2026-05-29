@@ -1,4 +1,4 @@
-<!-- AR SYSTEM v2.9.2 — 2026-05-27 16:00
+<!-- AR SYSTEM v2.9.4 — 2026-05-29
      changelog v2.9.2: admAddPmt/admDelPmt/admEditPmt guard cancelled/draft status — ป้องกัน status เปลี่ยนโดยไม่ตั้งใจ
      changelog v2.9.1: แก้ dashboard aging bucket ผิด, สร้าง helper กลาง calcInvoiceStatus/calcInvoiceAgingBucket/calcInvoiceRemain, repair paidAmount อัตโนมัติ, เพิ่ม repairInvoices() + debugDashboard()
      changelog v2.9: รับชำระ AR ได้แม้เดือน Finance ปิดแล้ว โดยเลื่อน financeDate ไปเดือนถัดไปที่ยังเปิด, เพิ่ม audit trail paymentDate/financeDate, ปรับ retry sync, แก้ billing atomic write, บังคับ customerId, ปรับรายงานรับชำระ
@@ -21,7 +21,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.9.2 — 2026-05-27</title>
+<title>AR System | v2.9.4 — 2026-05-29</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -122,6 +122,10 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .item-inp{border:1px solid transparent;border-radius:5px;padding:5px 7px;font-family:'Sarabun',sans-serif;font-size:13px;color:var(--ink);background:transparent;width:100%;transition:all .14s}
 .item-inp:focus{outline:none;border-color:var(--accent);background:var(--accent-light);box-shadow:0 0 0 2px rgba(29,78,216,.08)}
 .item-inp.r{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px}
+.prod-sel{cursor:pointer;border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:13px;background:var(--white);color:var(--ink);width:100%;transition:all .14s}
+.prod-sel:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(29,78,216,.08)}
+.prod-custom-inp{border:1px solid var(--accent-mid);border-radius:5px;padding:5px 7px;font-size:13px;background:var(--accent-light);color:var(--ink);width:100%;transition:all .14s}
+.prod-custom-inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(29,78,216,.08)}
 
 /* ── BADGES ── */
 .badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.03em;white-space:nowrap}
@@ -447,7 +451,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.9.2 — 2026-05-27</div>
+    <div class="logo-sub">v2.9.4 — 2026-05-29</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -462,6 +466,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <button class="nav-item" onclick="goPage('report-aging')" id="nav-report-aging"><span class="nav-icon">⏳</span>Aging Report</button>
   <button class="nav-item" onclick="goPage('report-receipt')" id="nav-report-receipt"><span class="nav-icon">📅</span>เงินรับรายเดือน</button>
   <div class="nav-section">ตั้งค่า</div>
+  <button class="nav-item" onclick="goPage('products')" id="nav-products"><span class="nav-icon">📦</span>รายละเอียดสินค้า</button>
   <button class="nav-item" onclick="goPage('companies')" id="nav-companies"><span class="nav-icon">🏛</span>จัดการบริษัท</button>
   <button class="nav-item" onclick="goPage('settings')" id="nav-settings"><span class="nav-icon">⚙️</span>ตั้งค่าระบบ</button>
   <div class="sidebar-spacer"></div>
@@ -893,6 +898,7 @@ let data = {
   invoices: [],
   billings: [],
   customers: [],
+  products: [],
 };
 
 // ══════════════════════════════════════════════════════
@@ -1138,7 +1144,7 @@ function listLocalBackups() {
 // ══════════════════════════════════════════════════════
 // SYNC ENGINE — Firebase ↔ localStorage
 // ══════════════════════════════════════════════════════
-const SYNC_COLS = ['companies','quotations','invoices','billings','customers'];
+const SYNC_COLS = ['companies','quotations','invoices','billings','customers','products'];
 
 // ── Online/Offline state ──
 let _isOnline = navigator.onLine && !!_fbdb;
@@ -1319,7 +1325,7 @@ let _lastLocalWrite = 0;        // ms — suppress echo re-render within 2.5s of
 
 // Pages safe to re-render without losing user input
 const _LIVE_PAGES = new Set(['dashboard','quotations','invoices','billing',
-  'payments','report-ar','report-co','report-aging','report-receipt','companies','customers']);
+  'payments','report-ar','report-co','report-aging','report-receipt','companies','customers','products']);
 
 function _applySnapshot(col, snap) {
   const arr = snap.docs.map(d => {
@@ -1459,7 +1465,8 @@ function goPage(p) {
     'report-ar':'ค้างชำระรายลูกค้า','report-co':'ค้างชำระรายบริษัท',
     'report-aging':'Aging Report','report-receipt':'เงินรับรายเดือน',
     companies:'จัดการบริษัท',settings:'ตั้งค่าระบบ','new-qt':'สร้างใบเสนอราคา',
-    'new-inv':'สร้างใบแจ้งหนี้','new-bl':'สร้างใบวางบิล'
+    'new-inv':'สร้างใบแจ้งหนี้','new-bl':'สร้างใบวางบิล',
+    products:'รายละเอียดสินค้า'
   };
   document.getElementById('page-title').textContent = titles[p]||p;
   document.getElementById('page-sub').textContent = '';
@@ -1473,6 +1480,7 @@ function goPage(p) {
     'report-ar': renderReportAR, 'report-co': renderReportCO,
     'report-aging': renderReportAging, 'report-receipt': renderReportReceipt,
     'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
+    products: renderProducts,
   };
   pc.innerHTML = '';
   if(pages[p]) pages[p]();
@@ -1898,11 +1906,12 @@ window.deleteQT=deleteQT;
 // ── Edit Quotation ──
 function editQT(id) {
   const q=data.quotations.find(x=>x.id===id); if(!q) return;
+  ensureProductsDatalist();
   const itemsHtml=(q.items||[]).map((r,i)=>`<tr id="eqt-r${i}">
     <td style="color:var(--ink4);font-size:11px;text-align:center">${i+1}</td>
-    <td><input class="item-inp" type="text" placeholder="รายละเอียด" value="${r.desc||''}" oninput="eqtCalc()"></td>
+    <td style="min-width:180px">${buildProductSelectHTML(r.desc||'','eqtCalc')}</td>
     <td><input class="item-inp r" type="number" value="${r.qty||1}" min="0" step="any" oninput="eqtCalc()"></td>
-    <td><input class="item-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
+    <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
     <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="eqtCalc()"></td>
     <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>
@@ -1992,9 +2001,9 @@ function eqtAddRow() {
   const idx=tbody.rows.length;
   const tr=document.createElement('tr'); tr.id='eqt-r'+Date.now();
   tr.innerHTML=`<td style="color:var(--ink4);font-size:11px;text-align:center">${idx+1}</td>
-    <td><input class="item-inp" type="text" placeholder="รายละเอียด" oninput="eqtCalc()"></td>
+    <td style="min-width:180px">${buildProductSelectHTML('','eqtCalc')}</td>
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="eqtCalc()"></td>
-    <td><input class="item-inp" type="text" placeholder="ชิ้น"></td>
+    <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="eqtCalc()"></td>
     <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>`;
@@ -2022,9 +2031,10 @@ window.eqtCalc=eqtCalc;
 
 function eqtGetItems() {
   return [...document.querySelectorAll('#eqt-items-body tr')].map(tr=>{
-    const txtIns=tr.querySelectorAll('input[type=text]');
+    const desc = getRowDesc(tr);
     const numIns=tr.querySelectorAll('input[type=number]');
-    const desc=txtIns[0]?.value||''; const unit=txtIns[1]?.value||'';
+    const unitInp=tr.querySelector('.prod-unit-inp');
+    const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
     return {desc,qty,unit,price,total:qty*price};
   }).filter(r=>r.desc||r.price>0);
@@ -2117,11 +2127,12 @@ window.refreshINVTable=refreshINVTable;
 // ── Edit Invoice ──
 function editINV(id) {
   const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
+  ensureProductsDatalist();
   const itemsHtml=(inv.items||[]).map((r,i)=>`<tr id="einv-r${i}">
     <td style="color:var(--ink4);font-size:11px;text-align:center">${i+1}</td>
-    <td><input class="item-inp" type="text" placeholder="รายละเอียด" value="${r.desc||''}" oninput="einvCalc()"></td>
+    <td style="min-width:180px">${buildProductSelectHTML(r.desc||'','einvCalc')}</td>
     <td><input class="item-inp r" type="number" value="${r.qty||1}" min="0" step="any" oninput="einvCalc()"></td>
-    <td><input class="item-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
+    <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
     <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="einvCalc()"></td>
     <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>
@@ -2134,7 +2145,16 @@ function editINV(id) {
       <div class="form-grid-4" style="gap:10px;margin-bottom:12px">
         <div class="field"><label>วันที่</label><input type="date" id="einv-date" value="${inv.docDate}"></div>
         <div class="field"><label>ครบกำหนด</label><input type="date" id="einv-due" value="${inv.docDue||''}"></div>
-        <div class="field span2"></div>
+        <div class="field"><label>เงื่อนไขการชำระ</label>
+          <select id="einv-terms">
+            <option${(inv.paymentTerms||inv.terms)==='ชำระทันที'?' selected':''}>ชำระทันที</option>
+            <option${(inv.paymentTerms||inv.terms)==='7 วัน'?' selected':''}>7 วัน</option>
+            <option${(inv.paymentTerms||inv.terms)==='15 วัน'?' selected':''}>15 วัน</option>
+            <option${(!(inv.paymentTerms||inv.terms))||(inv.paymentTerms||inv.terms)==='30 วัน'?' selected':''}>30 วัน</option>
+            <option${(inv.paymentTerms||inv.terms)==='60 วัน'?' selected':''}>60 วัน</option>
+          </select>
+        </div>
+        <div class="field"></div>
       </div>
 
       <div class="form-grid" style="gap:10px;margin-bottom:12px">
@@ -2195,9 +2215,9 @@ function einvAddRow() {
   const idx=tbody.rows.length;
   const tr=document.createElement('tr'); tr.id='einv-r'+Date.now();
   tr.innerHTML=`<td style="color:var(--ink4);font-size:11px;text-align:center">${idx+1}</td>
-    <td><input class="item-inp" type="text" placeholder="รายละเอียด" oninput="einvCalc()"></td>
+    <td style="min-width:180px">${buildProductSelectHTML('','einvCalc')}</td>
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="einvCalc()"></td>
-    <td><input class="item-inp" type="text" placeholder="ชิ้น"></td>
+    <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="einvCalc()"></td>
     <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>`;
@@ -2225,9 +2245,10 @@ window.einvCalc=einvCalc;
 
 function einvGetItems() {
   return [...document.querySelectorAll('#einv-items-body tr')].map(tr=>{
-    const txtIns=tr.querySelectorAll('input[type=text]');
+    const desc = getRowDesc(tr);
     const numIns=tr.querySelectorAll('input[type=number]');
-    const desc=txtIns[0]?.value||''; const unit=txtIns[1]?.value||'';
+    const unitInp=tr.querySelector('.prod-unit-inp');
+    const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
     return {desc,qty,unit,price,total:qty*price};
   }).filter(r=>r.desc||r.price>0);
@@ -2251,6 +2272,9 @@ async function saveEditINV(id) {
     custContact:document.getElementById('einv-contact').value,
     custAddress:document.getElementById('einv-addr').value,
     note:document.getElementById('einv-note').value,
+    paymentTerms:document.getElementById('einv-terms')?.value||inv.paymentTerms||inv.terms||'30 วัน',
+    terms:document.getElementById('einv-terms')?.value||inv.paymentTerms||inv.terms||'30 วัน',
+    paymentDays:getPaymentTermDays(document.getElementById('einv-terms')?.value||inv.paymentTerms||'30 วัน'),
     items, hasVat, hasWht, subtotal:sub, vat, wht, total:newTotal, paidAmount
   };
   const ok=await storeUpdate('invoices',id,d); if(!ok) return;
@@ -2758,18 +2782,104 @@ function updateBLSummary() {
 window.updateBLSummary=updateBLSummary;
 
 // ROWS
+// ── helper: สร้าง datalist options จาก products (legacy compat) ──
+function getProductsDatalistId() { return 'products-datalist-global'; }
+function ensureProductsDatalist() {
+  if(!document.getElementById(getProductsDatalistId())) {
+    const dl = document.createElement('datalist');
+    dl.id = getProductsDatalistId();
+    document.body.appendChild(dl);
+  }
+  rebuildProductsDatalist();
+}
+function rebuildProductsDatalist() {
+  const dl = document.getElementById(getProductsDatalistId());
+  if(!dl) return;
+  dl.innerHTML = (data.products||[]).map(p=>`<option value="${escHtml(p.name)}">`).join('');
+}
+
+// ── helper: สร้าง <select> dropdown สินค้า สำหรับ row items ──
+function buildProductSelectHTML(selectedName, calcFn) {
+  const prods = data.products || [];
+  const hasMatch = selectedName && prods.some(p => p.name === selectedName);
+  const opts = prods.map(p =>
+    `<option value="${escHtml(p.name)}"${p.name===selectedName?' selected':''}>${escHtml(p.name)}</option>`
+  ).join('');
+  const customSel = (!hasMatch && selectedName) ? ' selected' : '';
+  return `<div style="display:flex;gap:4px;width:100%">
+    <select class="item-inp prod-sel" onchange="autofillProductSelect(this,'${calcFn}')" style="flex:1;min-width:0;font-family:'Sarabun',sans-serif">
+      <option value="">-- เลือกสินค้า --</option>
+      ${opts}
+      <option value="__custom__"${customSel}>✏️ พิมพ์เอง...</option>
+    </select>
+    <input type="text" class="item-inp prod-custom-inp" placeholder="รายละเอียด" style="flex:1;min-width:0;display:${(!hasMatch&&selectedName)?'block':'none'}" value="${(!hasMatch&&selectedName)?escHtml(selectedName):''}" oninput="if(window['${calcFn}'])window['${calcFn}']()">
+  </div>`;
+}
+window.buildProductSelectHTML = buildProductSelectHTML;
+
+// autofill จาก <select> สินค้า → unit, price
+function autofillProductSelect(sel, calcFn) {
+  const val = sel.value;
+  const tr = sel.closest('tr'); if(!tr) return;
+  const numIns = tr.querySelectorAll('input[type=number]');
+  const unitInp = tr.querySelector('.prod-unit-inp');
+  const customInp = tr.querySelector('.prod-custom-inp');
+  if(val === '__custom__') {
+    if(customInp) { customInp.style.display='block'; customInp.focus(); }
+    return;
+  }
+  if(customInp) customInp.style.display='none';
+  if(!val) return;
+  const prod = (data.products||[]).find(p => p.name === val);
+  if(!prod) return;
+  if(prod.unit && unitInp) unitInp.value = prod.unit;
+  if(prod.price != null && numIns[1]) numIns[1].value = prod.price;
+  if(calcFn && window[calcFn]) window[calcFn]();
+}
+window.autofillProductSelect = autofillProductSelect;
+
+// อ่าน desc จาก row (select หรือ input ก็ได้)
+function getRowDesc(tr) {
+  const customInp = tr.querySelector('.prod-custom-inp');
+  if(customInp && customInp.style.display !== 'none') return customInp.value || '';
+  const sel = tr.querySelector('.prod-sel');
+  if(sel && sel.value && sel.value !== '__custom__') return sel.value;
+  const inp = tr.querySelector('input[type=text]:not(.prod-custom-inp):not(.prod-unit-inp)');
+  return inp?.value || '';
+}
+window.getRowDesc = getRowDesc;
+
+// autofill price/unit เมื่อเลือกสินค้าจาก datalist (legacy compat)
+function autofillProductRow(inp) {
+  const name = inp.value?.trim();
+  if(!name) return;
+  const prod = (data.products||[]).find(p=>p.name===name);
+  if(!prod) return;
+  const tr = inp.closest('tr'); if(!tr) return;
+  const numIns = tr.querySelectorAll('input[type=number]');
+  const txtIns = tr.querySelectorAll('input[type=text]');
+  if(prod.unit && txtIns[1]) txtIns[1].value = prod.unit;
+  if(prod.price!=null && numIns[1]) { numIns[1].value = prod.price; }
+  const calc = inp.getAttribute('data-calc');
+  if(calc && window[calc]) window[calc]();
+}
+window.autofillProductRow = autofillProductRow;
+
 function addRow(type) {
   _rowCount++;
+  const calcFn = 'calcDoc_'+type;
+  window[calcFn] = ()=>calcDoc(type);
   const tbody = document.getElementById('items-body-'+type); if(!tbody) return;
   const tr = document.createElement('tr'); tr.id='r'+_rowCount;
   tr.innerHTML=`<td style="color:var(--ink4);font-size:11px;text-align:center">${_rowCount}</td>
-    <td><input class="item-inp" type="text" placeholder="รายละเอียด" oninput="calcDoc('${type}')"></td>
+    <td style="min-width:180px">${buildProductSelectHTML('', calcFn)}</td>
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="calcDoc('${type}')"></td>
-    <td><input class="item-inp" type="text" placeholder="ชิ้น"></td>
+    <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="calcDoc('${type}')"></td>
     <td class="row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="document.getElementById('r${_rowCount}').remove();calcDoc('${type}')">✕</button></td>`;
-  tbody.appendChild(tr); calcDoc(type);
+  tbody.appendChild(tr);
+  calcDoc(type);
 }
 window.addRow=addRow;
 
@@ -2794,10 +2904,10 @@ window.calcDoc=calcDoc;
 
 function getFormItems(type) {
   return [...document.querySelectorAll(`#items-body-${type} tr`)].map(tr=>{
-    const txtIns=tr.querySelectorAll('input[type=text]');
+    const desc = getRowDesc(tr);
     const numIns=tr.querySelectorAll('input[type=number]');
-    const desc=txtIns[0]?.value||'';
-    const unit=txtIns[1]?.value||'';
+    const unitInp=tr.querySelector('.prod-unit-inp');
+    const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0;
     const price=parseFloat(numIns[1]?.value)||0;
     return {desc, qty, unit, price, total:qty*price};
@@ -4752,6 +4862,141 @@ window.pickCustomer = pickCustomer;
 // ══════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// PRODUCTS CATALOG
+// ══════════════════════════════════════════════════════
+function renderProducts() {
+  const pc = document.getElementById('page-content');
+  document.getElementById('topbar-actions').innerHTML =
+    `<button class="btn btn-primary" onclick="openAddProduct()">+ เพิ่มสินค้า</button>`;
+
+  const prods = data.products || [];
+  const rows = prods.length ? prods.map((p,i)=>`
+    <tr>
+      <td style="color:var(--ink4);font-size:11px;text-align:center">${i+1}</td>
+      <td style="font-weight:600">${escHtml(p.name)}</td>
+      <td style="color:var(--ink3)">${escHtml(p.description||'')}</td>
+      <td style="text-align:center">${escHtml(p.unit||'')}</td>
+      <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-weight:600">${p.price!=null?fmt(p.price):'—'}</td>
+      <td style="text-align:center">
+        <button class="btn btn-ghost btn-sm" onclick="openEditProduct('${p.id}')">✏️</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteProduct('${p.id}')">✕</button>
+      </td>
+    </tr>`).join('') :
+    `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ink4)">ยังไม่มีสินค้า — กด "+ เพิ่มสินค้า"</td></tr>`;
+
+  pc.innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📦 รายละเอียดสินค้า / บริการ</span>
+      <span class="card-sub">${prods.length} รายการ</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl" style="min-width:600px">
+        <thead><tr>
+          <th style="width:36px">#</th>
+          <th>ชื่อสินค้า / บริการ</th>
+          <th>รายละเอียด</th>
+          <th style="width:80px;text-align:center">หน่วย</th>
+          <th style="width:120px;text-align:right">ราคา (บาท)</th>
+          <th style="width:90px;text-align:center">จัดการ</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+window.renderProducts = renderProducts;
+
+function openAddProduct() {
+  _openProductModal(null);
+}
+window.openAddProduct = openAddProduct;
+
+function openEditProduct(id) {
+  const p = (data.products||[]).find(x=>x.id===id);
+  if(!p) return;
+  _openProductModal(p);
+}
+window.openEditProduct = openEditProduct;
+
+function _openProductModal(p) {
+  // ลบ modal เก่าออกก่อน
+  document.getElementById('modal-product')?.remove();
+  const isEdit = !!p;
+  const el = document.createElement('div');
+  el.className = 'overlay show';
+  el.id = 'modal-product';
+  el.innerHTML = `
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title">${isEdit?'✏️ แก้ไขสินค้า':'➕ เพิ่มสินค้า / บริการ'}</div>
+    <div class="form-grid" style="gap:12px">
+      <div class="field span2">
+        <label>ชื่อสินค้า / บริการ <span style="color:var(--red)">*</span></label>
+        <input type="text" id="prod-name" placeholder="เช่น ค่าบริการทำบัญชีรายเดือน" value="${escHtml(p?.name||'')}">
+      </div>
+      <div class="field span2">
+        <label>รายละเอียด</label>
+        <textarea id="prod-desc" placeholder="รายละเอียดเพิ่มเติม..." style="min-height:56px">${escHtml(p?.description||'')}</textarea>
+      </div>
+      <div class="field">
+        <label>หน่วย</label>
+        <input type="text" id="prod-unit" placeholder="เช่น งาน, เดือน, ชิ้น" value="${escHtml(p?.unit||'')}">
+      </div>
+      <div class="field">
+        <label>ราคา (บาท)</label>
+        <input type="number" id="prod-price" placeholder="0.00" min="0" step="any" value="${p?.price!=null?p.price:''}">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('modal-product').remove()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveProduct('${p?.id||''}')">💾 บันทึก</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+  document.getElementById('prod-name')?.focus();
+}
+
+async function saveProduct(existingId) {
+  const name = document.getElementById('prod-name')?.value?.trim();
+  if(!name) { toast('กรุณากรอกชื่อสินค้า','err'); return; }
+  const priceRaw = document.getElementById('prod-price')?.value;
+  const d = {
+    name,
+    description: document.getElementById('prod-desc')?.value?.trim()||'',
+    unit: document.getElementById('prod-unit')?.value?.trim()||'',
+    price: priceRaw!==''&&priceRaw!=null ? parseFloat(priceRaw)||0 : null,
+  };
+  if(existingId) {
+    const ok = await storeUpdate('products', existingId, d); if(!ok) return;
+    const idx = data.products.findIndex(x=>x.id===existingId);
+    if(idx>=0) Object.assign(data.products[idx], d);
+  } else {
+    const newId = await storeAdd('products', d);
+    if(!newId) return;
+    data.products.push({id:newId,...d});
+  }
+  syncLS('products', data.products);
+  rebuildProductsDatalist();
+  document.getElementById('modal-product')?.remove();
+  renderProducts();
+  toast(existingId?'แก้ไขสินค้าแล้ว':'เพิ่มสินค้าแล้ว','ok');
+}
+window.saveProduct = saveProduct;
+
+async function deleteProduct(id) {
+  const p = (data.products||[]).find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm(`ลบสินค้า "${p.name}" ?\nจะไม่กระทบเอกสารที่บันทึกไปแล้ว`)) return;
+  const ok = await storeDelete('products', id); if(!ok) return;
+  data.products = data.products.filter(x=>x.id!==id);
+  syncLS('products', data.products);
+  rebuildProductsDatalist();
+  renderProducts();
+  toast('ลบสินค้าแล้ว','ok');
+}
+window.deleteProduct = deleteProduct;
+
 function renderSettings() {
   document.getElementById('page-content').innerHTML = `
   <div class="card" style="max-width:560px">
