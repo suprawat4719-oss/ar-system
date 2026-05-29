@@ -320,8 +320,8 @@ select:focus,input:focus{outline:none;border-color:var(--blue)}
 
 <script>
 // ── VERSION ───────────────────────────────────────────────────────────────────
-var BUILD_TIME = "2026-05-29 10:00";
-var BUILD_LABEL = "v3.17";
+var BUILD_TIME = "2026-05-30 09:00";
+var BUILD_LABEL = "v3.18";
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 var db, emps=[], requests=[], ledger=[], curId=null, imgB64=null, imgMime="image/jpeg", isOnline=false;
@@ -1228,12 +1228,15 @@ setInterval(function(){
 },30000);
 
 // save before close
-window.addEventListener('beforeunload',function(){
+function _onPageExit(){
   // save local ก่อนเสมอ
   saveLocal(); saveLocalReqs();
   // fire-and-forget Firebase save
   if(isOnline&&db&&_hasPendingChanges) saveToFirebase();
-});
+}
+// beforeunload: desktop / pagehide: iOS Safari (beforeunload ไม่ fire บน iOS)
+window.addEventListener('beforeunload', _onPageExit);
+window.addEventListener('pagehide', _onPageExit);
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }

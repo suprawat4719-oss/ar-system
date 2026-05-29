@@ -692,8 +692,8 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <div id="toast"></div>
 
 <script>
-const BUILD_TIME="2026-05-29 11:00";
-const BUILD_LABEL="v2.19 · 29 พ.ค. 2569";
+const BUILD_TIME="2026-05-30 09:00";
+const BUILD_LABEL="v2.20 · 30 พ.ค. 2569";
 const MONTHS_TH=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const CATS={
   income:["รับชำระลูกค้า","มัดจำโครงการ","รับเงินสด/โอน","ดอกเบี้ยรับ","รายได้อื่น"],
@@ -1209,7 +1209,7 @@ window.onload=async()=>{
 };
 
 // auto-save ก่อนปิด — localStorage ทุกครั้ง, Firebase ถ้าออนไลน์
-window.addEventListener('beforeunload', function(){
+function _onPageExit(){
   try{localStorage.setItem("fin_txs",JSON.stringify(txs));}catch(e){}
   try{localStorage.setItem("fin_employees",JSON.stringify(employees));}catch(e){}
   // ensure fin_pending_ids up-to-date เผื่อ offline → online ก่อนปิด tab
@@ -1217,7 +1217,10 @@ window.addEventListener('beforeunload', function(){
     const pendingIds=JSON.parse(localStorage.getItem("fin_pending_ids")||"[]");
     if(pendingIds.length&&isOnline&&db) flushPendingToFirebase();
   }catch(_){}
-});
+}
+// beforeunload: desktop / pagehide: iOS Safari (beforeunload ไม่ fire บน iOS)
+window.addEventListener('beforeunload', _onPageExit);
+window.addEventListener('pagehide', _onPageExit);
 
 function saveTxs(){
   localStorage.setItem("fin_txs",JSON.stringify(txs));
