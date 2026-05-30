@@ -692,8 +692,8 @@ tbody td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <div id="toast"></div>
 
 <script>
-const BUILD_TIME="2026-05-30 09:00";
-const BUILD_LABEL="v2.20 · 30 พ.ค. 2569";
+const BUILD_TIME="2026-05-30 16:00";
+const BUILD_LABEL="v2.21 · 30 พ.ค. 2569";
 const MONTHS_TH=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const CATS={
   income:["รับชำระลูกค้า","มัดจำโครงการ","รับเงินสด/โอน","ดอกเบี้ยรับ","รายได้อื่น"],
@@ -782,21 +782,42 @@ async function lockMonth_fin(monthKey){
   if(isOnline&&db) db.collection('month_locks').doc(monthKey).set(monthLocks_fin[monthKey]).catch(()=>{});
   render(); toast_("🔒 ปิดเดือน "+moLabel_fin(monthKey)+" เรียบร้อย","#d97706");
 }
-async function unlockMonth_fin(monthKey){
+let _unlockMoKey_fin=null;
+function unlockMonth_fin(monthKey){
+  openUnlockFin(monthKey);
+}
+function openUnlockFin(monthKey){
   if(!isMonthLocked_fin(monthKey)){toast_("เดือนนี้ยังไม่ถูกปิด","#6b7280");return;}
-  const pw=prompt('กรอกรหัส Admin เพื่อปลดล็อกเดือน '+moLabel_fin(monthKey)+':');
-  if(!pw) return;
+  _unlockMoKey_fin=monthKey;
+  document.getElementById('modal-unlock-month').textContent=moLabel_fin(monthKey);
+  document.getElementById('modal-unlock-pw').value='';
+  document.getElementById('modal-unlock-pw').style.borderColor='#d1d5db';
+  document.getElementById('modal-unlock-reason').value='';
+  document.getElementById('modal-unlock').classList.add('open');
+  setTimeout(()=>document.getElementById('modal-unlock-pw').focus(),250);
+}
+function closeUnlockFin(){
+  document.getElementById('modal-unlock').classList.remove('open');
+  _unlockMoKey_fin=null;
+}
+async function confirmUnlockFin(){
+  const monthKey=_unlockMoKey_fin;
+  if(!monthKey) return;
+  const pw=(document.getElementById('modal-unlock-pw').value||'').trim();
+  const reason=(document.getElementById('modal-unlock-reason').value||'').trim();
+  if(!pw){toast_("⚠️ กรุณากรอกรหัส Admin","#d97706");return;}
+  if(!reason){toast_("⚠️ กรุณากรอกเหตุผล","#d97706");return;}
   if(pw!==ADMIN_PASSWORD_FIN){
     addAuditLog_fin('UNLOCK_FAILED',monthKey,{reason:'รหัสผิด'});
-    alert('❌ รหัส Admin ไม่ถูกต้อง การพยายามปลดล็อกถูกบันทึกไว้แล้ว');
+    document.getElementById('modal-unlock-pw').value='';
+    document.getElementById('modal-unlock-pw').style.borderColor='#ef4444';
+    toast_("❌ รหัส Admin ไม่ถูกต้อง — บันทึกการพยายามปลดล็อกแล้ว","#dc2626");
     return;
   }
-  const reason=prompt('กรอกเหตุผลในการปลดล็อก:');
-  if(!reason) return;
-  if(!confirm('ยืนยันปลดล็อกเดือน '+moLabel_fin(monthKey)+'?')) return;
   addAuditLog_fin('UNLOCK_MONTH',monthKey,{reason});
   delete monthLocks_fin[monthKey];
   localStorage.setItem('fin_month_locks',JSON.stringify(monthLocks_fin));
+  closeUnlockFin();
   if(isOnline&&db) db.collection('month_locks').doc(monthKey).delete().catch(()=>{});
   render(); toast_("🔓 ปลดล็อกเดือน "+moLabel_fin(monthKey)+" เรียบร้อย","#16a34a");
 }
@@ -3595,6 +3616,34 @@ async function rawDelTx(id){
       <div class="dup-btns">
         <button class="dup-cancel" onclick="closeDupPopup()">✕ ยกเลิก / ไม่บันทึก</button>
         <button class="dup-confirm" onclick="dupConfirmSave()">✓ บันทึกซ้ำต่อไป</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── UNLOCK MONTH MODAL ────────────────────────────────────────────────── -->
+<div class="overlay" id="modal-unlock" onclick="if(event.target===this)closeUnlockFin()">
+  <div class="mbox">
+    <div class="mhead">
+      <span class="mt">🔓 ปลดล็อกเดือน</span>
+      <span id="modal-unlock-month" style="font-size:13px;color:#6b7280;margin-left:4px"></span>
+      <button class="xbtn" onclick="closeUnlockFin()">✕</button>
+    </div>
+    <div style="padding:18px 20px 20px;overflow-y:auto">
+      <div style="background:#FEF2F2;border:1.5px solid #FECACA;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#991B1B;line-height:1.5">
+        ⚠️ การปลดล็อกจะเปิดให้แก้ไขข้อมูลย้อนหลังได้ กรุณาใช้เฉพาะเมื่อจำเป็นเท่านั้น การกระทำนี้จะถูกบันทึกไว้ในระบบ
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">รหัส Admin *</label>
+        <input type="password" id="modal-unlock-pw" placeholder="กรอกรหัส Admin" autocomplete="off" style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:14px;box-sizing:border-box;font-family:inherit">
+      </div>
+      <div style="margin-bottom:18px">
+        <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px">เหตุผลในการปลดล็อก *</label>
+        <input type="text" id="modal-unlock-reason" placeholder="ระบุเหตุผลให้ชัดเจน..." style="width:100%;border:1.5px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:14px;box-sizing:border-box;font-family:inherit">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="confirmUnlockFin()" style="flex:1;background:#DC2626;color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:600;cursor:pointer">🔓 ยืนยันปลดล็อก</button>
+        <button onclick="closeUnlockFin()" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:12px 20px;font-size:14px;cursor:pointer">ยกเลิก</button>
       </div>
     </div>
   </div>
