@@ -320,8 +320,8 @@ select:focus,input:focus{outline:none;border-color:var(--blue)}
 
 <script>
 // ── VERSION ───────────────────────────────────────────────────────────────────
-var BUILD_TIME = "2026-05-30 09:00";
-var BUILD_LABEL = "v3.18";
+var BUILD_TIME = "2026-05-30 10:00";
+var BUILD_LABEL = "v3.19";
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 var db, emps=[], requests=[], ledger=[], curId=null, imgB64=null, imgMime="image/jpeg", isOnline=false;
@@ -1518,33 +1518,20 @@ function getMoTotalAdv(emp, mo){
 }
 
 // "ยกมาเดือนก่อน" = net เดือนก่อนติดลบ → ยกมาหักเดือนนี้
-// คำนวณ carry จริง 2 ชั้น (prevPrev→prev→mo) โดยไม่ recursive
+// iterate ทุกเดือนที่มีข้อมูล (monthData) ตั้งแต่เก่าสุด → chain carry ถูกต้องทุกเดือน
 function getMoCarry(emp, mo){
-  var prevMo=shiftMonth(mo,-1);
-  var hasPrevData=emp.monthData&&emp.monthData[prevMo];
-  if(!hasPrevData){
-    return emp.carry||0;
+  var allMo=Object.keys(emp.monthData||{})
+    .filter(function(m){return m<mo;})
+    .sort();
+  if(allMo.length===0) return emp.carry||0;
+  var carry=emp.carry||0;
+  for(var i=0;i<allMo.length;i++){
+    var m=allMo[i];
+    var adv=getMoTotalAdv(emp,m);
+    var net=calcNetRaw(emp,m,adv,carry);
+    carry=net<0?Math.abs(net):0;
   }
-
-  // หา carry ที่ถูกต้องของ prevMo โดยดูจาก prevPrevMo (1 ชั้น)
-  var prevPrevMo=shiftMonth(prevMo,-1);
-  var hasPrevPrevData=emp.monthData&&emp.monthData[prevPrevMo];
-  var prevCarry=hasPrevPrevData?0:(emp.carry||0);
-  if(hasPrevPrevData){
-    var ppAdv=getMoTotalAdv(emp,prevPrevMo);
-    // Option A: advance หักเต็มจำนวน — moRepaid ไม่กระทบ carry
-    var ppAdvNet=ppAdv;
-    var ppNet=calcNetRaw(emp,prevPrevMo,ppAdvNet,emp.carry||0);
-    prevCarry=ppNet<0?Math.abs(ppNet):0;
-  }
-
-  // คำนวณ net จริงของ prevMo ด้วย prevCarry ที่ถูกต้อง
-  var prevAdv=getMoTotalAdv(emp,prevMo);
-  // Option A: advance หักเต็มจำนวน — moRepaid ไม่กระทบ carry
-  var prevAdvNet=prevAdv;
-  var prevNet=calcNetRaw(emp,prevMo,prevAdvNet,prevCarry);
-
-  return prevNet<0?Math.abs(prevNet):0;
+  return carry;
 }
 
 function renderDash(){
