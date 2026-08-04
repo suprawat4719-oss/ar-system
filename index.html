@@ -1863,7 +1863,7 @@ function refreshQTTable() {
       <td style="font-size:12px;color:var(--ink4)">${q.companyName}</td>
       <td>${q.custName}</td>
       <td class="r mono bold">${fmt(q.total)}</td>
-      <td class="c"><span class="badge ${q.hasVat?'badge-sent':'badge-draft'}">${q.hasVat?'มี VAT':'ไม่มี'}</span></td>
+      <td class="c">${(()=>{ const items=q.items||[]; const hasV=items.some(r=>r.vatApplied), hasN=items.some(r=>!r.vatApplied); const mixed=hasV&&hasN; const label=mixed?'VAT บางส่วน':q.hasVat?'มี VAT':'ไม่มี'; const cls=mixed?'badge-partial':q.hasVat?'badge-sent':'badge-draft'; return `<span class="badge ${cls}">${label}</span>`; })()}</td>
       <td>${badgeHTML(q.status)}${q.linkedInvoice?'<span class="badge badge-inv" style="margin-left:4px">INV</span>':''}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-xs btn-outline" onclick="viewDoc('qt','${q.id}')">ดู</button>
@@ -2649,7 +2649,8 @@ function buildDocForm(type) {
         <div class="field"><label>วันที่</label><input type="date" id="f-date" value="${today()}" onchange="syncDueFromTerms()"></div>
         ${extraFields}
         <div class="field"><label>เงื่อนไขการชำระ</label>
-          <select id="f-terms" onchange="syncDueFromTerms()"><option>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option selected>30 วัน</option><option>60 วัน</option></select></div>
+          <select id="f-terms" onchange="syncDueFromTerms()"><option selected>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option>30 วัน</option><option>60 วัน</option></select>
+          <div style="font-size:11px;color:var(--ink4);margin-top:3px" id="f-terms-hint"></div></div>
       </div>
     </div>
   </div>
@@ -4872,8 +4873,35 @@ function autofillCustomer() {
   set('f-cust-tax', c.taxId);
   set('f-cust-addr', c.address);
   set('f-cust-contact', c.contactPerson||c.contactPhone);
+  applyCustomerCreditTerms(c);
 }
 window.autofillCustomer = autofillCustomer;
+
+// ── ผูกเงื่อนไขชำระเงิน/ครบกำหนดชำระ ตามเครดิตของลูกค้าแต่ละราย (แก้ไขเองภายหลังได้เสมอ) ──
+function applyCustomerCreditTerms(cust) {
+  const termsEl = document.getElementById('f-terms');
+  if(!termsEl || !cust) return;
+  const hintEl = document.getElementById('f-terms-hint');
+  const raw = cust.creditTerms;
+  const days = (raw === undefined || raw === null || raw === '') ? null : parseInt(raw, 10);
+  if(days === null || isNaN(days)) {
+    if(hintEl) hintEl.textContent = '';
+    return; // ลูกค้ารายนี้ยังไม่มีข้อมูลเครดิต — ใช้ค่าที่ผู้ใช้ตั้งเอง ไม่แตะ
+  }
+  const label = days <= 0 ? 'ชำระทันที' : `${days} วัน`;
+  // ล้าง option ที่เคยแทรกไว้ให้ลูกค้ารายก่อนหน้า (คงไว้แค่ค่าปัจจุบัน)
+  [...termsEl.querySelectorAll('option[data-cust-credit="1"]')].forEach(o => { if(o.value !== label) o.remove(); });
+  let opt = [...termsEl.options].find(o => o.value === label);
+  if(!opt) {
+    opt = document.createElement('option');
+    opt.value = label; opt.textContent = label; opt.dataset.custCredit = '1';
+    termsEl.appendChild(opt);
+  }
+  termsEl.value = label;
+  if(hintEl) hintEl.textContent = `📌 ตามเครดิตลูกค้า "${cust.name}": ${label}`;
+  syncDueFromTerms();
+}
+window.applyCustomerCreditTerms = applyCustomerCreditTerms;
 
 function openPickCustomer() {
   const custs = (data.customers||[]).filter(c=>c.isActive!==false);
@@ -4917,6 +4945,7 @@ function pickCustomer(id) {
   set('f-cust-tax', c.taxId);
   set('f-cust-addr', c.address);
   set('f-cust-contact', c.contactPerson||c.contactPhone);
+  applyCustomerCreditTerms(c);
   document.getElementById('modal-pick-customer')?.remove();
   toast(`เลือกลูกค้า: ${c.name}`,'ok');
 }
