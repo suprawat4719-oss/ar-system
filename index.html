@@ -4511,7 +4511,7 @@ function refreshCustomerTable() {
     <td class="mono" style="font-size:12px">${c.taxId||'—'}</td>
     <td style="font-size:13px">${c.contactPerson||'—'}</td>
     <td style="font-size:12px">${c.phone||c.contactPhone||'—'}</td>
-    <td class="r mono">${c.creditTerms ? c.creditTerms+' วัน' : '—'}</td>
+    <td class="r mono">${c.creditTerms===undefined||c.creditTerms===null ? '—' : (c.creditTerms>0 ? c.creditTerms+' วัน' : 'เงินสด')}</td>
     <td><span class="badge ${c.isActive===false?'badge-cancelled':'badge-paid'}">${c.isActive===false?'ปิด':'ใช้งาน'}</span></td>
     <td style="white-space:nowrap">
       <button class="btn btn-xs btn-outline" onclick="viewCustomer('${c.id}')">ดู</button>
@@ -4599,8 +4599,18 @@ function openCustomerModal(c) {
       <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink4);margin-bottom:8px;border-top:1px solid var(--border);padding-top:10px">เงื่อนไขเครดิต</div>
       <div class="form-grid" style="gap:10px;margin-bottom:14px">
         <div class="field">
-          <label>เครดิต (วัน)</label>
-          <input type="number" id="cust-credit-terms" value="${c?.creditTerms||30}" min="0" placeholder="30">
+          <label>เงื่อนไขการชำระ</label>
+          ${(()=>{
+            const presets = [0,7,15,30,45,60];
+            const cur = (c && c.creditTerms!=null) ? parseInt(c.creditTerms,10) : 0; // ค่าเริ่มต้นลูกค้าใหม่ = เงินสด
+            const isPreset = presets.includes(cur);
+            const opts = presets.map(d => `<option value="${d}"${isPreset&&cur===d?' selected':''}>${d===0?'เงินสด':d+' วัน'}</option>`).join('');
+            return `<select id="cust-credit-select" onchange="toggleCustCreditCustom()">
+              ${opts}
+              <option value="__custom__"${!isPreset?' selected':''}>อื่นๆ (ระบุจำนวนวัน)</option>
+            </select>
+            <input type="number" id="cust-credit-terms" value="${cur}" min="0" placeholder="จำนวนวัน" style="margin-top:6px;display:${!isPreset?'block':'none'}">`;
+          })()}
         </div>
         <div class="field">
           <label>วงเงินเครดิต (บาท)</label>
@@ -4632,6 +4642,15 @@ function openCustomerModal(c) {
 }
 window.openCustomerModal = openCustomerModal;
 
+function toggleCustCreditCustom() {
+  const sel = document.getElementById('cust-credit-select');
+  const custEl = document.getElementById('cust-credit-terms');
+  if(!sel || !custEl) return;
+  custEl.style.display = sel.value === '__custom__' ? 'block' : 'none';
+  if(sel.value === '__custom__') custEl.focus();
+}
+window.toggleCustCreditCustom = toggleCustCreditCustom;
+
 async function saveCustomer(id) {
   const name = document.getElementById('cust-name')?.value?.trim();
   if(!name) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
@@ -4645,6 +4664,11 @@ async function saveCustomer(id) {
     return;
   }
 
+  const creditSelVal = document.getElementById('cust-credit-select')?.value;
+  const creditTerms = creditSelVal === '__custom__'
+    ? (parseInt(document.getElementById('cust-credit-terms')?.value) || 0)
+    : (parseInt(creditSelVal) || 0);
+
   const d = {
     name,
     nameEn: document.getElementById('cust-name-en')?.value?.trim() || '',
@@ -4657,7 +4681,7 @@ async function saveCustomer(id) {
     contactPerson: document.getElementById('cust-contact-name')?.value?.trim() || '',
     contactPhone: document.getElementById('cust-contact-phone')?.value?.trim() || '',
     contactEmail: document.getElementById('cust-contact-email')?.value?.trim() || '',
-    creditTerms: parseInt(document.getElementById('cust-credit-terms')?.value) || 0,
+    creditTerms,
     creditLimit: parseFloat(document.getElementById('cust-credit-limit')?.value) || 0,
     note: document.getElementById('cust-note')?.value?.trim() || '',
     isActive: document.getElementById('cust-active')?.value === '1',
@@ -4718,7 +4742,7 @@ function viewCustomer(id) {
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
         <div style="background:var(--bg2);border-radius:var(--r);padding:12px;text-align:center">
           <div style="font-size:10px;color:var(--ink4);text-transform:uppercase;font-weight:700">เครดิต</div>
-          <div style="font-size:20px;font-weight:700;font-family:'IBM Plex Mono',monospace">${c.creditTerms||0} <span style="font-size:13px;font-weight:400">วัน</span></div>
+          <div style="font-size:20px;font-weight:700;font-family:'IBM Plex Mono',monospace">${(c.creditTerms||0)>0 ? c.creditTerms+' <span style="font-size:13px;font-weight:400">วัน</span>' : 'เงินสด'}</div>
         </div>
         <div style="background:var(--bg2);border-radius:var(--r);padding:12px;text-align:center">
           <div style="font-size:10px;color:var(--ink4);text-transform:uppercase;font-weight:700">ใบเสนอราคา</div>
