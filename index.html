@@ -1915,6 +1915,7 @@ function editQT(id) {
     <td><input class="item-inp r" type="number" value="${r.qty||1}" min="0" step="any" oninput="eqtCalc()"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
     <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="eqtCalc()"></td>
+    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้"${(r.vatApplied!==undefined?r.vatApplied:!!q.hasVat)?' checked':''} onchange="eqtCalc()"></td>
     <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>
   </tr>`).join('');
@@ -1961,24 +1962,32 @@ function editQT(id) {
             <th>รายการ</th>
             <th class="r" style="width:70px">จำนวน</th>
             <th style="width:60px">หน่วย</th>
-            <th class="r" style="width:100px">ราคา/หน่วย</th>
-            <th class="r" style="width:100px">รวม</th>
+            <th class="r" style="width:90px">ราคา/หน่วย</th>
+            <th style="width:44px;text-align:center">VAT</th>
+            <th class="r" style="width:90px">รวม</th>
             <th style="width:30px"></th>
           </tr></thead>
           <tbody id="eqt-items-body">${itemsHtml}</tbody>
         </table>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="eqtAddRow()" style="margin-bottom:12px">+ เพิ่มรายการ</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        <button class="btn btn-ghost btn-sm" onclick="eqtAddRow()">+ เพิ่มรายการ</button>
+        <span style="font-size:11px;color:var(--ink4)">|</span>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('#eqt-items-body .item-vat-chk').forEach(c=>c.checked=true);eqtCalc()">✅ ติ๊ก VAT ทั้งหมด</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('#eqt-items-body .item-vat-chk').forEach(c=>c.checked=false);eqtCalc()">☐ ยกเลิก VAT ทั้งหมด</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink4);margin-bottom:10px">✔️ ติ๊ก VAT เฉพาะรายการที่ต้องการคิดภาษีมูลค่าเพิ่ม 7% — เลือกผสมกันได้ในใบเดียวกัน</div>
 
-      <!-- VAT / WHT -->
+      <!-- WHT -->
       <div style="display:flex;gap:16px;margin-bottom:10px">
-        <label class="tog-wrap"><label class="tog"><input type="checkbox" id="eqt-vat" onchange="eqtCalc()" ${q.hasVat?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></label>
         <label class="tog-wrap"><label class="tog"><input type="checkbox" id="eqt-wht" onchange="eqtCalc()" ${q.hasWht?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></label>
       </div>
 
       <!-- Summary -->
       <div class="summary-box" style="margin-bottom:12px">
         <div class="s-row"><span>ก่อน VAT</span><span class="val" id="eqt-s-sub">0.00</span></div>
+        <div class="s-row" id="eqt-s-vatable-row" style="display:none"><span>มูลค่าที่คิด VAT</span><span class="val" id="eqt-s-vatable">0.00</span></div>
+        <div class="s-row" id="eqt-s-novat-row" style="display:none"><span>มูลค่าที่ไม่คิด VAT</span><span class="val" id="eqt-s-novat">0.00</span></div>
         <div class="s-row" id="eqt-s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="eqt-s-vat">0.00</span></div>
         <div class="s-row" id="eqt-s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย 3%</span><span class="val" style="color:var(--red)" id="eqt-s-wht">0.00</span></div>
         <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="eqt-s-total">0.00</span></div>
@@ -2007,6 +2016,7 @@ function eqtAddRow() {
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="eqtCalc()"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="eqtCalc()"></td>
+    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้" onchange="eqtCalc()"></td>
     <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>`;
   tbody.appendChild(tr); eqtCalc();
@@ -2015,17 +2025,21 @@ window.eqtAddRow=eqtAddRow;
 
 function eqtCalc() {
   const rows=[...document.querySelectorAll('#eqt-items-body tr')];
-  let sub=0;
+  let sub=0, vatableSub=0, novatSub=0;
   rows.forEach(tr=>{
     const nums=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(nums[0]?.value)||0)*(parseFloat(nums[1]?.value)||0);
-    sub+=t; const el=tr.querySelector('.eqt-row-total'); if(el) el.textContent=fmt(t);
+    sub+=t;
+    if(tr.querySelector('.item-vat-chk')?.checked) vatableSub+=t; else novatSub+=t;
+    const el=tr.querySelector('.eqt-row-total'); if(el) el.textContent=fmt(t);
   });
-  const hasVat=document.getElementById('eqt-vat')?.checked;
   const hasWht=document.getElementById('eqt-wht')?.checked;
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v);};
-  set('eqt-s-sub',sub); set('eqt-s-vat',vat); set('eqt-s-wht',wht); set('eqt-s-total',sub+vat-wht);
+  set('eqt-s-sub',sub); set('eqt-s-vatable',vatableSub); set('eqt-s-novat',novatSub); set('eqt-s-vat',vat); set('eqt-s-wht',wht); set('eqt-s-total',sub+vat-wht);
+  const mixed = vatableSub>0 && novatSub>0;
+  const vabR=document.getElementById('eqt-s-vatable-row'); if(vabR) vabR.style.display=mixed?'':'none';
+  const novR=document.getElementById('eqt-s-novat-row'); if(novR) novR.style.display=mixed?'':'none';
   const vr=document.getElementById('eqt-s-vat-row'); if(vr) vr.style.display=vat?'':'none';
   const wr=document.getElementById('eqt-s-wht-row'); if(wr) wr.style.display=wht?'':'none';
 }
@@ -2038,17 +2052,19 @@ function eqtGetItems() {
     const unitInp=tr.querySelector('.prod-unit-inp');
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
-    return {desc,qty,unit,price,total:qty*price};
+    const vatApplied=!!tr.querySelector('.item-vat-chk')?.checked;
+    return {desc,qty,unit,price,vatApplied,total:qty*price};
   }).filter(r=>r.desc||r.price>0);
 }
 
 async function saveEditQT(id) {
   const q=data.quotations.find(x=>x.id===id); if(!q) return;
   const items=eqtGetItems();
-  const hasVat=document.getElementById('eqt-vat')?.checked;
   const hasWht=document.getElementById('eqt-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vatableSub=items.filter(r=>r.vatApplied).reduce((s,r)=>s+r.total,0);
+  const hasVat=vatableSub>0;
+  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
   const paymentTerms = document.getElementById('eqt-terms')?.value || q.paymentTerms || q.terms || '30 วัน';
   const paymentDays = getPaymentTermDays(paymentTerms);
   const d={
@@ -2136,6 +2152,7 @@ function editINV(id) {
     <td><input class="item-inp r" type="number" value="${r.qty||1}" min="0" step="any" oninput="einvCalc()"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
     <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="einvCalc()"></td>
+    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้"${(r.vatApplied!==undefined?r.vatApplied:!!inv.hasVat)?' checked':''} onchange="einvCalc()"></td>
     <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>
   </tr>`).join('');
@@ -2175,24 +2192,32 @@ function editINV(id) {
             <th>รายการ</th>
             <th class="r" style="width:70px">จำนวน</th>
             <th style="width:60px">หน่วย</th>
-            <th class="r" style="width:100px">ราคา/หน่วย</th>
-            <th class="r" style="width:100px">รวม</th>
+            <th class="r" style="width:90px">ราคา/หน่วย</th>
+            <th style="width:44px;text-align:center">VAT</th>
+            <th class="r" style="width:90px">รวม</th>
             <th style="width:30px"></th>
           </tr></thead>
           <tbody id="einv-items-body">${itemsHtml}</tbody>
         </table>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="einvAddRow()" style="margin-bottom:12px">+ เพิ่มรายการ</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        <button class="btn btn-ghost btn-sm" onclick="einvAddRow()">+ เพิ่มรายการ</button>
+        <span style="font-size:11px;color:var(--ink4)">|</span>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('#einv-items-body .item-vat-chk').forEach(c=>c.checked=true);einvCalc()">✅ ติ๊ก VAT ทั้งหมด</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('#einv-items-body .item-vat-chk').forEach(c=>c.checked=false);einvCalc()">☐ ยกเลิก VAT ทั้งหมด</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink4);margin-bottom:10px">✔️ ติ๊ก VAT เฉพาะรายการที่ต้องการคิดภาษีมูลค่าเพิ่ม 7% — เลือกผสมกันได้ในใบเดียวกัน</div>
 
-      <!-- VAT / WHT -->
+      <!-- WHT -->
       <div style="display:flex;gap:16px;margin-bottom:10px">
-        <label class="tog-wrap"><label class="tog"><input type="checkbox" id="einv-vat" onchange="einvCalc()" ${inv.hasVat?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></label>
         <label class="tog-wrap"><label class="tog"><input type="checkbox" id="einv-wht" onchange="einvCalc()" ${inv.hasWht?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></label>
       </div>
 
       <!-- Summary -->
       <div class="summary-box" style="margin-bottom:12px">
         <div class="s-row"><span>ก่อน VAT</span><span class="val" id="einv-s-sub">0.00</span></div>
+        <div class="s-row" id="einv-s-vatable-row" style="display:none"><span>มูลค่าที่คิด VAT</span><span class="val" id="einv-s-vatable">0.00</span></div>
+        <div class="s-row" id="einv-s-novat-row" style="display:none"><span>มูลค่าที่ไม่คิด VAT</span><span class="val" id="einv-s-novat">0.00</span></div>
         <div class="s-row" id="einv-s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="einv-s-vat">0.00</span></div>
         <div class="s-row" id="einv-s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย 3%</span><span class="val" style="color:var(--red)" id="einv-s-wht">0.00</span></div>
         <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="einv-s-total">0.00</span></div>
@@ -2221,6 +2246,7 @@ function einvAddRow() {
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="einvCalc()"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="einvCalc()"></td>
+    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้" onchange="einvCalc()"></td>
     <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>`;
   tbody.appendChild(tr); einvCalc();
@@ -2229,17 +2255,21 @@ window.einvAddRow=einvAddRow;
 
 function einvCalc() {
   const rows=[...document.querySelectorAll('#einv-items-body tr')];
-  let sub=0;
+  let sub=0, vatableSub=0, novatSub=0;
   rows.forEach(tr=>{
     const nums=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(nums[0]?.value)||0)*(parseFloat(nums[1]?.value)||0);
-    sub+=t; const el=tr.querySelector('.einv-row-total'); if(el) el.textContent=fmt(t);
+    sub+=t;
+    if(tr.querySelector('.item-vat-chk')?.checked) vatableSub+=t; else novatSub+=t;
+    const el=tr.querySelector('.einv-row-total'); if(el) el.textContent=fmt(t);
   });
-  const hasVat=document.getElementById('einv-vat')?.checked;
   const hasWht=document.getElementById('einv-wht')?.checked;
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v);};
-  set('einv-s-sub',sub); set('einv-s-vat',vat); set('einv-s-wht',wht); set('einv-s-total',sub+vat-wht);
+  set('einv-s-sub',sub); set('einv-s-vatable',vatableSub); set('einv-s-novat',novatSub); set('einv-s-vat',vat); set('einv-s-wht',wht); set('einv-s-total',sub+vat-wht);
+  const mixed = vatableSub>0 && novatSub>0;
+  const vabR=document.getElementById('einv-s-vatable-row'); if(vabR) vabR.style.display=mixed?'':'none';
+  const novR=document.getElementById('einv-s-novat-row'); if(novR) novR.style.display=mixed?'':'none';
   const vr=document.getElementById('einv-s-vat-row'); if(vr) vr.style.display=vat?'':'none';
   const wr=document.getElementById('einv-s-wht-row'); if(wr) wr.style.display=wht?'':'none';
 }
@@ -2252,17 +2282,19 @@ function einvGetItems() {
     const unitInp=tr.querySelector('.prod-unit-inp');
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
-    return {desc,qty,unit,price,total:qty*price};
+    const vatApplied=!!tr.querySelector('.item-vat-chk')?.checked;
+    return {desc,qty,unit,price,vatApplied,total:qty*price};
   }).filter(r=>r.desc||r.price>0);
 }
 
 async function saveEditINV(id) {
   const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
   const items=einvGetItems();
-  const hasVat=document.getElementById('einv-vat')?.checked;
   const hasWht=document.getElementById('einv-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vatableSub=items.filter(r=>r.vatApplied).reduce((s,r)=>s+r.total,0);
+  const hasVat=vatableSub>0;
+  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
   const newTotal=sub+vat-wht;
   // คำนวณ paidAmount ใหม่ให้ไม่เกิน total
   const paidAmount=Math.min(inv.paidAmount||0, newTotal);
@@ -2557,19 +2589,27 @@ function buildDocForm(type) {
     <div class="card-header"><div class="card-title">รายการสินค้า/บริการ</div></div>
     <div class="card-body" style="padding:12px 16px">
       <table class="items-tbl"><thead><tr>
-        <th style="width:32px">#</th><th>รายการ</th><th style="width:80px">จำนวน</th>
-        <th style="width:80px">หน่วย</th><th style="width:120px" class="r">ราคา/หน่วย</th>
-        <th style="width:120px" class="r">รวม</th><th style="width:32px"></th>
+        <th style="width:32px">#</th><th>รายการ</th><th style="width:70px">จำนวน</th>
+        <th style="width:70px">หน่วย</th><th style="width:110px" class="r">ราคา/หน่วย</th>
+        <th style="width:50px;text-align:center">VAT</th>
+        <th style="width:110px" class="r">รวม</th><th style="width:32px"></th>
       </tr></thead><tbody id="items-body-${type}"></tbody></table>
-      <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addRow('${type}')">+ เพิ่มรายการ</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn btn-ghost btn-sm" onclick="addRow('${type}')">+ เพิ่มรายการ</button>
+        <span style="font-size:11px;color:var(--ink4)">|</span>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setAllRowVat('${type}',true)">✅ ติ๊ก VAT ทั้งหมด</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setAllRowVat('${type}',false)">☐ ยกเลิก VAT ทั้งหมด</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink4);margin-top:4px">✔️ ติ๊ก VAT เฉพาะรายการที่ต้องการคิดภาษีมูลค่าเพิ่ม 7% — สามารถเลือกผสมกันได้ในใบเดียวกัน</div>
       <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-top:12px">
         <div>
-          <div class="tog-wrap"><label class="tog"><input type="checkbox" id="f-vat" onchange="calcDoc('${type}')"><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></div>
-          <div class="tog-wrap" style="margin-top:6px"><label class="tog"><input type="checkbox" id="f-wht" onchange="calcDoc('${type}')"><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></div>
+          <div class="tog-wrap"><label class="tog"><input type="checkbox" id="f-wht" onchange="calcDoc('${type}')"><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></div>
         </div>
         <div style="flex:1"></div>
-        <div class="summary-box" style="margin-top:0;width:260px">
+        <div class="summary-box" style="margin-top:0;width:280px">
           <div class="s-row"><span>ก่อน VAT</span><span class="val" id="s-sub">0.00</span></div>
+          <div class="s-row" id="s-vatable-row" style="display:none"><span>มูลค่าที่คิด VAT</span><span class="val" id="s-vatable">0.00</span></div>
+          <div class="s-row" id="s-novat-row" style="display:none"><span>มูลค่าที่ไม่คิด VAT</span><span class="val" id="s-novat">0.00</span></div>
           <div class="s-row" id="s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="s-vat">0.00</span></div>
           <div class="s-row" id="s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย</span><span class="val" id="s-wht" style="color:var(--red)">0.00</span></div>
           <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="s-total">0.00</span></div>
@@ -2681,8 +2721,8 @@ function selectCo(id, type) {
     const prefix = _selectedCo.prefix||'XX';
     const typeMap = {qt:'QT',inv:'INV',bl:'BL'};
     document.getElementById('f-docno').value = peekDocNo(prefix,typeMap[type]);
-    const vatEl = document.getElementById('f-vat');
-    if(vatEl) vatEl.checked = _selectedCo.hasVat;
+    // ตั้งค่า VAT เริ่มต้นของทุกรายการตามค่า default ของบริษัท (ผู้ใช้ปรับทีละรายการภายหลังได้)
+    document.querySelectorAll(`#items-body-${type} .item-vat-chk`).forEach(chk => chk.checked = !!_selectedCo.hasVat);
     calcDoc(type);
     if(type==='bl') renderBLInvList();
     renderBankOptions(_selectedCo);
@@ -2872,12 +2912,14 @@ function addRow(type) {
   const calcFn = 'calcDoc_'+type;
   window[calcFn] = ()=>calcDoc(type);
   const tbody = document.getElementById('items-body-'+type); if(!tbody) return;
+  const defaultVat = _selectedCo ? !!_selectedCo.hasVat : false;
   const tr = document.createElement('tr'); tr.id='r'+_rowCount;
   tr.innerHTML=`<td style="color:var(--ink4);font-size:11px;text-align:center">${_rowCount}</td>
     <td style="min-width:180px">${buildProductSelectHTML('', calcFn)}</td>
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="calcDoc('${type}')"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="calcDoc('${type}')"></td>
+    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้"${defaultVat?' checked':''} onchange="calcDoc('${type}')"></td>
     <td class="row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="document.getElementById('r${_rowCount}').remove();calcDoc('${type}')">✕</button></td>`;
   tbody.appendChild(tr);
@@ -2885,20 +2927,31 @@ function addRow(type) {
 }
 window.addRow=addRow;
 
+function setAllRowVat(type, val) {
+  document.querySelectorAll(`#items-body-${type} .item-vat-chk`).forEach(chk => chk.checked = val);
+  calcDoc(type);
+}
+window.setAllRowVat = setAllRowVat;
+
 function calcDoc(type) {
   const rows=[...document.querySelectorAll(`#items-body-${type} tr`)];
-  let sub=0;
+  let sub=0, vatableSub=0, novatSub=0;
   rows.forEach(tr=>{
     // inputs[type=number]: ins[0]=qty, ins[1]=price  (unit is type=text)
     const ins=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(ins[0]?.value)||0)*(parseFloat(ins[1]?.value)||0);
-    sub+=t; const el=tr.querySelector('.row-total'); if(el) el.textContent=fmt(t);
+    sub+=t;
+    if(tr.querySelector('.item-vat-chk')?.checked) vatableSub+=t; else novatSub+=t;
+    const el=tr.querySelector('.row-total'); if(el) el.textContent=fmt(t);
   });
-  const vat=document.getElementById('f-vat')?.checked?sub*.07:0;
+  const vat=vatableSub*.07;
   const wht=document.getElementById('f-wht')?.checked?sub*.03:0;
   const total=sub+vat-wht;
   const set=(id,v)=>{const el=document.getElementById(id);if(el) el.textContent=fmt(v);};
-  set('s-sub',sub); set('s-vat',vat); set('s-wht',wht); set('s-total',total);
+  set('s-sub',sub); set('s-vatable',vatableSub); set('s-novat',novatSub); set('s-vat',vat); set('s-wht',wht); set('s-total',total);
+  const mixed = vatableSub>0 && novatSub>0;
+  const vabR=document.getElementById('s-vatable-row'); if(vabR) vabR.style.display=mixed?'':'none';
+  const novR=document.getElementById('s-novat-row'); if(novR) novR.style.display=mixed?'':'none';
   const vr=document.getElementById('s-vat-row'); if(vr) vr.style.display=vat?'':'none';
   const wr=document.getElementById('s-wht-row'); if(wr) wr.style.display=wht?'':'none';
 }
@@ -2912,7 +2965,8 @@ function getFormItems(type) {
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0;
     const price=parseFloat(numIns[1]?.value)||0;
-    return {desc, qty, unit, price, total:qty*price};
+    const vatApplied=!!tr.querySelector('.item-vat-chk')?.checked;
+    return {desc, qty, unit, price, vatApplied, total:qty*price};
   }).filter(r=>r.desc||r.price>0);
 }
 
@@ -3015,10 +3069,11 @@ async function saveDoc(type) {
   }
 
   const items=getFormItems(type);
-  const hasVat=document.getElementById('f-vat')?.checked;
   const hasWht=document.getElementById('f-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vatableSub=items.filter(r=>r.vatApplied).reduce((s,r)=>s+r.total,0);
+  const hasVat=vatableSub>0;
+  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
   const paymentTerms = getSelectedPaymentTerms();
   const paymentDays = getPaymentTermDays(paymentTerms);
   const docData={
@@ -3570,11 +3625,12 @@ function viewDoc(type, id) {
     </div>`;
 
   if(src.items?.length) {
+    const hasMixedVat = src.items.some(r=>r.vatApplied) && src.items.some(r=>!r.vatApplied);
     body+=`<table class="tbl" style="margin-bottom:12px"><thead><tr>
-      <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th>
+      <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th>${hasMixedVat?'<th class="c">VAT</th>':''}<th class="r">รวม</th>
     </tr></thead><tbody>${src.items.map((r,i)=>`<tr>
       <td style="color:var(--ink4)">${i+1}</td><td>${r.desc}</td><td class="r mono">${r.qty}</td>
-      <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td><td class="r mono bold">${fmt(r.total)}</td>
+      <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td>${hasMixedVat?`<td class="c">${r.vatApplied?'✓':'—'}</td>`:''}<td class="r mono bold">${fmt(r.total)}</td>
     </tr>`).join('')}</tbody></table>
     <div class="summary-box">
       <div class="s-row"><span>ก่อน VAT</span><span class="val">${fmt(src.subtotal)}</span></div>
@@ -3763,7 +3819,9 @@ function printCurrentDoc() {
     </div>
 
     <!-- ITEMS TABLE -->
-    ${src.items?.length?`
+    ${src.items?.length?(()=>{
+      const hasMixedVat = src.items.some(r=>r.vatApplied) && src.items.some(r=>!r.vatApplied);
+      return `
     <table class="items-table">
       <thead><tr>
         <th style="width:32px">#</th>
@@ -3771,6 +3829,7 @@ function printCurrentDoc() {
         <th class="r" style="width:70px">จำนวน</th>
         <th style="width:60px">หน่วย</th>
         <th class="r" style="width:100px">ราคา/หน่วย</th>
+        ${hasMixedVat?'<th style="width:40px;text-align:center">VAT</th>':''}
         <th class="r" style="width:110px">จำนวนเงิน</th>
       </tr></thead>
       <tbody>
@@ -3780,6 +3839,7 @@ function printCurrentDoc() {
           <td class="r mono">${r.qty.toLocaleString()}</td>
           <td>${r.unit||''}</td>
           <td class="r mono">${fmt(r.price)}</td>
+          ${hasMixedVat?`<td style="text-align:center">${r.vatApplied?'✓':'—'}</td>`:''}
           <td class="r mono" style="font-weight:600">${fmt(r.total)}</td>
         </tr>`).join('')}
       </tbody>
@@ -3793,7 +3853,8 @@ function printCurrentDoc() {
         ${src.wht?`<div class="sr"><span style="color:#b91c1c">หัก ณ ที่จ่าย 3%</span><span style="color:#b91c1c">-${fmt(src.wht)}</span></div>`:''}
         <div class="sr total"><span>ยอดสุทธิ</span><span>${fmt(src.total)}</span></div>
       </div>
-    </div>`:''}
+    </div>`;
+    })():''}
 
     <!-- BANK INFO — fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo ใน invoice -->
     ${(()=>{
