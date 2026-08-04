@@ -468,6 +468,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="nav-section">ตั้งค่า</div>
   <button class="nav-item" onclick="goPage('products')" id="nav-products"><span class="nav-icon">📦</span>รายละเอียดสินค้า</button>
   <button class="nav-item" onclick="goPage('companies')" id="nav-companies"><span class="nav-icon">🏛</span>จัดการบริษัท</button>
+  <button class="nav-item" onclick="goPage('backup')" id="nav-backup"><span class="nav-icon">🗄️</span>สำรองข้อมูล</button>
   <button class="nav-item" onclick="goPage('settings')" id="nav-settings"><span class="nav-icon">⚙️</span>ตั้งค่าระบบ</button>
   <div class="sidebar-spacer"></div>
   <div class="sync-bar">
@@ -1119,9 +1120,10 @@ function saveLocalBackup() {
       quotations: data.quotations || [],
       invoices: data.invoices || [],
       billings: data.billings || [],
-      customers: data.customers || []
+      customers: data.customers || [],
+      products: data.products || []
     };
-    const total = payload.companies.length + payload.quotations.length + payload.invoices.length + payload.billings.length + payload.customers.length;
+    const total = payload.companies.length + payload.quotations.length + payload.invoices.length + payload.billings.length + payload.customers.length + payload.products.length;
     if (total === 0) return; // ไม่ backup ถ้าข้อมูลว่างอยู่แล้ว
     localStorage.setItem(LS_BACKUP_PREFIX + ts, JSON.stringify(payload));
     // ตัด backup เก่าออก เหลือไว้แค่ MAX_LOCAL_BACKUPS ชุด
@@ -1466,7 +1468,7 @@ function goPage(p) {
     'report-aging':'Aging Report','report-receipt':'เงินรับรายเดือน',
     companies:'จัดการบริษัท',settings:'ตั้งค่าระบบ','new-qt':'สร้างใบเสนอราคา',
     'new-inv':'สร้างใบแจ้งหนี้','new-bl':'สร้างใบวางบิล',
-    products:'รายละเอียดสินค้า'
+    products:'รายละเอียดสินค้า', backup:'สำรองข้อมูล'
   };
   document.getElementById('page-title').textContent = titles[p]||p;
   document.getElementById('page-sub').textContent = '';
@@ -1480,7 +1482,7 @@ function goPage(p) {
     'report-ar': renderReportAR, 'report-co': renderReportCO,
     'report-aging': renderReportAging, 'report-receipt': renderReportReceipt,
     'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
-    products: renderProducts,
+    products: renderProducts, backup: renderBackup,
   };
   pc.innerHTML = '';
   if(pages[p]) pages[p]();
@@ -5116,25 +5118,38 @@ document.querySelectorAll('.overlay').forEach(ov=>{
 });
 
 // ══════════════════════════════════════════════════════
-// BACKUP — EXPORT / IMPORT JSON
+// BACKUP — EXPORT / IMPORT JSON (ไฟล์สำรอง ตั้งชื่อตามวันเดือนปี)
 // ══════════════════════════════════════════════════════
+const LS_LAST_EXPORT = 'ar_last_export_at';
+const BACKUP_COLS = ['companies','quotations','invoices','billings','customers','products'];
+
+function _backupFileDateStamp(d) {
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
 function exportData() {
+  const now = new Date();
   const payload = {
-    exportedAt: new Date().toISOString(),
-    version: 3,
-    companies: data.companies,
-    quotations: data.quotations,
-    invoices: data.invoices,
-    billings: data.billings,
+    exportedAt: now.toISOString(),
+    version: 4,
+    companies: data.companies || [],
+    quotations: data.quotations || [],
+    invoices: data.invoices || [],
+    billings: data.billings || [],
     customers: data.customers || [],
+    products: data.products || [],
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const ts = new Date().toISOString().slice(0,10);
-  a.href=url; a.download=`ar-backup-${ts}.json`; a.click();
+  a.href = url;
+  a.download = `AR-สำรองข้อมูล-${_backupFileDateStamp(now)}.json`;
+  a.click();
   URL.revokeObjectURL(url);
-  toast('Export สำเร็จ ✅','ok');
+  try { localStorage.setItem(LS_LAST_EXPORT, now.toISOString()); } catch(e){}
+  toast('ดาวน์โหลดไฟล์สำรองสำเร็จ ✅','ok');
+  if(_currentPage === 'backup') renderBackup();
 }
 window.exportData=exportData;
 
@@ -5147,22 +5162,151 @@ function importData(event) {
       if(!payload.companies||!payload.quotations||!payload.invoices||!payload.billings) {
         toast('❌ ไฟล์ไม่ถูกต้อง — ไม่พบข้อมูลที่คาดหวัง','err'); return;
       }
-      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length} | ลูกค้า: ${(payload.customers||[]).length}`)) return;
-      data.companies=payload.companies;
-      data.quotations=payload.quotations;
-      data.invoices=payload.invoices;
-      data.billings=payload.billings;
-      data.customers=payload.customers||[];
-      companies=data.companies;
-      ['companies','quotations','invoices','billings','customers'].forEach(col=>syncLS(col,data[col]));
-      toast(`Import สำเร็จ — ${payload.companies.length} บริษัท, ${payload.invoices.length} INV ✅`,'ok');
-      goPage(_currentPage);
+      const productsCount = (payload.products||[]).length;
+      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่ด้วยข้อมูลในไฟล์นี้\n\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length}\nลูกค้า: ${(payload.customers||[]).length} | สินค้า: ${productsCount}\n\nสำรองข้อมูลปัจจุบันไว้ในเครื่องอัตโนมัติก่อนดำเนินการ`)) return;
+
+      saveLocalBackup(); // เก็บข้อมูลปัจจุบันไว้กู้คืนได้ ก่อนทับ
+
+      const nowIso = new Date().toISOString();
+      BACKUP_COLS.forEach(col => {
+        const arr = payload[col];
+        if(!Array.isArray(arr)) return; // ไฟล์เก่าอาจไม่มี products — ไม่แตะของเดิม
+        // bump updatedAt ให้เป็นข้อมูลล่าสุด เพื่อให้ restore ชนะเมื่อ push ขึ้น Firebase
+        data[col] = arr.map(d => ({...d, updatedAt: d.updatedAt || nowIso}));
+        syncLS(col, data[col]);
+      });
+      companies = data.companies;
+
+      toast(`กู้คืนข้อมูลสำเร็จ — ${data.companies.length} บริษัท, ${data.invoices.length} ใบแจ้งหนี้ ✅`,'ok');
+      goPage(_currentPage === 'backup' ? 'backup' : _currentPage);
+
+      if(_fbdb) {
+        setTimeout(() => {
+          toast('กำลังจะ Push ข้อมูลที่กู้คืนขึ้น Firebase — กรุณายืนยันในกล่องถัดไป', 'info');
+          syncPush();
+        }, 400);
+      }
     } catch(err) { toast('❌ ไม่สามารถอ่านไฟล์ได้: '+err.message,'err'); }
   };
   reader.readAsText(file);
   event.target.value=''; // reset so same file can be re-imported
 }
 window.importData=importData;
+
+// ── กู้คืนจาก Local Backup อัตโนมัติ (เก็บไว้ 5 ชุดล่าสุด ก่อน operation เสี่ยง) ──
+function restoreFromLocalBackup(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if(!raw) { toast('❌ ไม่พบข้อมูลสำรองนี้','err'); return; }
+    const payload = JSON.parse(raw);
+    const when = payload.savedAt ? new Date(payload.savedAt).toLocaleString('th-TH') : '?';
+    const productsCount = (payload.products||[]).length;
+    if(!confirm(`กู้คืนข้อมูลสำรองอัตโนมัติเมื่อ ${when}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\n\nบริษัท: ${(payload.companies||[]).length} | QT: ${(payload.quotations||[]).length} | INV: ${(payload.invoices||[]).length} | BL: ${(payload.billings||[]).length}\nลูกค้า: ${(payload.customers||[]).length} | สินค้า: ${productsCount}`)) return;
+
+    saveLocalBackup(); // เก็บสถานะปัจจุบันไว้ก่อนทับ เผื่อกู้คืนย้อนกลับ
+
+    const nowIso = new Date().toISOString();
+    BACKUP_COLS.forEach(col => {
+      const arr = payload[col];
+      if(!Array.isArray(arr)) return;
+      data[col] = arr.map(d => ({...d, updatedAt: d.updatedAt || nowIso}));
+      syncLS(col, data[col]);
+    });
+    companies = data.companies;
+
+    toast('กู้คืนข้อมูลสำรองอัตโนมัติสำเร็จ ✅','ok');
+    goPage('backup');
+
+    if(_fbdb) {
+      setTimeout(() => {
+        toast('กำลังจะ Push ข้อมูลที่กู้คืนขึ้น Firebase — กรุณายืนยันในกล่องถัดไป', 'info');
+        syncPush();
+      }, 400);
+    }
+  } catch(err) { toast('❌ กู้คืนไม่สำเร็จ: '+err.message,'err'); }
+}
+window.restoreFromLocalBackup = restoreFromLocalBackup;
+
+function deleteLocalBackup(key) {
+  if(!confirm('ลบข้อมูลสำรองชุดนี้ออกจากเครื่อง?')) return;
+  localStorage.removeItem(key);
+  toast('ลบข้อมูลสำรองแล้ว','info');
+  goPage('backup');
+}
+window.deleteLocalBackup = deleteLocalBackup;
+
+function manualBackupNow() {
+  saveLocalBackup();
+  toast('บันทึกข้อมูลสำรองลงในเครื่องแล้ว 💾','ok');
+  goPage('backup');
+}
+window.manualBackupNow = manualBackupNow;
+
+function renderBackup() {
+  const labelMap = {companies:'บริษัท',quotations:'ใบเสนอราคา',invoices:'ใบแจ้งหนี้',billings:'ใบวางบิล',customers:'ลูกค้า',products:'สินค้า'};
+  const counts = BACKUP_COLS.map(col => `<div class="field" style="text-align:center">
+      <div style="font-size:20px;font-weight:700;color:var(--ink1)">${(data[col]||[]).length}</div>
+      <div style="font-size:11px;color:var(--ink4)">${labelMap[col]}</div>
+    </div>`).join('');
+
+  const lastExport = localStorage.getItem(LS_LAST_EXPORT);
+  const lastExportText = lastExport ? new Date(lastExport).toLocaleString('th-TH') : 'ยังไม่เคยสำรองข้อมูล';
+
+  const backups = listLocalBackups();
+  const backupRows = backups.length ? backups.map(b => {
+    const when = b.savedAt ? new Date(b.savedAt).toLocaleString('th-TH') : '?';
+    const n = (b.companies||[]).length + (b.quotations||[]).length + (b.invoices||[]).length + (b.billings||[]).length + (b.customers||[]).length + (b.products||[]).length;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--ink1)">🕓 ${when}</div>
+        <div style="font-size:11px;color:var(--ink4)">${n} รายการ • ${b.sizeKB} KB</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline" style="padding:6px 10px;font-size:12px" onclick="restoreFromLocalBackup('${b.key}')">↩️ กู้คืน</button>
+        <button class="btn btn-outline" style="padding:6px 10px;font-size:12px;color:var(--red)" onclick="deleteLocalBackup('${b.key}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join('') : `<div style="font-size:13px;color:var(--ink4);padding:10px 0">ยังไม่มีข้อมูลสำรองอัตโนมัติในเครื่องนี้ — ระบบจะสำรองให้อัตโนมัติก่อนการทำรายการที่มีความเสี่ยง</div>`;
+
+  document.getElementById('page-content').innerHTML = `
+  <div class="card" style="max-width:640px">
+    <div class="card-header"><span class="card-title">📊 ข้อมูลปัจจุบันในระบบ</span></div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">${counts}</div>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:640px;border:1.5px solid var(--accent)">
+    <div class="card-header" style="background:rgba(99,102,241,.06)"><span class="card-title">📥 สำรองข้อมูล (ดาวน์โหลดเป็นไฟล์)</span></div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
+        ดาวน์โหลดข้อมูลทั้งหมด (บริษัท, ใบเสนอราคา, ใบแจ้งหนี้, ใบวางบิล, ลูกค้า, สินค้า) เป็นไฟล์ .json<br>
+        ชื่อไฟล์ตั้งตามวัน-เดือน-ปี-เวลาที่สำรอง เก็บไว้ในเครื่อง / Google Drive ได้ตามสะดวก
+      </p>
+      <div style="font-size:12px;color:var(--ink4);margin-bottom:10px">สำรองไฟล์ล่าสุด: ${lastExportText}</div>
+      <button class="btn btn-primary" onclick="exportData()">📥 ดาวน์โหลดข้อมูลสำรอง (.json)</button>
+      <button class="btn btn-outline" style="margin-left:8px" onclick="manualBackupNow()">💾 สำรองด่วนไว้ในเครื่อง</button>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:640px;border:1.5px solid #f59e0b">
+    <div class="card-header" style="background:rgba(245,158,11,.08)"><span class="card-title">📤 กู้คืนข้อมูลจากไฟล์สำรอง</span></div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
+        เลือกไฟล์ .json ที่เคยสำรองไว้ เพื่อกู้คืนข้อมูลกลับมาใช้งาน<br>
+        <strong>⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่</strong> — ระบบจะสำรองข้อมูลปัจจุบันไว้ในเครื่องให้อัตโนมัติก่อนกู้คืนเสมอ<br>
+        หลังกู้คืนแล้ว ระบบจะถามยืนยันก่อน Push ข้อมูลขึ้น Firebase ให้ทุกเครื่องเห็นตรงกัน
+      </p>
+      <input type="file" accept=".json,application/json" onchange="importData(event)">
+    </div>
+  </div>
+
+  <div class="card" style="max-width:640px">
+    <div class="card-header"><span class="card-title">🗂️ ประวัติสำรองอัตโนมัติในเครื่องนี้ (สูงสุด 5 ชุดล่าสุด)</span></div>
+    <div class="card-body">${backupRows}</div>
+  </div>`;
+}
+window.renderBackup = renderBackup;
 
 // ══════════════════════════════════════════════════════
 // MOBILE SIDEBAR TOGGLE
