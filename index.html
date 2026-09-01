@@ -1,4 +1,6 @@
-<!-- AR SYSTEM v2.9.4 — 2026-05-29
+<!-- AR SYSTEM v2.9.6 — 2026-09-02
+     changelog v2.9.6: แอดมินลบ/แก้ไข payment ตอนนี้ sync ไปยัง fin_transactions ของ Finance app ให้อัตโนมัติ (voidFinanceTransaction/updateFinanceTransaction), เขียน audit_logs ทุกครั้งที่แอดมินแก้ (AR_PAYMENT_VOIDED_BY_ADMIN/AR_PAYMENT_EDITED_BY_ADMIN), เพิ่มคิว retry (ar_admin_pending_sync) กรณี offline/ล้มเหลว พร้อมปุ่ม Retry sync Finance ในหน้า admin Payments, แก้ไขให้ admin เขียนกลับ Firestore (invoices) ด้วยไม่ใช่แค่ localStorage เพื่อกัน realtime listener ทับข้อมูลที่แก้คืน
+     changelog v2.9.5: เพิ่มวิธีเข้า Admin Panel บนมือถือ/แท็บเล็ต — กดค้างที่โลโก้ AR SYSTEM มุมซ้ายบน 3 วินาที (touchstart/mousedown), ใช้คู่กับปุ่ม A ค้าง 3 วิ (เดิม) ได้ทั้งสองแบบ
      changelog v2.9.2: admAddPmt/admDelPmt/admEditPmt guard cancelled/draft status — ป้องกัน status เปลี่ยนโดยไม่ตั้งใจ
      changelog v2.9.1: แก้ dashboard aging bucket ผิด, สร้าง helper กลาง calcInvoiceStatus/calcInvoiceAgingBucket/calcInvoiceRemain, repair paidAmount อัตโนมัติ, เพิ่ม repairInvoices() + debugDashboard()
      changelog v2.9: รับชำระ AR ได้แม้เดือน Finance ปิดแล้ว โดยเลื่อน financeDate ไปเดือนถัดไปที่ยังเปิด, เพิ่ม audit trail paymentDate/financeDate, ปรับ retry sync, แก้ billing atomic write, บังคับ customerId, ปรับรายงานรับชำระ
@@ -21,7 +23,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.9.4 — 2026-05-29</title>
+<title>AR System | v2.9.6 — 2026-09-02</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -448,10 +450,10 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 
 <!-- ── SIDEBAR ── -->
 <aside class="sidebar">
-  <div class="sidebar-logo">
+  <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.9.4 — 2026-05-29</div>
+    <div class="logo-sub">v2.9.6 — 2026-09-02</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -468,7 +470,6 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="nav-section">ตั้งค่า</div>
   <button class="nav-item" onclick="goPage('products')" id="nav-products"><span class="nav-icon">📦</span>รายละเอียดสินค้า</button>
   <button class="nav-item" onclick="goPage('companies')" id="nav-companies"><span class="nav-icon">🏛</span>จัดการบริษัท</button>
-  <button class="nav-item" onclick="goPage('backup')" id="nav-backup"><span class="nav-icon">🗄️</span>สำรองข้อมูล</button>
   <button class="nav-item" onclick="goPage('settings')" id="nav-settings"><span class="nav-icon">⚙️</span>ตั้งค่าระบบ</button>
   <div class="sidebar-spacer"></div>
   <div class="sync-bar">
@@ -534,7 +535,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
     <div id="pmt-remain-info" style="margin-top:12px;padding:10px 14px;border-radius:var(--r);font-size:13px;font-weight:600"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-payment')">ยกเลิก</button>
-      <button class="btn btn-success" onclick="confirmPayment()">✅ บันทึกรับชำระ</button>
+      <button class="btn btn-success" id="btn-confirm-payment" onclick="confirmPayment()">✅ บันทึกรับชำระ</button>
     </div>
   </div>
 </div>
@@ -722,6 +723,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .adm-toast.adm-show{transform:translateY(0);opacity:1}
 .adm-toast.adm-ok{background:rgba(34,197,94,.12);color:#22c55e;border-color:rgba(34,197,94,.3)}
 .adm-toast.adm-err{background:rgba(239,68,68,.12);color:#ef4444;border-color:rgba(239,68,68,.3)}
+.adm-toast.adm-warn{background:rgba(249,115,22,.12);color:#f97316;border-color:rgba(249,115,22,.3)}
 .adm-toast.adm-info{background:#1c1c22;color:#a0a0b8;border-color:#2a2a38}
 
 /* ── ADMIN DANGER ZONE ── */
@@ -1120,10 +1122,9 @@ function saveLocalBackup() {
       quotations: data.quotations || [],
       invoices: data.invoices || [],
       billings: data.billings || [],
-      customers: data.customers || [],
-      products: data.products || []
+      customers: data.customers || []
     };
-    const total = payload.companies.length + payload.quotations.length + payload.invoices.length + payload.billings.length + payload.customers.length + payload.products.length;
+    const total = payload.companies.length + payload.quotations.length + payload.invoices.length + payload.billings.length + payload.customers.length;
     if (total === 0) return; // ไม่ backup ถ้าข้อมูลว่างอยู่แล้ว
     localStorage.setItem(LS_BACKUP_PREFIX + ts, JSON.stringify(payload));
     // ตัด backup เก่าออก เหลือไว้แค่ MAX_LOCAL_BACKUPS ชุด
@@ -1468,7 +1469,7 @@ function goPage(p) {
     'report-aging':'Aging Report','report-receipt':'เงินรับรายเดือน',
     companies:'จัดการบริษัท',settings:'ตั้งค่าระบบ','new-qt':'สร้างใบเสนอราคา',
     'new-inv':'สร้างใบแจ้งหนี้','new-bl':'สร้างใบวางบิล',
-    products:'รายละเอียดสินค้า', backup:'สำรองข้อมูล'
+    products:'รายละเอียดสินค้า'
   };
   document.getElementById('page-title').textContent = titles[p]||p;
   document.getElementById('page-sub').textContent = '';
@@ -1482,7 +1483,7 @@ function goPage(p) {
     'report-ar': renderReportAR, 'report-co': renderReportCO,
     'report-aging': renderReportAging, 'report-receipt': renderReportReceipt,
     'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
-    products: renderProducts, backup: renderBackup,
+    products: renderProducts,
   };
   pc.innerHTML = '';
   if(pages[p]) pages[p]();
@@ -1863,7 +1864,7 @@ function refreshQTTable() {
       <td style="font-size:12px;color:var(--ink4)">${q.companyName}</td>
       <td>${q.custName}</td>
       <td class="r mono bold">${fmt(q.total)}</td>
-      <td class="c">${(()=>{ const items=q.items||[]; const hasV=items.some(r=>r.vatApplied), hasN=items.some(r=>!r.vatApplied); const mixed=hasV&&hasN; const label=mixed?'VAT บางส่วน':q.hasVat?'มี VAT':'ไม่มี'; const cls=mixed?'badge-partial':q.hasVat?'badge-sent':'badge-draft'; return `<span class="badge ${cls}">${label}</span>`; })()}</td>
+      <td class="c"><span class="badge ${q.hasVat?'badge-sent':'badge-draft'}">${q.hasVat?'มี VAT':'ไม่มี'}</span></td>
       <td>${badgeHTML(q.status)}${q.linkedInvoice?'<span class="badge badge-inv" style="margin-left:4px">INV</span>':''}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-xs btn-outline" onclick="viewDoc('qt','${q.id}')">ดู</button>
@@ -1915,7 +1916,6 @@ function editQT(id) {
     <td><input class="item-inp r" type="number" value="${r.qty||1}" min="0" step="any" oninput="eqtCalc()"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
     <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="eqtCalc()"></td>
-    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้"${(r.vatApplied!==undefined?r.vatApplied:!!q.hasVat)?' checked':''} onchange="eqtCalc()"></td>
     <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>
   </tr>`).join('');
@@ -1962,32 +1962,24 @@ function editQT(id) {
             <th>รายการ</th>
             <th class="r" style="width:70px">จำนวน</th>
             <th style="width:60px">หน่วย</th>
-            <th class="r" style="width:90px">ราคา/หน่วย</th>
-            <th style="width:44px;text-align:center">VAT</th>
-            <th class="r" style="width:90px">รวม</th>
+            <th class="r" style="width:100px">ราคา/หน่วย</th>
+            <th class="r" style="width:100px">รวม</th>
             <th style="width:30px"></th>
           </tr></thead>
           <tbody id="eqt-items-body">${itemsHtml}</tbody>
         </table>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-        <button class="btn btn-ghost btn-sm" onclick="eqtAddRow()">+ เพิ่มรายการ</button>
-        <span style="font-size:11px;color:var(--ink4)">|</span>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('#eqt-items-body .item-vat-chk').forEach(c=>c.checked=true);eqtCalc()">✅ ติ๊ก VAT ทั้งหมด</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('#eqt-items-body .item-vat-chk').forEach(c=>c.checked=false);eqtCalc()">☐ ยกเลิก VAT ทั้งหมด</button>
-      </div>
-      <div style="font-size:11px;color:var(--ink4);margin-bottom:10px">✔️ ติ๊ก VAT เฉพาะรายการที่ต้องการคิดภาษีมูลค่าเพิ่ม 7% — เลือกผสมกันได้ในใบเดียวกัน</div>
+      <button class="btn btn-ghost btn-sm" onclick="eqtAddRow()" style="margin-bottom:12px">+ เพิ่มรายการ</button>
 
-      <!-- WHT -->
+      <!-- VAT / WHT -->
       <div style="display:flex;gap:16px;margin-bottom:10px">
+        <label class="tog-wrap"><label class="tog"><input type="checkbox" id="eqt-vat" onchange="eqtCalc()" ${q.hasVat?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></label>
         <label class="tog-wrap"><label class="tog"><input type="checkbox" id="eqt-wht" onchange="eqtCalc()" ${q.hasWht?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></label>
       </div>
 
       <!-- Summary -->
       <div class="summary-box" style="margin-bottom:12px">
         <div class="s-row"><span>ก่อน VAT</span><span class="val" id="eqt-s-sub">0.00</span></div>
-        <div class="s-row" id="eqt-s-vatable-row" style="display:none"><span>มูลค่าที่คิด VAT</span><span class="val" id="eqt-s-vatable">0.00</span></div>
-        <div class="s-row" id="eqt-s-novat-row" style="display:none"><span>มูลค่าที่ไม่คิด VAT</span><span class="val" id="eqt-s-novat">0.00</span></div>
         <div class="s-row" id="eqt-s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="eqt-s-vat">0.00</span></div>
         <div class="s-row" id="eqt-s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย 3%</span><span class="val" style="color:var(--red)" id="eqt-s-wht">0.00</span></div>
         <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="eqt-s-total">0.00</span></div>
@@ -2016,7 +2008,6 @@ function eqtAddRow() {
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="eqtCalc()"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="eqtCalc()"></td>
-    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้" onchange="eqtCalc()"></td>
     <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>`;
   tbody.appendChild(tr); eqtCalc();
@@ -2025,21 +2016,17 @@ window.eqtAddRow=eqtAddRow;
 
 function eqtCalc() {
   const rows=[...document.querySelectorAll('#eqt-items-body tr')];
-  let sub=0, vatableSub=0, novatSub=0;
+  let sub=0;
   rows.forEach(tr=>{
     const nums=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(nums[0]?.value)||0)*(parseFloat(nums[1]?.value)||0);
-    sub+=t;
-    if(tr.querySelector('.item-vat-chk')?.checked) vatableSub+=t; else novatSub+=t;
-    const el=tr.querySelector('.eqt-row-total'); if(el) el.textContent=fmt(t);
+    sub+=t; const el=tr.querySelector('.eqt-row-total'); if(el) el.textContent=fmt(t);
   });
+  const hasVat=document.getElementById('eqt-vat')?.checked;
   const hasWht=document.getElementById('eqt-wht')?.checked;
-  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v);};
-  set('eqt-s-sub',sub); set('eqt-s-vatable',vatableSub); set('eqt-s-novat',novatSub); set('eqt-s-vat',vat); set('eqt-s-wht',wht); set('eqt-s-total',sub+vat-wht);
-  const mixed = vatableSub>0 && novatSub>0;
-  const vabR=document.getElementById('eqt-s-vatable-row'); if(vabR) vabR.style.display=mixed?'':'none';
-  const novR=document.getElementById('eqt-s-novat-row'); if(novR) novR.style.display=mixed?'':'none';
+  set('eqt-s-sub',sub); set('eqt-s-vat',vat); set('eqt-s-wht',wht); set('eqt-s-total',sub+vat-wht);
   const vr=document.getElementById('eqt-s-vat-row'); if(vr) vr.style.display=vat?'':'none';
   const wr=document.getElementById('eqt-s-wht-row'); if(wr) wr.style.display=wht?'':'none';
 }
@@ -2052,19 +2039,17 @@ function eqtGetItems() {
     const unitInp=tr.querySelector('.prod-unit-inp');
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
-    const vatApplied=!!tr.querySelector('.item-vat-chk')?.checked;
-    return {desc,qty,unit,price,vatApplied,total:qty*price};
+    return {desc,qty,unit,price,total:qty*price};
   }).filter(r=>r.desc||r.price>0);
 }
 
 async function saveEditQT(id) {
   const q=data.quotations.find(x=>x.id===id); if(!q) return;
   const items=eqtGetItems();
+  const hasVat=document.getElementById('eqt-vat')?.checked;
   const hasWht=document.getElementById('eqt-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vatableSub=items.filter(r=>r.vatApplied).reduce((s,r)=>s+r.total,0);
-  const hasVat=vatableSub>0;
-  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
   const paymentTerms = document.getElementById('eqt-terms')?.value || q.paymentTerms || q.terms || '30 วัน';
   const paymentDays = getPaymentTermDays(paymentTerms);
   const d={
@@ -2152,7 +2137,6 @@ function editINV(id) {
     <td><input class="item-inp r" type="number" value="${r.qty||1}" min="0" step="any" oninput="einvCalc()"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
     <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="einvCalc()"></td>
-    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้"${(r.vatApplied!==undefined?r.vatApplied:!!inv.hasVat)?' checked':''} onchange="einvCalc()"></td>
     <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>
   </tr>`).join('');
@@ -2192,32 +2176,24 @@ function editINV(id) {
             <th>รายการ</th>
             <th class="r" style="width:70px">จำนวน</th>
             <th style="width:60px">หน่วย</th>
-            <th class="r" style="width:90px">ราคา/หน่วย</th>
-            <th style="width:44px;text-align:center">VAT</th>
-            <th class="r" style="width:90px">รวม</th>
+            <th class="r" style="width:100px">ราคา/หน่วย</th>
+            <th class="r" style="width:100px">รวม</th>
             <th style="width:30px"></th>
           </tr></thead>
           <tbody id="einv-items-body">${itemsHtml}</tbody>
         </table>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-        <button class="btn btn-ghost btn-sm" onclick="einvAddRow()">+ เพิ่มรายการ</button>
-        <span style="font-size:11px;color:var(--ink4)">|</span>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('#einv-items-body .item-vat-chk').forEach(c=>c.checked=true);einvCalc()">✅ ติ๊ก VAT ทั้งหมด</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('#einv-items-body .item-vat-chk').forEach(c=>c.checked=false);einvCalc()">☐ ยกเลิก VAT ทั้งหมด</button>
-      </div>
-      <div style="font-size:11px;color:var(--ink4);margin-bottom:10px">✔️ ติ๊ก VAT เฉพาะรายการที่ต้องการคิดภาษีมูลค่าเพิ่ม 7% — เลือกผสมกันได้ในใบเดียวกัน</div>
+      <button class="btn btn-ghost btn-sm" onclick="einvAddRow()" style="margin-bottom:12px">+ เพิ่มรายการ</button>
 
-      <!-- WHT -->
+      <!-- VAT / WHT -->
       <div style="display:flex;gap:16px;margin-bottom:10px">
+        <label class="tog-wrap"><label class="tog"><input type="checkbox" id="einv-vat" onchange="einvCalc()" ${inv.hasVat?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></label>
         <label class="tog-wrap"><label class="tog"><input type="checkbox" id="einv-wht" onchange="einvCalc()" ${inv.hasWht?'checked':''}><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></label>
       </div>
 
       <!-- Summary -->
       <div class="summary-box" style="margin-bottom:12px">
         <div class="s-row"><span>ก่อน VAT</span><span class="val" id="einv-s-sub">0.00</span></div>
-        <div class="s-row" id="einv-s-vatable-row" style="display:none"><span>มูลค่าที่คิด VAT</span><span class="val" id="einv-s-vatable">0.00</span></div>
-        <div class="s-row" id="einv-s-novat-row" style="display:none"><span>มูลค่าที่ไม่คิด VAT</span><span class="val" id="einv-s-novat">0.00</span></div>
         <div class="s-row" id="einv-s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="einv-s-vat">0.00</span></div>
         <div class="s-row" id="einv-s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย 3%</span><span class="val" style="color:var(--red)" id="einv-s-wht">0.00</span></div>
         <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="einv-s-total">0.00</span></div>
@@ -2246,7 +2222,6 @@ function einvAddRow() {
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="einvCalc()"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="einvCalc()"></td>
-    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้" onchange="einvCalc()"></td>
     <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>`;
   tbody.appendChild(tr); einvCalc();
@@ -2255,21 +2230,17 @@ window.einvAddRow=einvAddRow;
 
 function einvCalc() {
   const rows=[...document.querySelectorAll('#einv-items-body tr')];
-  let sub=0, vatableSub=0, novatSub=0;
+  let sub=0;
   rows.forEach(tr=>{
     const nums=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(nums[0]?.value)||0)*(parseFloat(nums[1]?.value)||0);
-    sub+=t;
-    if(tr.querySelector('.item-vat-chk')?.checked) vatableSub+=t; else novatSub+=t;
-    const el=tr.querySelector('.einv-row-total'); if(el) el.textContent=fmt(t);
+    sub+=t; const el=tr.querySelector('.einv-row-total'); if(el) el.textContent=fmt(t);
   });
+  const hasVat=document.getElementById('einv-vat')?.checked;
   const hasWht=document.getElementById('einv-wht')?.checked;
-  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v);};
-  set('einv-s-sub',sub); set('einv-s-vatable',vatableSub); set('einv-s-novat',novatSub); set('einv-s-vat',vat); set('einv-s-wht',wht); set('einv-s-total',sub+vat-wht);
-  const mixed = vatableSub>0 && novatSub>0;
-  const vabR=document.getElementById('einv-s-vatable-row'); if(vabR) vabR.style.display=mixed?'':'none';
-  const novR=document.getElementById('einv-s-novat-row'); if(novR) novR.style.display=mixed?'':'none';
+  set('einv-s-sub',sub); set('einv-s-vat',vat); set('einv-s-wht',wht); set('einv-s-total',sub+vat-wht);
   const vr=document.getElementById('einv-s-vat-row'); if(vr) vr.style.display=vat?'':'none';
   const wr=document.getElementById('einv-s-wht-row'); if(wr) wr.style.display=wht?'':'none';
 }
@@ -2282,19 +2253,17 @@ function einvGetItems() {
     const unitInp=tr.querySelector('.prod-unit-inp');
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
-    const vatApplied=!!tr.querySelector('.item-vat-chk')?.checked;
-    return {desc,qty,unit,price,vatApplied,total:qty*price};
+    return {desc,qty,unit,price,total:qty*price};
   }).filter(r=>r.desc||r.price>0);
 }
 
 async function saveEditINV(id) {
   const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
   const items=einvGetItems();
+  const hasVat=document.getElementById('einv-vat')?.checked;
   const hasWht=document.getElementById('einv-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vatableSub=items.filter(r=>r.vatApplied).reduce((s,r)=>s+r.total,0);
-  const hasVat=vatableSub>0;
-  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
   const newTotal=sub+vat-wht;
   // คำนวณ paidAmount ใหม่ให้ไม่เกิน total
   const paidAmount=Math.min(inv.paidAmount||0, newTotal);
@@ -2466,7 +2435,9 @@ function renderPayments() {
   allPmts.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const thisMonth = today().slice(0, 7);
   const pendingQ = JSON.parse(localStorage.getItem('ar_pending_sync') || '[]');
-  const retryBadge = pendingQ.length ? ` <span style="background:var(--red);color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;vertical-align:middle">${pendingQ.length}</span>` : '';
+  const pendingAdminQ = JSON.parse(localStorage.getItem('ar_admin_pending_sync') || '[]');
+  const pendingTotal = pendingQ.length + pendingAdminQ.length;
+  const retryBadge = pendingTotal ? ` <span style="background:var(--red);color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;vertical-align:middle">${pendingTotal}</span>` : '';
 
   // distinct months for filters
   const payMonths = [...new Set(allPmts.map(p=>(p.paymentDate||p.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
@@ -2589,27 +2560,19 @@ function buildDocForm(type) {
     <div class="card-header"><div class="card-title">รายการสินค้า/บริการ</div></div>
     <div class="card-body" style="padding:12px 16px">
       <table class="items-tbl"><thead><tr>
-        <th style="width:32px">#</th><th>รายการ</th><th style="width:70px">จำนวน</th>
-        <th style="width:70px">หน่วย</th><th style="width:110px" class="r">ราคา/หน่วย</th>
-        <th style="width:50px;text-align:center">VAT</th>
-        <th style="width:110px" class="r">รวม</th><th style="width:32px"></th>
+        <th style="width:32px">#</th><th>รายการ</th><th style="width:80px">จำนวน</th>
+        <th style="width:80px">หน่วย</th><th style="width:120px" class="r">ราคา/หน่วย</th>
+        <th style="width:120px" class="r">รวม</th><th style="width:32px"></th>
       </tr></thead><tbody id="items-body-${type}"></tbody></table>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
-        <button class="btn btn-ghost btn-sm" onclick="addRow('${type}')">+ เพิ่มรายการ</button>
-        <span style="font-size:11px;color:var(--ink4)">|</span>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="setAllRowVat('${type}',true)">✅ ติ๊ก VAT ทั้งหมด</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="setAllRowVat('${type}',false)">☐ ยกเลิก VAT ทั้งหมด</button>
-      </div>
-      <div style="font-size:11px;color:var(--ink4);margin-top:4px">✔️ ติ๊ก VAT เฉพาะรายการที่ต้องการคิดภาษีมูลค่าเพิ่ม 7% — สามารถเลือกผสมกันได้ในใบเดียวกัน</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addRow('${type}')">+ เพิ่มรายการ</button>
       <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-top:12px">
         <div>
-          <div class="tog-wrap"><label class="tog"><input type="checkbox" id="f-wht" onchange="calcDoc('${type}')"><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></div>
+          <div class="tog-wrap"><label class="tog"><input type="checkbox" id="f-vat" onchange="calcDoc('${type}')"><span class="tog-sl"></span></label><span class="tog-label">VAT 7%</span></div>
+          <div class="tog-wrap" style="margin-top:6px"><label class="tog"><input type="checkbox" id="f-wht" onchange="calcDoc('${type}')"><span class="tog-sl"></span></label><span class="tog-label">หัก ณ ที่จ่าย 3%</span></div>
         </div>
         <div style="flex:1"></div>
-        <div class="summary-box" style="margin-top:0;width:280px">
+        <div class="summary-box" style="margin-top:0;width:260px">
           <div class="s-row"><span>ก่อน VAT</span><span class="val" id="s-sub">0.00</span></div>
-          <div class="s-row" id="s-vatable-row" style="display:none"><span>มูลค่าที่คิด VAT</span><span class="val" id="s-vatable">0.00</span></div>
-          <div class="s-row" id="s-novat-row" style="display:none"><span>มูลค่าที่ไม่คิด VAT</span><span class="val" id="s-novat">0.00</span></div>
           <div class="s-row" id="s-vat-row" style="display:none"><span>VAT 7%</span><span class="val" id="s-vat">0.00</span></div>
           <div class="s-row" id="s-wht-row" style="display:none"><span>หัก ณ ที่จ่าย</span><span class="val" id="s-wht" style="color:var(--red)">0.00</span></div>
           <div class="s-row total"><span>ยอดสุทธิ</span><span class="val" id="s-total">0.00</span></div>
@@ -2649,8 +2612,7 @@ function buildDocForm(type) {
         <div class="field"><label>วันที่</label><input type="date" id="f-date" value="${today()}" onchange="syncDueFromTerms()"></div>
         ${extraFields}
         <div class="field"><label>เงื่อนไขการชำระ</label>
-          <select id="f-terms" onchange="syncDueFromTerms()"><option selected>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option>30 วัน</option><option>60 วัน</option></select>
-          <div style="font-size:11px;color:var(--ink4);margin-top:3px" id="f-terms-hint"></div></div>
+          <select id="f-terms" onchange="syncDueFromTerms()"><option>ชำระทันที</option><option>7 วัน</option><option>15 วัน</option><option selected>30 วัน</option><option>60 วัน</option></select></div>
       </div>
     </div>
   </div>
@@ -2722,8 +2684,8 @@ function selectCo(id, type) {
     const prefix = _selectedCo.prefix||'XX';
     const typeMap = {qt:'QT',inv:'INV',bl:'BL'};
     document.getElementById('f-docno').value = peekDocNo(prefix,typeMap[type]);
-    // ตั้งค่า VAT เริ่มต้นของทุกรายการตามค่า default ของบริษัท (ผู้ใช้ปรับทีละรายการภายหลังได้)
-    document.querySelectorAll(`#items-body-${type} .item-vat-chk`).forEach(chk => chk.checked = !!_selectedCo.hasVat);
+    const vatEl = document.getElementById('f-vat');
+    if(vatEl) vatEl.checked = _selectedCo.hasVat;
     calcDoc(type);
     if(type==='bl') renderBLInvList();
     renderBankOptions(_selectedCo);
@@ -2913,14 +2875,12 @@ function addRow(type) {
   const calcFn = 'calcDoc_'+type;
   window[calcFn] = ()=>calcDoc(type);
   const tbody = document.getElementById('items-body-'+type); if(!tbody) return;
-  const defaultVat = _selectedCo ? !!_selectedCo.hasVat : false;
   const tr = document.createElement('tr'); tr.id='r'+_rowCount;
   tr.innerHTML=`<td style="color:var(--ink4);font-size:11px;text-align:center">${_rowCount}</td>
     <td style="min-width:180px">${buildProductSelectHTML('', calcFn)}</td>
     <td><input class="item-inp r" type="number" value="1" min="0" step="any" oninput="calcDoc('${type}')"></td>
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="calcDoc('${type}')"></td>
-    <td style="text-align:center"><input type="checkbox" class="item-vat-chk" title="คิด VAT รายการนี้"${defaultVat?' checked':''} onchange="calcDoc('${type}')"></td>
     <td class="row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="document.getElementById('r${_rowCount}').remove();calcDoc('${type}')">✕</button></td>`;
   tbody.appendChild(tr);
@@ -2928,31 +2888,20 @@ function addRow(type) {
 }
 window.addRow=addRow;
 
-function setAllRowVat(type, val) {
-  document.querySelectorAll(`#items-body-${type} .item-vat-chk`).forEach(chk => chk.checked = val);
-  calcDoc(type);
-}
-window.setAllRowVat = setAllRowVat;
-
 function calcDoc(type) {
   const rows=[...document.querySelectorAll(`#items-body-${type} tr`)];
-  let sub=0, vatableSub=0, novatSub=0;
+  let sub=0;
   rows.forEach(tr=>{
     // inputs[type=number]: ins[0]=qty, ins[1]=price  (unit is type=text)
     const ins=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(ins[0]?.value)||0)*(parseFloat(ins[1]?.value)||0);
-    sub+=t;
-    if(tr.querySelector('.item-vat-chk')?.checked) vatableSub+=t; else novatSub+=t;
-    const el=tr.querySelector('.row-total'); if(el) el.textContent=fmt(t);
+    sub+=t; const el=tr.querySelector('.row-total'); if(el) el.textContent=fmt(t);
   });
-  const vat=vatableSub*.07;
+  const vat=document.getElementById('f-vat')?.checked?sub*.07:0;
   const wht=document.getElementById('f-wht')?.checked?sub*.03:0;
   const total=sub+vat-wht;
   const set=(id,v)=>{const el=document.getElementById(id);if(el) el.textContent=fmt(v);};
-  set('s-sub',sub); set('s-vatable',vatableSub); set('s-novat',novatSub); set('s-vat',vat); set('s-wht',wht); set('s-total',total);
-  const mixed = vatableSub>0 && novatSub>0;
-  const vabR=document.getElementById('s-vatable-row'); if(vabR) vabR.style.display=mixed?'':'none';
-  const novR=document.getElementById('s-novat-row'); if(novR) novR.style.display=mixed?'':'none';
+  set('s-sub',sub); set('s-vat',vat); set('s-wht',wht); set('s-total',total);
   const vr=document.getElementById('s-vat-row'); if(vr) vr.style.display=vat?'':'none';
   const wr=document.getElementById('s-wht-row'); if(wr) wr.style.display=wht?'':'none';
 }
@@ -2966,8 +2915,7 @@ function getFormItems(type) {
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0;
     const price=parseFloat(numIns[1]?.value)||0;
-    const vatApplied=!!tr.querySelector('.item-vat-chk')?.checked;
-    return {desc, qty, unit, price, vatApplied, total:qty*price};
+    return {desc, qty, unit, price, total:qty*price};
   }).filter(r=>r.desc||r.price>0);
 }
 
@@ -3070,11 +3018,10 @@ async function saveDoc(type) {
   }
 
   const items=getFormItems(type);
+  const hasVat=document.getElementById('f-vat')?.checked;
   const hasWht=document.getElementById('f-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vatableSub=items.filter(r=>r.vatApplied).reduce((s,r)=>s+r.total,0);
-  const hasVat=vatableSub>0;
-  const vat=vatableSub*.07, wht=hasWht?sub*.03:0;
+  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
   const paymentTerms = getSelectedPaymentTerms();
   const paymentDays = getPaymentTermDays(paymentTerms);
   const docData={
@@ -3202,6 +3149,9 @@ async function confirmConvert() {
 // PAYMENT MODAL
 // ══════════════════════════════════════════════════════
 function openPayment(invId) {
+  _confirmingPayment = false; // reset guard ทุกครั้งที่เปิด modal ใหม่
+  const _cb = document.getElementById('btn-confirm-payment');
+  if (_cb) { _cb.disabled = false; _cb.textContent = '✅ บันทึกรับชำระ'; }
   _payingInvoice = data.invoices.find(i=>i.id===invId);
   if(!_payingInvoice) return;
   const rem = remainAmount(_payingInvoice);
@@ -3302,6 +3252,102 @@ async function syncARPaymentToFinance(invoice, payment) {
   }
 }
 window.syncARPaymentToFinance = syncARPaymentToFinance;
+
+// ── ADMIN CORRECTIONS → FINANCE ─────────────────────────────────────────────
+// เมื่อแอดมินลบ/แก้ไข payment ใน AR ต้องสะท้อนไปที่ fin_transactions ใน Finance
+// ด้วย เพื่อไม่ให้ตัวเลขสองระบบไม่ตรงกัน (ตาม fin_transactions.id === payment.id
+// ที่ผูกกันไว้ตอน syncARPaymentToFinance)
+
+// ลบ payment ใน AR → ลบ (void) รายการที่ตรงกันใน Finance ด้วย
+async function voidFinanceTransaction(paymentId, reason) {
+  if (!_fbdb) return { ok: false, offline: true };
+  try {
+    const ref = _fbdb.collection('fin_transactions').doc(paymentId);
+    const snap = await ref.get();
+    if (!snap.exists) return { ok: true, skipped: true }; // ไม่เคย sync ไป Finance มาก่อน ไม่ต้องทำอะไร
+    await ref.delete();
+    _fbdb.collection('audit_logs').add({
+      action: 'AR_PAYMENT_VOIDED_BY_ADMIN',
+      app: 'ar', at: new Date().toISOString(),
+      detail: { paymentId, reason: reason || '', by: 'admin' }
+    }).catch(()=>{});
+    return { ok: true };
+  } catch (e) {
+    console.error('[Admin→Finance] void failed:', e);
+    return { ok: false, error: e.message };
+  }
+}
+window.voidFinanceTransaction = voidFinanceTransaction;
+
+// แก้ไข payment ใน AR → อัปเดตรายการที่ตรงกันใน Finance ด้วย
+async function updateFinanceTransaction(paymentId, updates, reason) {
+  if (!_fbdb) return { ok: false, offline: true };
+  try {
+    const ref = _fbdb.collection('fin_transactions').doc(paymentId);
+    const snap = await ref.get();
+    if (!snap.exists) return { ok: true, skipped: true }; // ไม่เคย sync ไป Finance มาก่อน ไม่ต้องทำอะไร
+    const patch = {
+      amount: Number(updates.amount) || 0,
+      method: updates.method || 'โอนธนาคาร',
+      note: updates.note || '',
+      date: updates.date,
+      paymentDate: updates.date,
+      correctedByAdmin: true,
+      correctedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await ref.update(patch);
+    _fbdb.collection('audit_logs').add({
+      action: 'AR_PAYMENT_EDITED_BY_ADMIN',
+      app: 'ar', at: new Date().toISOString(),
+      detail: { paymentId, reason: reason || '', by: 'admin', ...patch }
+    }).catch(()=>{});
+    return { ok: true };
+  } catch (e) {
+    console.error('[Admin→Finance] update failed:', e);
+    return { ok: false, error: e.message };
+  }
+}
+window.updateFinanceTransaction = updateFinanceTransaction;
+
+// คิว retry สำหรับกรณีแก้ไข/ลบตอน offline หรือ Firestore ล้มเหลว
+function _addPendingAdminSync(type, invoiceId, paymentId, payload, reason) {
+  try {
+    const q = JSON.parse(localStorage.getItem('ar_admin_pending_sync') || '[]');
+    q.push({ type, invoiceId, paymentId, payload: payload || null, reason: reason || '', addedAt: new Date().toISOString() });
+    localStorage.setItem('ar_admin_pending_sync', JSON.stringify(q));
+  } catch(e) {}
+}
+
+async function retryAdminSyncQueue() {
+  if (!_fbdb) return { done: 0, remaining: 0 };
+  const q = JSON.parse(localStorage.getItem('ar_admin_pending_sync') || '[]');
+  if (!q.length) return { done: 0, remaining: 0 };
+  let done = 0;
+  const remaining = [];
+  for (const item of q) {
+    const result = item.type === 'void'
+      ? await voidFinanceTransaction(item.paymentId, item.reason)
+      : await updateFinanceTransaction(item.paymentId, item.payload, item.reason);
+    if (result.ok) done++; else remaining.push(item);
+  }
+  localStorage.setItem('ar_admin_pending_sync', JSON.stringify(remaining));
+  return { done, remaining: remaining.length };
+}
+window.retryAdminSyncQueue = retryAdminSyncQueue;
+
+function admToastFinanceResult(finResult, actionLabel) {
+  if (finResult.skipped) {
+    admToast(`${actionLabel}เรียบร้อย (ไม่มีรายการฝั่ง Finance ที่ต้องแก้ไข)`, 'ok');
+  } else if (finResult.ok) {
+    admToast(`${actionLabel}เรียบร้อย — sync ไป Finance แล้ว ✅`, 'ok');
+  } else if (finResult.offline) {
+    admToast(`${actionLabel}เรียบร้อยฝั่ง AR — ไม่ได้เชื่อม Firebase จึงยังไม่ sync Finance (เข้าคิว retry แล้ว)`, 'warn');
+  } else {
+    admToast(`${actionLabel}เรียบร้อยฝั่ง AR — แต่ sync Finance ล้มเหลว (เข้าคิว retry แล้ว)`, 'warn');
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── BACKFILL: sync payment เก่าทั้งหมดจาก AR invoices → fin_transactions ────
 async function backfillARPaymentsToFinance() {
@@ -3469,7 +3515,8 @@ function _addPendingSync(invoiceId, paymentId) {
 async function retrySyncQueue() {
   if (!_fbdb) { toast('ไม่ได้เชื่อม Firebase', 'err'); return; }
   const q = JSON.parse(localStorage.getItem('ar_pending_sync') || '[]');
-  if (!q.length) { toast('ไม่มีรายการ sync ค้างอยู่', 'info'); return; }
+  const adminQ = JSON.parse(localStorage.getItem('ar_admin_pending_sync') || '[]');
+  if (!q.length && !adminQ.length) { toast('ไม่มีรายการ sync ค้างอยู่', 'info'); return; }
   let ok = 0;
   const remaining = [];
   for (const item of q) {
@@ -3512,13 +3559,20 @@ async function retrySyncQueue() {
     }
   }
   localStorage.setItem('ar_pending_sync', JSON.stringify(remaining));
-  toast(`Retry: สำเร็จ ${ok} รายการ${remaining.length ? `, ยังค้าง ${remaining.length} รายการ` : ''}`,
-    ok > 0 ? 'ok' : 'err');
+  // ── ประมวลผลคิว retry ของแอดมิน (ลบ/แก้ไข payment ที่ค้างไว้) ด้วย ──
+  const adminResult = await retryAdminSyncQueue();
+  const totalOk = ok + adminResult.done;
+  const totalRemaining = remaining.length + adminResult.remaining;
+  toast(`Retry: สำเร็จ ${totalOk} รายการ${totalRemaining ? `, ยังค้าง ${totalRemaining} รายการ` : ''}`,
+    totalOk > 0 ? 'ok' : 'err');
 }
 window.retrySyncQueue = retrySyncQueue;
 // ─────────────────────────────────────────────────────────────────────────────
 
+let _confirmingPayment = false; // ป้องกัน double-submit ตอนบันทึกรับชำระ
+
 async function confirmPayment() {
+  if(_confirmingPayment) return; // กันกดซ้ำระหว่างที่คำสั่งก่อนหน้ายังไม่เสร็จ
   if(!_payingInvoice) return;
   const amt=parseFloat(document.getElementById('pmt-amount').value)||0;
   if(amt<=0) { toast('กรุณากรอกจำนวนเงิน','err'); return; }
@@ -3526,12 +3580,19 @@ async function confirmPayment() {
   if(amt>rem+0.01) { toast(`จำนวนเกินยอดคงเหลือ (${fmt(rem)} บาท)`,'err'); return; }
   const pmtDate = document.getElementById('pmt-date').value;
 
+  _confirmingPayment = true;
+  const confirmBtn = document.getElementById('btn-confirm-payment');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '⏳ กำลังบันทึก...'; }
+
   // ── หา financeDate (เลื่อนเดือนถ้า Finance ปิดงวด) ──────────────────────────
   let financeInfo;
   try {
     financeInfo = await findNextOpenFinanceDate(pmtDate);
   } catch(e) {
-    toast('เกิดข้อผิดพลาด: ' + e.message, 'err'); return;
+    toast('เกิดข้อผิดพลาด: ' + e.message, 'err');
+    _confirmingPayment = false;
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ บันทึกรับชำระ'; }
+    return;
   }
   if (financeInfo.shifted) {
     const origMonth = pmtDate.slice(0,7);
@@ -3562,11 +3623,18 @@ async function confirmPayment() {
   const tempInv={..._payingInvoice,payments:newPayments,paidAmount:newPaidAmount};
   const newSt=invStatus(tempInv);
   const updates={payments:newPayments,paidAmount:newPaidAmount,status:newSt};
-  const ok=await storeUpdate('invoices',_payingInvoice.id,updates); if(!ok) return;
+  const ok=await storeUpdate('invoices',_payingInvoice.id,updates);
+  if(!ok) {
+    _confirmingPayment = false;
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ บันทึกรับชำระ'; }
+    return;
+  }
   Object.assign(_payingInvoice,updates);
   syncLS('invoices', data.invoices);
   closeModal('modal-payment');
   toast(`บันทึกรับชำระ ${fmt(amt)} บาท เรียบร้อย`,'ok');
+  _confirmingPayment = false;
+  if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ บันทึกรับชำระ'; }
   // ── sync ไป fin_transactions พร้อม track syncStatus ──────────────────────────
   syncARPaymentToFinance(_payingInvoice, pmt).then(txId => {
     const syncSt = txId ? 'synced' : 'failed';
@@ -3626,12 +3694,11 @@ function viewDoc(type, id) {
     </div>`;
 
   if(src.items?.length) {
-    const hasMixedVat = src.items.some(r=>r.vatApplied) && src.items.some(r=>!r.vatApplied);
     body+=`<table class="tbl" style="margin-bottom:12px"><thead><tr>
-      <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th>${hasMixedVat?'<th class="c">VAT</th>':''}<th class="r">รวม</th>
+      <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th>
     </tr></thead><tbody>${src.items.map((r,i)=>`<tr>
       <td style="color:var(--ink4)">${i+1}</td><td>${r.desc}</td><td class="r mono">${r.qty}</td>
-      <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td>${hasMixedVat?`<td class="c">${r.vatApplied?'✓':'—'}</td>`:''}<td class="r mono bold">${fmt(r.total)}</td>
+      <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td><td class="r mono bold">${fmt(r.total)}</td>
     </tr>`).join('')}</tbody></table>
     <div class="summary-box">
       <div class="s-row"><span>ก่อน VAT</span><span class="val">${fmt(src.subtotal)}</span></div>
@@ -3820,9 +3887,7 @@ function printCurrentDoc() {
     </div>
 
     <!-- ITEMS TABLE -->
-    ${src.items?.length?(()=>{
-      const hasMixedVat = src.items.some(r=>r.vatApplied) && src.items.some(r=>!r.vatApplied);
-      return `
+    ${src.items?.length?`
     <table class="items-table">
       <thead><tr>
         <th style="width:32px">#</th>
@@ -3830,7 +3895,6 @@ function printCurrentDoc() {
         <th class="r" style="width:70px">จำนวน</th>
         <th style="width:60px">หน่วย</th>
         <th class="r" style="width:100px">ราคา/หน่วย</th>
-        ${hasMixedVat?'<th style="width:40px;text-align:center">VAT</th>':''}
         <th class="r" style="width:110px">จำนวนเงิน</th>
       </tr></thead>
       <tbody>
@@ -3840,7 +3904,6 @@ function printCurrentDoc() {
           <td class="r mono">${r.qty.toLocaleString()}</td>
           <td>${r.unit||''}</td>
           <td class="r mono">${fmt(r.price)}</td>
-          ${hasMixedVat?`<td style="text-align:center">${r.vatApplied?'✓':'—'}</td>`:''}
           <td class="r mono" style="font-weight:600">${fmt(r.total)}</td>
         </tr>`).join('')}
       </tbody>
@@ -3854,8 +3917,7 @@ function printCurrentDoc() {
         ${src.wht?`<div class="sr"><span style="color:#b91c1c">หัก ณ ที่จ่าย 3%</span><span style="color:#b91c1c">-${fmt(src.wht)}</span></div>`:''}
         <div class="sr total"><span>ยอดสุทธิ</span><span>${fmt(src.total)}</span></div>
       </div>
-    </div>`;
-    })():''}
+    </div>`:''}
 
     <!-- BANK INFO — fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo ใน invoice -->
     ${(()=>{
@@ -4511,7 +4573,7 @@ function refreshCustomerTable() {
     <td class="mono" style="font-size:12px">${c.taxId||'—'}</td>
     <td style="font-size:13px">${c.contactPerson||'—'}</td>
     <td style="font-size:12px">${c.phone||c.contactPhone||'—'}</td>
-    <td class="r mono">${c.creditTerms===undefined||c.creditTerms===null ? '—' : (c.creditTerms>0 ? c.creditTerms+' วัน' : 'เงินสด')}</td>
+    <td class="r mono">${c.creditTerms ? c.creditTerms+' วัน' : '—'}</td>
     <td><span class="badge ${c.isActive===false?'badge-cancelled':'badge-paid'}">${c.isActive===false?'ปิด':'ใช้งาน'}</span></td>
     <td style="white-space:nowrap">
       <button class="btn btn-xs btn-outline" onclick="viewCustomer('${c.id}')">ดู</button>
@@ -4599,18 +4661,8 @@ function openCustomerModal(c) {
       <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--ink4);margin-bottom:8px;border-top:1px solid var(--border);padding-top:10px">เงื่อนไขเครดิต</div>
       <div class="form-grid" style="gap:10px;margin-bottom:14px">
         <div class="field">
-          <label>เงื่อนไขการชำระ</label>
-          ${(()=>{
-            const presets = [0,7,15,30,45,60];
-            const cur = (c && c.creditTerms!=null) ? parseInt(c.creditTerms,10) : 0; // ค่าเริ่มต้นลูกค้าใหม่ = เงินสด
-            const isPreset = presets.includes(cur);
-            const opts = presets.map(d => `<option value="${d}"${isPreset&&cur===d?' selected':''}>${d===0?'เงินสด':d+' วัน'}</option>`).join('');
-            return `<select id="cust-credit-select" onchange="toggleCustCreditCustom()">
-              ${opts}
-              <option value="__custom__"${!isPreset?' selected':''}>อื่นๆ (ระบุจำนวนวัน)</option>
-            </select>
-            <input type="number" id="cust-credit-terms" value="${cur}" min="0" placeholder="จำนวนวัน" style="margin-top:6px;display:${!isPreset?'block':'none'}">`;
-          })()}
+          <label>เครดิต (วัน)</label>
+          <input type="number" id="cust-credit-terms" value="${c?.creditTerms||30}" min="0" placeholder="30">
         </div>
         <div class="field">
           <label>วงเงินเครดิต (บาท)</label>
@@ -4642,15 +4694,6 @@ function openCustomerModal(c) {
 }
 window.openCustomerModal = openCustomerModal;
 
-function toggleCustCreditCustom() {
-  const sel = document.getElementById('cust-credit-select');
-  const custEl = document.getElementById('cust-credit-terms');
-  if(!sel || !custEl) return;
-  custEl.style.display = sel.value === '__custom__' ? 'block' : 'none';
-  if(sel.value === '__custom__') custEl.focus();
-}
-window.toggleCustCreditCustom = toggleCustCreditCustom;
-
 async function saveCustomer(id) {
   const name = document.getElementById('cust-name')?.value?.trim();
   if(!name) { toast('กรุณากรอกชื่อลูกค้า','err'); return; }
@@ -4664,11 +4707,6 @@ async function saveCustomer(id) {
     return;
   }
 
-  const creditSelVal = document.getElementById('cust-credit-select')?.value;
-  const creditTerms = creditSelVal === '__custom__'
-    ? (parseInt(document.getElementById('cust-credit-terms')?.value) || 0)
-    : (parseInt(creditSelVal) || 0);
-
   const d = {
     name,
     nameEn: document.getElementById('cust-name-en')?.value?.trim() || '',
@@ -4681,7 +4719,7 @@ async function saveCustomer(id) {
     contactPerson: document.getElementById('cust-contact-name')?.value?.trim() || '',
     contactPhone: document.getElementById('cust-contact-phone')?.value?.trim() || '',
     contactEmail: document.getElementById('cust-contact-email')?.value?.trim() || '',
-    creditTerms,
+    creditTerms: parseInt(document.getElementById('cust-credit-terms')?.value) || 0,
     creditLimit: parseFloat(document.getElementById('cust-credit-limit')?.value) || 0,
     note: document.getElementById('cust-note')?.value?.trim() || '',
     isActive: document.getElementById('cust-active')?.value === '1',
@@ -4742,7 +4780,7 @@ function viewCustomer(id) {
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
         <div style="background:var(--bg2);border-radius:var(--r);padding:12px;text-align:center">
           <div style="font-size:10px;color:var(--ink4);text-transform:uppercase;font-weight:700">เครดิต</div>
-          <div style="font-size:20px;font-weight:700;font-family:'IBM Plex Mono',monospace">${(c.creditTerms||0)>0 ? c.creditTerms+' <span style="font-size:13px;font-weight:400">วัน</span>' : 'เงินสด'}</div>
+          <div style="font-size:20px;font-weight:700;font-family:'IBM Plex Mono',monospace">${c.creditTerms||0} <span style="font-size:13px;font-weight:400">วัน</span></div>
         </div>
         <div style="background:var(--bg2);border-radius:var(--r);padding:12px;text-align:center">
           <div style="font-size:10px;color:var(--ink4);text-transform:uppercase;font-weight:700">ใบเสนอราคา</div>
@@ -4897,35 +4935,8 @@ function autofillCustomer() {
   set('f-cust-tax', c.taxId);
   set('f-cust-addr', c.address);
   set('f-cust-contact', c.contactPerson||c.contactPhone);
-  applyCustomerCreditTerms(c);
 }
 window.autofillCustomer = autofillCustomer;
-
-// ── ผูกเงื่อนไขชำระเงิน/ครบกำหนดชำระ ตามเครดิตของลูกค้าแต่ละราย (แก้ไขเองภายหลังได้เสมอ) ──
-function applyCustomerCreditTerms(cust) {
-  const termsEl = document.getElementById('f-terms');
-  if(!termsEl || !cust) return;
-  const hintEl = document.getElementById('f-terms-hint');
-  const raw = cust.creditTerms;
-  const days = (raw === undefined || raw === null || raw === '') ? null : parseInt(raw, 10);
-  if(days === null || isNaN(days)) {
-    if(hintEl) hintEl.textContent = '';
-    return; // ลูกค้ารายนี้ยังไม่มีข้อมูลเครดิต — ใช้ค่าที่ผู้ใช้ตั้งเอง ไม่แตะ
-  }
-  const label = days <= 0 ? 'ชำระทันที' : `${days} วัน`;
-  // ล้าง option ที่เคยแทรกไว้ให้ลูกค้ารายก่อนหน้า (คงไว้แค่ค่าปัจจุบัน)
-  [...termsEl.querySelectorAll('option[data-cust-credit="1"]')].forEach(o => { if(o.value !== label) o.remove(); });
-  let opt = [...termsEl.options].find(o => o.value === label);
-  if(!opt) {
-    opt = document.createElement('option');
-    opt.value = label; opt.textContent = label; opt.dataset.custCredit = '1';
-    termsEl.appendChild(opt);
-  }
-  termsEl.value = label;
-  if(hintEl) hintEl.textContent = `📌 ตามเครดิตลูกค้า "${cust.name}": ${label}`;
-  syncDueFromTerms();
-}
-window.applyCustomerCreditTerms = applyCustomerCreditTerms;
 
 function openPickCustomer() {
   const custs = (data.customers||[]).filter(c=>c.isActive!==false);
@@ -4969,7 +4980,6 @@ function pickCustomer(id) {
   set('f-cust-tax', c.taxId);
   set('f-cust-addr', c.address);
   set('f-cust-contact', c.contactPerson||c.contactPhone);
-  applyCustomerCreditTerms(c);
   document.getElementById('modal-pick-customer')?.remove();
   toast(`เลือกลูกค้า: ${c.name}`,'ok');
 }
@@ -5232,38 +5242,25 @@ document.querySelectorAll('.overlay').forEach(ov=>{
 });
 
 // ══════════════════════════════════════════════════════
-// BACKUP — EXPORT / IMPORT JSON (ไฟล์สำรอง ตั้งชื่อตามวันเดือนปี)
+// BACKUP — EXPORT / IMPORT JSON
 // ══════════════════════════════════════════════════════
-const LS_LAST_EXPORT = 'ar_last_export_at';
-const BACKUP_COLS = ['companies','quotations','invoices','billings','customers','products'];
-
-function _backupFileDateStamp(d) {
-  const pad = n => String(n).padStart(2,'0');
-  return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}_${pad(d.getHours())}${pad(d.getMinutes())}`;
-}
-
 function exportData() {
-  const now = new Date();
   const payload = {
-    exportedAt: now.toISOString(),
-    version: 4,
-    companies: data.companies || [],
-    quotations: data.quotations || [],
-    invoices: data.invoices || [],
-    billings: data.billings || [],
+    exportedAt: new Date().toISOString(),
+    version: 3,
+    companies: data.companies,
+    quotations: data.quotations,
+    invoices: data.invoices,
+    billings: data.billings,
     customers: data.customers || [],
-    products: data.products || [],
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `AR-สำรองข้อมูล-${_backupFileDateStamp(now)}.json`;
-  a.click();
+  const ts = new Date().toISOString().slice(0,10);
+  a.href=url; a.download=`ar-backup-${ts}.json`; a.click();
   URL.revokeObjectURL(url);
-  try { localStorage.setItem(LS_LAST_EXPORT, now.toISOString()); } catch(e){}
-  toast('ดาวน์โหลดไฟล์สำรองสำเร็จ ✅','ok');
-  if(_currentPage === 'backup') renderBackup();
+  toast('Export สำเร็จ ✅','ok');
 }
 window.exportData=exportData;
 
@@ -5276,151 +5273,22 @@ function importData(event) {
       if(!payload.companies||!payload.quotations||!payload.invoices||!payload.billings) {
         toast('❌ ไฟล์ไม่ถูกต้อง — ไม่พบข้อมูลที่คาดหวัง','err'); return;
       }
-      const productsCount = (payload.products||[]).length;
-      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่ด้วยข้อมูลในไฟล์นี้\n\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length}\nลูกค้า: ${(payload.customers||[]).length} | สินค้า: ${productsCount}\n\nสำรองข้อมูลปัจจุบันไว้ในเครื่องอัตโนมัติก่อนดำเนินการ`)) return;
-
-      saveLocalBackup(); // เก็บข้อมูลปัจจุบันไว้กู้คืนได้ ก่อนทับ
-
-      const nowIso = new Date().toISOString();
-      BACKUP_COLS.forEach(col => {
-        const arr = payload[col];
-        if(!Array.isArray(arr)) return; // ไฟล์เก่าอาจไม่มี products — ไม่แตะของเดิม
-        // bump updatedAt ให้เป็นข้อมูลล่าสุด เพื่อให้ restore ชนะเมื่อ push ขึ้น Firebase
-        data[col] = arr.map(d => ({...d, updatedAt: d.updatedAt || nowIso}));
-        syncLS(col, data[col]);
-      });
-      companies = data.companies;
-
-      toast(`กู้คืนข้อมูลสำเร็จ — ${data.companies.length} บริษัท, ${data.invoices.length} ใบแจ้งหนี้ ✅`,'ok');
-      goPage(_currentPage === 'backup' ? 'backup' : _currentPage);
-
-      if(_fbdb) {
-        setTimeout(() => {
-          toast('กำลังจะ Push ข้อมูลที่กู้คืนขึ้น Firebase — กรุณายืนยันในกล่องถัดไป', 'info');
-          syncPush();
-        }, 400);
-      }
+      if(!confirm(`นำเข้าข้อมูลจาก ${file.name}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\nบริษัท: ${payload.companies.length} | QT: ${payload.quotations.length} | INV: ${payload.invoices.length} | BL: ${payload.billings.length} | ลูกค้า: ${(payload.customers||[]).length}`)) return;
+      data.companies=payload.companies;
+      data.quotations=payload.quotations;
+      data.invoices=payload.invoices;
+      data.billings=payload.billings;
+      data.customers=payload.customers||[];
+      companies=data.companies;
+      ['companies','quotations','invoices','billings','customers'].forEach(col=>syncLS(col,data[col]));
+      toast(`Import สำเร็จ — ${payload.companies.length} บริษัท, ${payload.invoices.length} INV ✅`,'ok');
+      goPage(_currentPage);
     } catch(err) { toast('❌ ไม่สามารถอ่านไฟล์ได้: '+err.message,'err'); }
   };
   reader.readAsText(file);
   event.target.value=''; // reset so same file can be re-imported
 }
 window.importData=importData;
-
-// ── กู้คืนจาก Local Backup อัตโนมัติ (เก็บไว้ 5 ชุดล่าสุด ก่อน operation เสี่ยง) ──
-function restoreFromLocalBackup(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    if(!raw) { toast('❌ ไม่พบข้อมูลสำรองนี้','err'); return; }
-    const payload = JSON.parse(raw);
-    const when = payload.savedAt ? new Date(payload.savedAt).toLocaleString('th-TH') : '?';
-    const productsCount = (payload.products||[]).length;
-    if(!confirm(`กู้คืนข้อมูลสำรองอัตโนมัติเมื่อ ${when}?\n⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่\n\nบริษัท: ${(payload.companies||[]).length} | QT: ${(payload.quotations||[]).length} | INV: ${(payload.invoices||[]).length} | BL: ${(payload.billings||[]).length}\nลูกค้า: ${(payload.customers||[]).length} | สินค้า: ${productsCount}`)) return;
-
-    saveLocalBackup(); // เก็บสถานะปัจจุบันไว้ก่อนทับ เผื่อกู้คืนย้อนกลับ
-
-    const nowIso = new Date().toISOString();
-    BACKUP_COLS.forEach(col => {
-      const arr = payload[col];
-      if(!Array.isArray(arr)) return;
-      data[col] = arr.map(d => ({...d, updatedAt: d.updatedAt || nowIso}));
-      syncLS(col, data[col]);
-    });
-    companies = data.companies;
-
-    toast('กู้คืนข้อมูลสำรองอัตโนมัติสำเร็จ ✅','ok');
-    goPage('backup');
-
-    if(_fbdb) {
-      setTimeout(() => {
-        toast('กำลังจะ Push ข้อมูลที่กู้คืนขึ้น Firebase — กรุณายืนยันในกล่องถัดไป', 'info');
-        syncPush();
-      }, 400);
-    }
-  } catch(err) { toast('❌ กู้คืนไม่สำเร็จ: '+err.message,'err'); }
-}
-window.restoreFromLocalBackup = restoreFromLocalBackup;
-
-function deleteLocalBackup(key) {
-  if(!confirm('ลบข้อมูลสำรองชุดนี้ออกจากเครื่อง?')) return;
-  localStorage.removeItem(key);
-  toast('ลบข้อมูลสำรองแล้ว','info');
-  goPage('backup');
-}
-window.deleteLocalBackup = deleteLocalBackup;
-
-function manualBackupNow() {
-  saveLocalBackup();
-  toast('บันทึกข้อมูลสำรองลงในเครื่องแล้ว 💾','ok');
-  goPage('backup');
-}
-window.manualBackupNow = manualBackupNow;
-
-function renderBackup() {
-  const labelMap = {companies:'บริษัท',quotations:'ใบเสนอราคา',invoices:'ใบแจ้งหนี้',billings:'ใบวางบิล',customers:'ลูกค้า',products:'สินค้า'};
-  const counts = BACKUP_COLS.map(col => `<div class="field" style="text-align:center">
-      <div style="font-size:20px;font-weight:700;color:var(--ink1)">${(data[col]||[]).length}</div>
-      <div style="font-size:11px;color:var(--ink4)">${labelMap[col]}</div>
-    </div>`).join('');
-
-  const lastExport = localStorage.getItem(LS_LAST_EXPORT);
-  const lastExportText = lastExport ? new Date(lastExport).toLocaleString('th-TH') : 'ยังไม่เคยสำรองข้อมูล';
-
-  const backups = listLocalBackups();
-  const backupRows = backups.length ? backups.map(b => {
-    const when = b.savedAt ? new Date(b.savedAt).toLocaleString('th-TH') : '?';
-    const n = (b.companies||[]).length + (b.quotations||[]).length + (b.invoices||[]).length + (b.billings||[]).length + (b.customers||[]).length + (b.products||[]).length;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px">
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--ink1)">🕓 ${when}</div>
-        <div style="font-size:11px;color:var(--ink4)">${n} รายการ • ${b.sizeKB} KB</div>
-      </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-outline" style="padding:6px 10px;font-size:12px" onclick="restoreFromLocalBackup('${b.key}')">↩️ กู้คืน</button>
-        <button class="btn btn-outline" style="padding:6px 10px;font-size:12px;color:var(--red)" onclick="deleteLocalBackup('${b.key}')">🗑️</button>
-      </div>
-    </div>`;
-  }).join('') : `<div style="font-size:13px;color:var(--ink4);padding:10px 0">ยังไม่มีข้อมูลสำรองอัตโนมัติในเครื่องนี้ — ระบบจะสำรองให้อัตโนมัติก่อนการทำรายการที่มีความเสี่ยง</div>`;
-
-  document.getElementById('page-content').innerHTML = `
-  <div class="card" style="max-width:640px">
-    <div class="card-header"><span class="card-title">📊 ข้อมูลปัจจุบันในระบบ</span></div>
-    <div class="card-body">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">${counts}</div>
-    </div>
-  </div>
-
-  <div class="card" style="max-width:640px;border:1.5px solid var(--accent)">
-    <div class="card-header" style="background:rgba(99,102,241,.06)"><span class="card-title">📥 สำรองข้อมูล (ดาวน์โหลดเป็นไฟล์)</span></div>
-    <div class="card-body">
-      <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
-        ดาวน์โหลดข้อมูลทั้งหมด (บริษัท, ใบเสนอราคา, ใบแจ้งหนี้, ใบวางบิล, ลูกค้า, สินค้า) เป็นไฟล์ .json<br>
-        ชื่อไฟล์ตั้งตามวัน-เดือน-ปี-เวลาที่สำรอง เก็บไว้ในเครื่อง / Google Drive ได้ตามสะดวก
-      </p>
-      <div style="font-size:12px;color:var(--ink4);margin-bottom:10px">สำรองไฟล์ล่าสุด: ${lastExportText}</div>
-      <button class="btn btn-primary" onclick="exportData()">📥 ดาวน์โหลดข้อมูลสำรอง (.json)</button>
-      <button class="btn btn-outline" style="margin-left:8px" onclick="manualBackupNow()">💾 สำรองด่วนไว้ในเครื่อง</button>
-    </div>
-  </div>
-
-  <div class="card" style="max-width:640px;border:1.5px solid #f59e0b">
-    <div class="card-header" style="background:rgba(245,158,11,.08)"><span class="card-title">📤 กู้คืนข้อมูลจากไฟล์สำรอง</span></div>
-    <div class="card-body">
-      <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
-        เลือกไฟล์ .json ที่เคยสำรองไว้ เพื่อกู้คืนข้อมูลกลับมาใช้งาน<br>
-        <strong>⚠️ ข้อมูลปัจจุบันทั้งหมดจะถูกแทนที่</strong> — ระบบจะสำรองข้อมูลปัจจุบันไว้ในเครื่องให้อัตโนมัติก่อนกู้คืนเสมอ<br>
-        หลังกู้คืนแล้ว ระบบจะถามยืนยันก่อน Push ข้อมูลขึ้น Firebase ให้ทุกเครื่องเห็นตรงกัน
-      </p>
-      <input type="file" accept=".json,application/json" onchange="importData(event)">
-    </div>
-  </div>
-
-  <div class="card" style="max-width:640px">
-    <div class="card-header"><span class="card-title">🗂️ ประวัติสำรองอัตโนมัติในเครื่องนี้ (สูงสุด 5 ชุดล่าสุด)</span></div>
-    <div class="card-body">${backupRows}</div>
-  </div>`;
-}
-window.renderBackup = renderBackup;
 
 // ══════════════════════════════════════════════════════
 // MOBILE SIDEBAR TOGGLE
@@ -5783,6 +5651,43 @@ document.addEventListener('keydown', e => {
   if(e.key === 'Escape' && document.getElementById('adm-shell').classList.contains('open')) admClose();
 });
 
+// ── SHORTCUT (มือถือ/แท็บเล็ต): กดค้างที่โลโก้ AR SYSTEM มุมซ้ายบน 3 วินาที ──
+(function(){
+  const logoEl = document.getElementById('sidebar-logo-adm-trigger');
+  if(!logoEl) return;
+  let holdTimer = null;
+  let holding = false;
+
+  function startHold(e){
+    if(holding) return;
+    holding = true;
+    const hint = document.getElementById('adm-hint');
+    hint.classList.add('show');
+    holdTimer = setTimeout(() => {
+      hint.classList.remove('show');
+      holding = false;
+      admOpen();
+    }, 3000);
+  }
+  function cancelHold(){
+    if(!holding) return;
+    holding = false;
+    clearTimeout(holdTimer);
+    document.getElementById('adm-hint').classList.remove('show');
+  }
+
+  logoEl.addEventListener('touchstart', e => { startHold(e); }, {passive:true});
+  logoEl.addEventListener('touchend', cancelHold);
+  logoEl.addEventListener('touchcancel', cancelHold);
+  logoEl.addEventListener('touchmove', cancelHold);
+  // เผื่อกรณีใช้เมาส์ (เช่น iPad ต่อ trackpad) — กดค้างซ้ายก็ใช้ได้เหมือนกัน
+  logoEl.addEventListener('mousedown', e => { startHold(e); });
+  logoEl.addEventListener('mouseup', cancelHold);
+  logoEl.addEventListener('mouseleave', cancelHold);
+  // กันเมนู context ยาวๆ บน iOS/Android เวลากดค้าง
+  logoEl.addEventListener('contextmenu', e => e.preventDefault());
+})();
+
 function admOpen() {
   document.getElementById('adm-shell').classList.add('open');
   if(_admUnlocked) {
@@ -6063,29 +5968,54 @@ function admAddPmt(invId){
   admRenderPmtsModal(inv); admRenderInvTable(); admToast(`เพิ่ม ${admFmt(amt)} บาท ✅`,'ok');
 }
 window.admAddPmt=admAddPmt;
-function admDelPmt(invId,pmtId){
-  const inv=ADM.invoices.find(x=>x.id===invId); if(!inv) return;
-  const pmt=(inv.payments||[]).find(p=>p.id===pmtId); if(!pmt) return;
-  if(!confirm(`ลบ payment ${admFmt(pmt.amount)} บาท (${pmt.date}) ?`)) return;
+// ── ลบ/แก้ไข payment ใน admin: core logic ที่แชร์ระหว่างหน้า invoice modal และหน้า Payments ──
+// ทำ 3 อย่าง: (1) แก้ข้อมูล AR ใน local+memory (2) push invoice ที่แก้แล้วขึ้น Firestore
+// เพื่อไม่ให้ realtime listener ทับข้อมูลกลับ (3) sync การแก้ไข/ลบไปยัง fin_transactions ของ Finance
+async function admDeletePaymentCore(invId, pmtId) {
+  const inv = ADM.invoices.find(x=>x.id===invId); if(!inv) return null;
+  const pmt = (inv.payments||[]).find(p=>p.id===pmtId); if(!pmt) return null;
+  if(!confirm(`ลบ payment ${admFmt(pmt.amount)} บาท (${pmt.date}) ?\n\nถ้าเคย sync ไป Finance แล้ว จะลบรายการฝั่ง Finance ให้ด้วย`)) return null;
+  const reason = prompt('เหตุผลที่ลบ (สำหรับบันทึกตรวจสอบย้อนหลัง ไม่บังคับ):','') || '';
+
   inv.payments=(inv.payments||[]).filter(p=>p.id!==pmtId);
   inv.paidAmount=Math.max(0,(inv.paidAmount||0)-pmt.amount);
-  // ไม่เปลี่ยน status ถ้าเป็น cancelled/draft
   if(!['cancelled','draft'].includes(inv.status)){
     if(inv.paidAmount<=0&&['paid','partial'].includes(inv.status)) inv.status='sent';
     else if(inv.paidAmount>0&&inv.paidAmount<inv.total) inv.status='partial';
   }
   admSaveCol('invoices');
-  const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
-  admRenderPmtsModal(inv); admRenderInvTable(); admToast('ลบ payment เรียบร้อย','ok');
+  const mi=data.invoices.find(x=>x.id===invId);
+  if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
+  syncLS('invoices', data.invoices);
+
+  // push ไป Firestore ด้วย ไม่ใช่แค่ localStorage — กัน realtime listener ทับข้อมูลที่แก้คืน
+  if(_fbdb){
+    fbUpdate('invoices', invId, {
+      payments: inv.payments, paidAmount: inv.paidAmount, status: inv.status,
+      updatedAt: new Date().toISOString(), updatedBy: 'admin'
+    }).catch(()=>{});
+  }
+
+  const finResult = await voidFinanceTransaction(pmtId, reason);
+  if(!finResult.ok && !finResult.skipped) _addPendingAdminSync('void', invId, pmtId, null, reason);
+  return { pmt, finResult };
+}
+
+async function admDelPmt(invId,pmtId){
+  const result = await admDeletePaymentCore(invId, pmtId);
+  if(!result) return;
+  admRenderPmtsModal(ADM.invoices.find(x=>x.id===invId)); admRenderInvTable();
+  admToastFinanceResult(result.finResult, 'ลบ payment');
 }
 window.admDelPmt=admDelPmt;
-function admEditPmt(invId,pmtId){
+async function admEditPmt(invId,pmtId){
   const inv=ADM.invoices.find(x=>x.id===invId); if(!inv) return;
   const pmt=(inv.payments||[]).find(p=>p.id===pmtId); if(!pmt) return;
   const nd=prompt('วันที่ (YYYY-MM-DD):',pmt.date); if(nd===null) return;
   const na=parseFloat(prompt('จำนวน (บาท):',pmt.amount)||pmt.amount);
   const nm=prompt('ช่องทาง:',pmt.method||''); if(nm===null) return;
   const nn=prompt('หมายเหตุ:',pmt.note||''); if(nn===null) return;
+  const reason=prompt('เหตุผลที่แก้ไข (สำหรับบันทึกตรวจสอบย้อนหลัง ไม่บังคับ):','') || '';
   const old=pmt.amount; pmt.date=nd; pmt.amount=na; pmt.method=nm; pmt.note=nn;
   inv.paidAmount=Math.max(0,(inv.paidAmount||0)-old+na);
   // ไม่เปลี่ยน status ถ้าเป็น cancelled/draft
@@ -6094,7 +6024,21 @@ function admEditPmt(invId,pmtId){
   }
   admSaveCol('invoices');
   const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
-  admRenderPmtsModal(inv); admRenderInvTable(); admToast('แก้ไขเรียบร้อย','ok');
+  syncLS('invoices', data.invoices);
+
+  if(_fbdb){
+    fbUpdate('invoices', invId, {
+      payments: inv.payments, paidAmount: inv.paidAmount, status: inv.status,
+      updatedAt: new Date().toISOString(), updatedBy: 'admin'
+    }).catch(()=>{});
+  }
+
+  const payload = { amount: na, date: nd, method: nm, note: nn };
+  const finResult = await updateFinanceTransaction(pmtId, payload, reason);
+  if(!finResult.ok && !finResult.skipped) _addPendingAdminSync('edit', invId, pmtId, payload, reason);
+
+  admRenderPmtsModal(inv); admRenderInvTable();
+  admToastFinanceResult(finResult, 'แก้ไข payment');
 }
 window.admEditPmt=admEditPmt;
 
@@ -6171,13 +6115,18 @@ function admPagePayments(){
   const all=ADM.invoices.flatMap(i=>(i.payments||[]).map(p=>({...p,invId:i.id,invNo:i.docNumber,custName:i.custName,companyName:i.companyName})));
   all.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const total=all.reduce((s,p)=>s+p.amount,0);
+  const pendingAdminQ = JSON.parse(localStorage.getItem('ar_admin_pending_sync') || '[]');
+  const adminRetryBadge = pendingAdminQ.length ? ` <span style="background:#ef4444;color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;vertical-align:middle">${pendingAdminQ.length}</span>` : '';
   document.getElementById('adm-page-content').innerHTML=`
   <div class="adm-stat-grid" style="grid-template-columns:repeat(3,1fr);max-width:480px;margin-bottom:14px">
     <div class="adm-stat adm-green"><div class="adm-stat-label">รวมรับ</div><div class="adm-stat-val" style="font-size:16px">${admFmt(total)}</div></div>
     <div class="adm-stat"><div class="adm-stat-label">ครั้ง</div><div class="adm-stat-val">${all.length}</div></div>
     <div class="adm-stat adm-accent"><div class="adm-stat-label">ใบ INV</div><div class="adm-stat-val">${new Set(all.map(p=>p.invId)).size}</div></div>
   </div>
-  <div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">💰 Payment Records ทั้งหมด</div><div class="adm-card-sub">${all.length} รายการ</div></div>
+  <div class="adm-card"><div class="adm-card-header"><div class="adm-card-title">💰 Payment Records ทั้งหมด</div>
+    <div class="adm-card-sub">${all.length} รายการ</div>
+    <button class="adm-btn adm-btn-xs" onclick="admRetryFinanceSync()" style="margin-left:auto">🔄 Retry sync Finance${adminRetryBadge}</button>
+  </div>
   <table class="adm-tbl"><thead><tr><th>วันที่</th><th>ใบแจ้งหนี้</th><th>ลูกค้า</th><th>บริษัท</th><th>ช่องทาง</th><th>หมายเหตุ</th><th class="r">จำนวน</th><th>Actions</th></tr></thead>
   <tbody>${all.map(p=>`<tr>
     <td class="adm-mono">${p.date}</td><td class="adm-mono">${p.invNo}</td>
@@ -6190,17 +6139,19 @@ function admPagePayments(){
     </td></tr>`).join('')||'<tr><td colspan="8"><div class="adm-empty"><p>ไม่มีข้อมูล</p></div></td></tr>'}
   </tbody></table></div>`;
 }
-function admDelPmtAndRefresh(invId,pmtId){
-  const inv=ADM.invoices.find(x=>x.id===invId); if(!inv) return;
-  const pmt=(inv.payments||[]).find(p=>p.id===pmtId); if(!pmt) return;
-  if(!confirm(`ลบ payment ${admFmt(pmt.amount)} บาท (${pmt.date}) ?`)) return;
-  inv.payments=(inv.payments||[]).filter(p=>p.id!==pmtId);
-  inv.paidAmount=Math.max(0,(inv.paidAmount||0)-pmt.amount);
-  if(inv.paidAmount<=0&&['paid','partial'].includes(inv.status)) inv.status='sent';
-  else if(inv.paidAmount>0&&inv.paidAmount<inv.total) inv.status='partial';
-  admSaveCol('invoices');
-  const mi=data.invoices.find(x=>x.id===invId); if(mi) Object.assign(mi,{payments:inv.payments,paidAmount:inv.paidAmount,status:inv.status});
-  admPagePayments(); admToast('ลบ payment เรียบร้อย','ok');
+async function admRetryFinanceSync(){
+  if(!_fbdb){ admToast('ไม่ได้เชื่อม Firebase','err'); return; }
+  const result = await retryAdminSyncQueue();
+  if(result.done===0 && result.remaining===0){ admToast('ไม่มีรายการ sync ค้างอยู่','info'); return; }
+  admToast(`Retry: สำเร็จ ${result.done} รายการ${result.remaining?`, ยังค้าง ${result.remaining} รายการ`:''}`, result.done>0?'ok':'err');
+  admPagePayments();
+}
+window.admRetryFinanceSync=admRetryFinanceSync;
+async function admDelPmtAndRefresh(invId,pmtId){
+  const result = await admDeletePaymentCore(invId, pmtId);
+  if(!result) return;
+  admPagePayments();
+  admToastFinanceResult(result.finResult, 'ลบ payment');
 }
 window.admDelPmtAndRefresh=admDelPmtAndRefresh;
 
