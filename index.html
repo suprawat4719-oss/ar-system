@@ -1,4 +1,6 @@
-<!-- AR SYSTEM v2.9.6 — 2026-09-02
+<!-- AR SYSTEM v2.9.8 — 2026-09-02
+     changelog v2.9.8: แก้บั๊ก floating-point ที่ทำให้ invoice ยอดค้างจริง 0 แต่ยังขึ้นสถานะ "เกินกำหนด" และมีปุ่ม "+ รับชำระ" โผล่ (สาเหตุ: total คำนวณจาก sub+vat-wht ไม่ปัดเศษ ทำให้ remain=total-paidAmount ติดค่าบวกจิ๋วๆ แม้ตัวเลขแสดงผลจะปัดเป็น 0.00) — เพิ่ม epsilon 0.01 ใน calcInvoiceRemain, ปัดเศษ total ตอนสร้าง/แก้ไข INV และ QT ทุกจุด, ขยาย repairInvoices() ให้ปัดเศษ total เดิมที่มี drift อยู่แล้วและ push กลับ Firestore ด้วย (ไม่ใช่แค่ localStorage)
+     changelog v2.9.7: แก้ปัญหากดค้างที่โลโก้ AR SYSTEM บนมือถือแล้วกลายเป็นการไฮไลท์/เลือกข้อความแทนที่จะเปิด Admin Panel — เพิ่ม user-select:none + -webkit-touch-callout:none และเรียก preventDefault() ใน touchstart
      changelog v2.9.6: แอดมินลบ/แก้ไข payment ตอนนี้ sync ไปยัง fin_transactions ของ Finance app ให้อัตโนมัติ (voidFinanceTransaction/updateFinanceTransaction), เขียน audit_logs ทุกครั้งที่แอดมินแก้ (AR_PAYMENT_VOIDED_BY_ADMIN/AR_PAYMENT_EDITED_BY_ADMIN), เพิ่มคิว retry (ar_admin_pending_sync) กรณี offline/ล้มเหลว พร้อมปุ่ม Retry sync Finance ในหน้า admin Payments, แก้ไขให้ admin เขียนกลับ Firestore (invoices) ด้วยไม่ใช่แค่ localStorage เพื่อกัน realtime listener ทับข้อมูลที่แก้คืน
      changelog v2.9.5: เพิ่มวิธีเข้า Admin Panel บนมือถือ/แท็บเล็ต — กดค้างที่โลโก้ AR SYSTEM มุมซ้ายบน 3 วินาที (touchstart/mousedown), ใช้คู่กับปุ่ม A ค้าง 3 วิ (เดิม) ได้ทั้งสองแบบ
      changelog v2.9.2: admAddPmt/admDelPmt/admEditPmt guard cancelled/draft status — ป้องกัน status เปลี่ยนโดยไม่ตั้งใจ
@@ -23,7 +25,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.9.6 — 2026-09-02</title>
+<title>AR System | v2.9.8 — 2026-09-02</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -450,10 +452,10 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 
 <!-- ── SIDEBAR ── -->
 <aside class="sidebar">
-  <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;">
+  <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.9.6 — 2026-09-02</div>
+    <div class="logo-sub">v2.9.8 — 2026-09-02</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1627,10 +1629,14 @@ function peekDocNo(prefix, type) {
   return `${type}-${prefix}-${ym}-${String(seq).padStart(3, '0')}`;
 }
 // calcInvoiceRemain — normalized, never negative
+// กัน floating-point drift: total/paid อาจมีเศษทศนิยมจิ๋วๆ จากการคำนวณ (เช่น sub+vat-wht)
+// ถ้าผลต่างน้อยกว่า 1 สตางค์ ถือว่าจ่ายครบแล้ว ไม่งั้นจะค้าง status ผิดทั้งที่ยอดแสดงผลเป็น 0.00
 function calcInvoiceRemain(inv) {
   const total = Number(inv.total) || 0;
   const paid  = Number(inv.paidAmount) || 0;
-  return Math.max(0, total - paid);
+  const remain = total - paid;
+  if (remain <= 0.01) return 0;
+  return Math.round(remain * 100) / 100;
 }
 // alias
 function remainAmount(inv) { return calcInvoiceRemain(inv); }
@@ -2062,7 +2068,7 @@ async function saveEditQT(id) {
     custAddress:document.getElementById('eqt-addr').value,
     note:document.getElementById('eqt-note').value,
     paymentTerms, terms:paymentTerms, paymentDays,
-    items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht
+    items, hasVat, hasWht, subtotal:sub, vat, wht, total:Math.round((sub+vat-wht)*100)/100
   };
   const ok=await storeUpdate('quotations',id,d); if(!ok) return;
   Object.assign(q,d); syncLS('quotations',data.quotations);
@@ -3035,7 +3041,7 @@ async function saveDoc(type) {
     custContact:document.getElementById('f-cust-contact')?.value,
     preparedBy:document.getElementById('f-prepared-by')?.value,
     preparedPhone:document.getElementById('f-prepared-phone')?.value,
-    items, hasVat, hasWht, subtotal:sub, vat, wht, total:sub+vat-wht,
+    items, hasVat, hasWht, subtotal:sub, vat, wht, total:Math.round((sub+vat-wht)*100)/100,
     status:'sent', note:document.getElementById('f-note')?.value,
     payMethod:getSelectedPayMethod(),
     paymentTerms, terms:paymentTerms, paymentDays,
@@ -5175,7 +5181,7 @@ function renderSettings() {
     </div>
     <div class="card-body">
       <div style="margin-top:0;padding-top:0">
-        <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">คำนวณ paidAmount ใหม่จาก payments[], ลบ invoice ซ้ำ, normalize field</p>
+        <p style="font-size:13px;color:var(--ink3);margin-bottom:12px;line-height:1.7">คำนวณ paidAmount ใหม่จาก payments[], ปัดเศษ total กัน floating-point drift (แก้เคส "เหลือ 0.00 แต่ยังขึ้นเกินกำหนด/ปุ่มรับชำระ"), ลบ invoice ซ้ำ, normalize field</p>
         <button class="btn btn-outline" onclick="repairInvoices()">&#x2699;&#xFE0F; Repair Invoice Data</button>
         <button class="btn btn-outline" onclick="debugDashboard()" style="margin-left:8px">&#x1F50D; Debug Dashboard (console)</button>
       </div>
@@ -5676,7 +5682,7 @@ document.addEventListener('keydown', e => {
     document.getElementById('adm-hint').classList.remove('show');
   }
 
-  logoEl.addEventListener('touchstart', e => { startHold(e); }, {passive:true});
+  logoEl.addEventListener('touchstart', e => { e.preventDefault(); startHold(e); }, {passive:false});
   logoEl.addEventListener('touchend', cancelHold);
   logoEl.addEventListener('touchcancel', cancelHold);
   logoEl.addEventListener('touchmove', cancelHold);
@@ -6459,6 +6465,10 @@ async function repairInvoices() {
     // normalize numbers
     if (isNaN(Number(inv.total))) { inv.total = 0; changed = true; }
     if (isNaN(Number(inv.paidAmount))) { inv.paidAmount = 0; changed = true; }
+    // ปัดเศษ total กัน floating-point drift (เช่น sub+vat-wht ได้ 15000.000000000002)
+    // ที่ทำให้ remain ไม่ลงเป็น 0 พอดี แม้ยอดแสดงผลจะเห็นเป็น 0.00 แล้วก็ตาม
+    const roundedTotal = Math.round((Number(inv.total)||0)*100)/100;
+    if (roundedTotal !== inv.total) { inv.total = roundedTotal; changed = true; }
     // recalc paidAmount from payments
     if ((inv.payments||[]).length > 0) {
       const sumPmts = (inv.payments||[]).reduce((s,p)=>s+(Number(p.amount)||0),0);
@@ -6469,8 +6479,8 @@ async function repairInvoices() {
     // normalize docDue field
     const dueVal = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue;
     if (dueVal && !inv.docDue) { inv.docDue = dueVal; changed = true; }
-    // fix negative remain (cap paidAmount at total)
-    if ((Number(inv.paidAmount)||0) > (Number(inv.total)||0)) {
+    // fix negative remain (cap paidAmount at total), เผื่อ epsilon เดียวกับ calcInvoiceRemain
+    if ((Number(inv.paidAmount)||0) > (Number(inv.total)||0) - 0.01) {
       inv.paidAmount = Number(inv.total)||0; changed = true;
     }
     // repair customerId from customers if name matches
@@ -6478,7 +6488,14 @@ async function repairInvoices() {
       const found = findDuplicateCustomer({name: inv.custName||inv.customerName, taxId: inv.custTax||''});
       if (found) { inv.customerId = found.id; inv.customerCode = found.customerCode||''; changed = true; }
     }
-    if (changed) repaired++;
+    if (changed) {
+      repaired++;
+      if(_fbdb) fbUpdate('invoices', inv.id, {
+        total: inv.total, paidAmount: inv.paidAmount, docDue: inv.docDue,
+        customerId: inv.customerId, customerCode: inv.customerCode,
+        updatedAt: new Date().toISOString(), updatedBy: 'repairInvoices'
+      }).catch(()=>{});
+    }
   });
 
   syncLS('invoices', data.invoices);
