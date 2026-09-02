@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.9.8 — 2026-09-02
+<!-- AR SYSTEM v2.9.9 — 2026-09-02
+     changelog v2.9.9: แก้บั๊กกดค้างที่โลโก้บนมือถือแล้วไม่เปิด Admin Panel — เดิม touchmove จะยกเลิกการนับเวลาทันทีแม้ขยับนิ้วแค่เสี้ยว px (ตามธรรมชาติของเซ็นเซอร์สัมผัส แทบเป็นไปไม่ได้ที่จะกดค้างนิ่ง 3 วิเป๊ะ) เปลี่ยนเป็นยอมรับการขยับได้ในระยะ 15px ก่อนจะยกเลิก
      changelog v2.9.8: แก้บั๊ก floating-point ที่ทำให้ invoice ยอดค้างจริง 0 แต่ยังขึ้นสถานะ "เกินกำหนด" และมีปุ่ม "+ รับชำระ" โผล่ (สาเหตุ: total คำนวณจาก sub+vat-wht ไม่ปัดเศษ ทำให้ remain=total-paidAmount ติดค่าบวกจิ๋วๆ แม้ตัวเลขแสดงผลจะปัดเป็น 0.00) — เพิ่ม epsilon 0.01 ใน calcInvoiceRemain, ปัดเศษ total ตอนสร้าง/แก้ไข INV และ QT ทุกจุด, ขยาย repairInvoices() ให้ปัดเศษ total เดิมที่มี drift อยู่แล้วและ push กลับ Firestore ด้วย (ไม่ใช่แค่ localStorage)
      changelog v2.9.7: แก้ปัญหากดค้างที่โลโก้ AR SYSTEM บนมือถือแล้วกลายเป็นการไฮไลท์/เลือกข้อความแทนที่จะเปิด Admin Panel — เพิ่ม user-select:none + -webkit-touch-callout:none และเรียก preventDefault() ใน touchstart
      changelog v2.9.6: แอดมินลบ/แก้ไข payment ตอนนี้ sync ไปยัง fin_transactions ของ Finance app ให้อัตโนมัติ (voidFinanceTransaction/updateFinanceTransaction), เขียน audit_logs ทุกครั้งที่แอดมินแก้ (AR_PAYMENT_VOIDED_BY_ADMIN/AR_PAYMENT_EDITED_BY_ADMIN), เพิ่มคิว retry (ar_admin_pending_sync) กรณี offline/ล้มเหลว พร้อมปุ่ม Retry sync Finance ในหน้า admin Payments, แก้ไขให้ admin เขียนกลับ Firestore (invoices) ด้วยไม่ใช่แค่ localStorage เพื่อกัน realtime listener ทับข้อมูลที่แก้คืน
@@ -25,7 +26,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.9.8 — 2026-09-02</title>
+<title>AR System | v2.9.9 — 2026-09-02</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -455,7 +456,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.9.8 — 2026-09-02</div>
+    <div class="logo-sub">v2.9.9 — 2026-09-02</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -5663,17 +5664,26 @@ document.addEventListener('keydown', e => {
   if(!logoEl) return;
   let holdTimer = null;
   let holding = false;
+  let startX = 0, startY = 0;
+  const MOVE_TOLERANCE = 15; // px — กันเซ็นเซอร์สัมผัสสั่นนิดหน่อยจนยกเลิกการกดค้างเอง
 
-  function startHold(e){
+  function startHold(x, y){
     if(holding) return;
     holding = true;
+    startX = x; startY = y;
     const hint = document.getElementById('adm-hint');
+    hint.textContent = 'กำลังเปิด Admin Panel…';
     hint.classList.add('show');
     holdTimer = setTimeout(() => {
       hint.classList.remove('show');
       holding = false;
       admOpen();
     }, 3000);
+  }
+  function moveHold(x, y){
+    if(!holding) return;
+    const dx = Math.abs(x - startX), dy = Math.abs(y - startY);
+    if(dx > MOVE_TOLERANCE || dy > MOVE_TOLERANCE) cancelHold();
   }
   function cancelHold(){
     if(!holding) return;
@@ -5682,12 +5692,20 @@ document.addEventListener('keydown', e => {
     document.getElementById('adm-hint').classList.remove('show');
   }
 
-  logoEl.addEventListener('touchstart', e => { e.preventDefault(); startHold(e); }, {passive:false});
+  logoEl.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    startHold(t.clientX, t.clientY);
+  }, {passive:false});
+  logoEl.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    moveHold(t.clientX, t.clientY);
+  }, {passive:true});
   logoEl.addEventListener('touchend', cancelHold);
   logoEl.addEventListener('touchcancel', cancelHold);
-  logoEl.addEventListener('touchmove', cancelHold);
   // เผื่อกรณีใช้เมาส์ (เช่น iPad ต่อ trackpad) — กดค้างซ้ายก็ใช้ได้เหมือนกัน
-  logoEl.addEventListener('mousedown', e => { startHold(e); });
+  logoEl.addEventListener('mousedown', e => { startHold(e.clientX, e.clientY); });
+  logoEl.addEventListener('mousemove', e => { moveHold(e.clientX, e.clientY); });
   logoEl.addEventListener('mouseup', cancelHold);
   logoEl.addEventListener('mouseleave', cancelHold);
   // กันเมนู context ยาวๆ บน iOS/Android เวลากดค้าง
