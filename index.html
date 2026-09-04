@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.9.9 — 2026-09-02
+<!-- AR SYSTEM v2.10.0 — 2026-09-03
+     changelog v2.10.0: เพิ่มการเลือก VAT แยกรายรายการ (per-item VAT) ในตารางรายการสินค้า/บริการ ทั้งฟอร์มสร้างใบเสนอราคา/ใบแจ้งหนี้ใหม่ และหน้าแก้ไข — แต่ละแถวมีติ๊ก VAT ของตัวเอง (ค่าเริ่มต้นติ๊ก = คิด VAT) คำนวณ VAT 7% เฉพาะยอดรวมของรายการที่ติ๊กเท่านั้น (ใช้ helper vatableSubtotal() ร่วมกันทุกฟอร์ม), บันทึก vatApplicable ต่อรายการลง items[], เพิ่มคอลัมน์ VAT ในหน้าดูตัวอย่าง/พิมพ์เอกสารเมื่อมีรายการผสมกัน (มี VAT บางรายการ ไม่มีบางรายการ)
      changelog v2.9.9: แก้บั๊กกดค้างที่โลโก้บนมือถือแล้วไม่เปิด Admin Panel — เดิม touchmove จะยกเลิกการนับเวลาทันทีแม้ขยับนิ้วแค่เสี้ยว px (ตามธรรมชาติของเซ็นเซอร์สัมผัส แทบเป็นไปไม่ได้ที่จะกดค้างนิ่ง 3 วิเป๊ะ) เปลี่ยนเป็นยอมรับการขยับได้ในระยะ 15px ก่อนจะยกเลิก
      changelog v2.9.8: แก้บั๊ก floating-point ที่ทำให้ invoice ยอดค้างจริง 0 แต่ยังขึ้นสถานะ "เกินกำหนด" และมีปุ่ม "+ รับชำระ" โผล่ (สาเหตุ: total คำนวณจาก sub+vat-wht ไม่ปัดเศษ ทำให้ remain=total-paidAmount ติดค่าบวกจิ๋วๆ แม้ตัวเลขแสดงผลจะปัดเป็น 0.00) — เพิ่ม epsilon 0.01 ใน calcInvoiceRemain, ปัดเศษ total ตอนสร้าง/แก้ไข INV และ QT ทุกจุด, ขยาย repairInvoices() ให้ปัดเศษ total เดิมที่มี drift อยู่แล้วและ push กลับ Firestore ด้วย (ไม่ใช่แค่ localStorage)
      changelog v2.9.7: แก้ปัญหากดค้างที่โลโก้ AR SYSTEM บนมือถือแล้วกลายเป็นการไฮไลท์/เลือกข้อความแทนที่จะเปิด Admin Panel — เพิ่ม user-select:none + -webkit-touch-callout:none และเรียก preventDefault() ใน touchstart
@@ -26,7 +27,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.9.9 — 2026-09-02</title>
+<title>AR System | v2.10.0 — 2026-09-03</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -456,7 +457,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.9.9 — 2026-09-02</div>
+    <div class="logo-sub">v2.10.0 — 2026-09-03</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1924,6 +1925,7 @@ function editQT(id) {
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
     <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="eqtCalc()"></td>
     <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
+    <td class="c"><input type="checkbox" class="item-vat-chk" ${r.vatApplicable!==false?'checked':''} title="รายการนี้คิด VAT" onchange="eqtCalc()"></td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>
   </tr>`).join('');
   document.getElementById('page-content').innerHTML += `
@@ -1971,6 +1973,7 @@ function editQT(id) {
             <th style="width:60px">หน่วย</th>
             <th class="r" style="width:100px">ราคา/หน่วย</th>
             <th class="r" style="width:100px">รวม</th>
+            <th style="width:40px" class="c">VAT</th>
             <th style="width:30px"></th>
           </tr></thead>
           <tbody id="eqt-items-body">${itemsHtml}</tbody>
@@ -2016,6 +2019,7 @@ function eqtAddRow() {
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="eqtCalc()"></td>
     <td class="eqt-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
+    <td class="c"><input type="checkbox" class="item-vat-chk" checked title="รายการนี้คิด VAT" onchange="eqtCalc()"></td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();eqtCalc()">✕</button></td>`;
   tbody.appendChild(tr); eqtCalc();
 }
@@ -2023,15 +2027,18 @@ window.eqtAddRow=eqtAddRow;
 
 function eqtCalc() {
   const rows=[...document.querySelectorAll('#eqt-items-body tr')];
-  let sub=0;
+  let sub=0, vatableSub=0;
   rows.forEach(tr=>{
     const nums=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(nums[0]?.value)||0)*(parseFloat(nums[1]?.value)||0);
-    sub+=t; const el=tr.querySelector('.eqt-row-total'); if(el) el.textContent=fmt(t);
+    sub+=t;
+    const vc=tr.querySelector('.item-vat-chk');
+    if(!vc || vc.checked) vatableSub+=t;
+    const el=tr.querySelector('.eqt-row-total'); if(el) el.textContent=fmt(t);
   });
   const hasVat=document.getElementById('eqt-vat')?.checked;
   const hasWht=document.getElementById('eqt-wht')?.checked;
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vat=hasVat?vatableSub*.07:0, wht=hasWht?sub*.03:0;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v);};
   set('eqt-s-sub',sub); set('eqt-s-vat',vat); set('eqt-s-wht',wht); set('eqt-s-total',sub+vat-wht);
   const vr=document.getElementById('eqt-s-vat-row'); if(vr) vr.style.display=vat?'':'none';
@@ -2046,7 +2053,9 @@ function eqtGetItems() {
     const unitInp=tr.querySelector('.prod-unit-inp');
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
-    return {desc,qty,unit,price,total:qty*price};
+    const vc=tr.querySelector('.item-vat-chk');
+    const vatApplicable = vc ? vc.checked : true;
+    return {desc,qty,unit,price,total:qty*price,vatApplicable};
   }).filter(r=>r.desc||r.price>0);
 }
 
@@ -2056,7 +2065,7 @@ async function saveEditQT(id) {
   const hasVat=document.getElementById('eqt-vat')?.checked;
   const hasWht=document.getElementById('eqt-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vat=hasVat?vatableSubtotal(items)*.07:0, wht=hasWht?sub*.03:0;
   const paymentTerms = document.getElementById('eqt-terms')?.value || q.paymentTerms || q.terms || '30 วัน';
   const paymentDays = getPaymentTermDays(paymentTerms);
   const d={
@@ -2145,6 +2154,7 @@ function editINV(id) {
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น" value="${r.unit||''}"></td>
     <td><input class="item-inp r" type="number" value="${r.price||0}" min="0" step="any" oninput="einvCalc()"></td>
     <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">${fmt(r.total||0)}</td>
+    <td class="c"><input type="checkbox" class="item-vat-chk" ${r.vatApplicable!==false?'checked':''} title="รายการนี้คิด VAT" onchange="einvCalc()"></td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>
   </tr>`).join('');
   document.getElementById('page-content').innerHTML += `
@@ -2185,6 +2195,7 @@ function editINV(id) {
             <th style="width:60px">หน่วย</th>
             <th class="r" style="width:100px">ราคา/หน่วย</th>
             <th class="r" style="width:100px">รวม</th>
+            <th style="width:40px" class="c">VAT</th>
             <th style="width:30px"></th>
           </tr></thead>
           <tbody id="einv-items-body">${itemsHtml}</tbody>
@@ -2230,6 +2241,7 @@ function einvAddRow() {
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="einvCalc()"></td>
     <td class="einv-row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
+    <td class="c"><input type="checkbox" class="item-vat-chk" checked title="รายการนี้คิด VAT" onchange="einvCalc()"></td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="this.closest('tr').remove();einvCalc()">✕</button></td>`;
   tbody.appendChild(tr); einvCalc();
 }
@@ -2237,15 +2249,18 @@ window.einvAddRow=einvAddRow;
 
 function einvCalc() {
   const rows=[...document.querySelectorAll('#einv-items-body tr')];
-  let sub=0;
+  let sub=0, vatableSub=0;
   rows.forEach(tr=>{
     const nums=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(nums[0]?.value)||0)*(parseFloat(nums[1]?.value)||0);
-    sub+=t; const el=tr.querySelector('.einv-row-total'); if(el) el.textContent=fmt(t);
+    sub+=t;
+    const vc=tr.querySelector('.item-vat-chk');
+    if(!vc || vc.checked) vatableSub+=t;
+    const el=tr.querySelector('.einv-row-total'); if(el) el.textContent=fmt(t);
   });
   const hasVat=document.getElementById('einv-vat')?.checked;
   const hasWht=document.getElementById('einv-wht')?.checked;
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vat=hasVat?vatableSub*.07:0, wht=hasWht?sub*.03:0;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=fmt(v);};
   set('einv-s-sub',sub); set('einv-s-vat',vat); set('einv-s-wht',wht); set('einv-s-total',sub+vat-wht);
   const vr=document.getElementById('einv-s-vat-row'); if(vr) vr.style.display=vat?'':'none';
@@ -2260,7 +2275,9 @@ function einvGetItems() {
     const unitInp=tr.querySelector('.prod-unit-inp');
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0; const price=parseFloat(numIns[1]?.value)||0;
-    return {desc,qty,unit,price,total:qty*price};
+    const vc=tr.querySelector('.item-vat-chk');
+    const vatApplicable = vc ? vc.checked : true;
+    return {desc,qty,unit,price,total:qty*price,vatApplicable};
   }).filter(r=>r.desc||r.price>0);
 }
 
@@ -2270,7 +2287,7 @@ async function saveEditINV(id) {
   const hasVat=document.getElementById('einv-vat')?.checked;
   const hasWht=document.getElementById('einv-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vat=hasVat?vatableSubtotal(items)*.07:0, wht=hasWht?sub*.03:0;
   const newTotal=sub+vat-wht;
   // คำนวณ paidAmount ใหม่ให้ไม่เกิน total
   const paidAmount=Math.min(inv.paidAmount||0, newTotal);
@@ -2569,7 +2586,7 @@ function buildDocForm(type) {
       <table class="items-tbl"><thead><tr>
         <th style="width:32px">#</th><th>รายการ</th><th style="width:80px">จำนวน</th>
         <th style="width:80px">หน่วย</th><th style="width:120px" class="r">ราคา/หน่วย</th>
-        <th style="width:120px" class="r">รวม</th><th style="width:32px"></th>
+        <th style="width:120px" class="r">รวม</th><th style="width:44px" class="c">VAT</th><th style="width:32px"></th>
       </tr></thead><tbody id="items-body-${type}"></tbody></table>
       <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addRow('${type}')">+ เพิ่มรายการ</button>
       <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-top:12px">
@@ -2889,6 +2906,7 @@ function addRow(type) {
     <td><input class="item-inp prod-unit-inp" type="text" placeholder="ชิ้น"></td>
     <td><input class="item-inp r" type="number" value="0" min="0" step="any" oninput="calcDoc('${type}')"></td>
     <td class="row-total r" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;padding-right:8px">0.00</td>
+    <td class="c"><input type="checkbox" class="item-vat-chk" checked title="รายการนี้คิด VAT" onchange="calcDoc('${type}')"></td>
     <td><button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:3px 7px;border-radius:4px;font-size:13px" onclick="document.getElementById('r${_rowCount}').remove();calcDoc('${type}')">✕</button></td>`;
   tbody.appendChild(tr);
   calcDoc(type);
@@ -2897,14 +2915,18 @@ window.addRow=addRow;
 
 function calcDoc(type) {
   const rows=[...document.querySelectorAll(`#items-body-${type} tr`)];
-  let sub=0;
+  let sub=0, vatableSub=0;
   rows.forEach(tr=>{
     // inputs[type=number]: ins[0]=qty, ins[1]=price  (unit is type=text)
     const ins=tr.querySelectorAll('input[type=number]');
     const t=(parseFloat(ins[0]?.value)||0)*(parseFloat(ins[1]?.value)||0);
-    sub+=t; const el=tr.querySelector('.row-total'); if(el) el.textContent=fmt(t);
+    sub+=t;
+    const vc=tr.querySelector('.item-vat-chk');
+    if(!vc || vc.checked) vatableSub+=t;
+    const el=tr.querySelector('.row-total'); if(el) el.textContent=fmt(t);
   });
-  const vat=document.getElementById('f-vat')?.checked?sub*.07:0;
+  const vatOn=document.getElementById('f-vat')?.checked;
+  const vat=vatOn?vatableSub*.07:0;
   const wht=document.getElementById('f-wht')?.checked?sub*.03:0;
   const total=sub+vat-wht;
   const set=(id,v)=>{const el=document.getElementById(id);if(el) el.textContent=fmt(v);};
@@ -2922,8 +2944,15 @@ function getFormItems(type) {
     const unit=unitInp?.value||'';
     const qty=parseFloat(numIns[0]?.value)||0;
     const price=parseFloat(numIns[1]?.value)||0;
-    return {desc, qty, unit, price, total:qty*price};
+    const vc=tr.querySelector('.item-vat-chk');
+    const vatApplicable = vc ? vc.checked : true;
+    return {desc, qty, unit, price, total:qty*price, vatApplicable};
   }).filter(r=>r.desc||r.price>0);
+}
+
+// รวมยอดเฉพาะรายการที่ติ๊ก "คิด VAT" — ใช้ร่วมกันทั้งฟอร์มสร้างและแก้ไข
+function vatableSubtotal(items) {
+  return (items||[]).reduce((s,r)=>s+(r.vatApplicable!==false?(Number(r.total)||0):0),0);
 }
 
 let _saving = false;
@@ -3028,7 +3057,7 @@ async function saveDoc(type) {
   const hasVat=document.getElementById('f-vat')?.checked;
   const hasWht=document.getElementById('f-wht')?.checked;
   const sub=items.reduce((s,r)=>s+r.total,0);
-  const vat=hasVat?sub*.07:0, wht=hasWht?sub*.03:0;
+  const vat=hasVat?vatableSubtotal(items)*.07:0, wht=hasWht?sub*.03:0;
   const paymentTerms = getSelectedPaymentTerms();
   const paymentDays = getPaymentTermDays(paymentTerms);
   const docData={
@@ -3701,11 +3730,12 @@ function viewDoc(type, id) {
     </div>`;
 
   if(src.items?.length) {
+    const showVatCol = src.items.some(r=>r.vatApplicable===false);
     body+=`<table class="tbl" style="margin-bottom:12px"><thead><tr>
-      <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th>
+      <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th>${showVatCol?'<th class="c">VAT</th>':''}
     </tr></thead><tbody>${src.items.map((r,i)=>`<tr>
       <td style="color:var(--ink4)">${i+1}</td><td>${r.desc}</td><td class="r mono">${r.qty}</td>
-      <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td><td class="r mono bold">${fmt(r.total)}</td>
+      <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td><td class="r mono bold">${fmt(r.total)}</td>${showVatCol?`<td class="c" style="font-size:11px;color:${r.vatApplicable!==false?'var(--green)':'var(--ink4)'}">${r.vatApplicable!==false?'✓':'—'}</td>`:''}
     </tr>`).join('')}</tbody></table>
     <div class="summary-box">
       <div class="s-row"><span>ก่อน VAT</span><span class="val">${fmt(src.subtotal)}</span></div>
