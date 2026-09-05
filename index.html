@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.11.1 — 2026-09-05
+<!-- AR SYSTEM v2.11.2 — 2026-09-05
+     changelog v2.11.2: แก้กลุ่ม "ชำระบางส่วน" ใน Dashboard (สถานะใบแจ้งหนี้) และตัวกรองสถานะในหน้าใบแจ้งหนี้ ที่โชว์ 0/ไม่นับใบที่จริงชำระบางส่วนแล้ว — สาเหตุคือ calcInvoiceStatus() จัดใบที่ "เกินกำหนด + ชำระบางส่วน" ให้อยู่กลุ่ม "เกินกำหนด" เพียงอย่างเดียว (ลำดับความสำคัญ) ทำให้กลุ่ม "ชำระบางส่วน" นับตกหล่นใบที่เกินกำหนดไปด้วย — แก้โดยให้ "ชำระบางส่วน" นับแยกอิสระจากลำดับสถานะ (paidAmount>0 และยังไม่จ่ายครบ ไม่ว่าจะเกินกำหนดหรือไม่) ทั้ง 2 จุดนี้ ไม่กระทบ badge/ลำดับความสำคัญของ "เกินกำหนด" ที่อื่นในระบบ
      changelog v2.11.1: แก้ช่องโหว่ Stored XSS ทั่วทั้งแอป — ชื่อลูกค้า/บริษัท/รายการสินค้า/หมายเหตุ/ช่องทางชำระเงิน ที่แสดงผลในตารางและการ์ดต่างๆ (Dashboard, รายการใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล, รายงานค้างชำระ, Aging Report, หน้ารับชำระ, หน้าลูกค้า, Admin Panel รวมถึง admShowConfirm ที่ render เป็น HTML) เดิมแสดงข้อความดิบไม่ผ่านการ escape ทำให้ใครก็ตามที่ตั้งชื่อ/รายละเอียดเป็นโค้ด HTML/JavaScript (เช่น &lt;img onerror=...&gt;) จะรันโค้ดนั้นได้ทุกครั้งที่มีคนเปิดหน้าที่แสดงข้อมูลนั้น — แก้ด้วยการห่อทุกจุดด้วย escHtml() ก่อนแสดงผล (ฟิลด์ระบบที่ผู้ใช้แก้ไขไม่ได้ เช่น docNumber ที่ auto-generate ยังไม่ escape เพราะความเสี่ยงต่ำ)
      changelog v2.11.0: สามข้อใหญ่ตามคำขอ — (1) เติมรหัสลูกค้า (CUS-XXXX) ให้ลูกค้าที่สร้างไว้ก่อนมีระบบรหัส ผ่าน backfillMissingCustomerCodes() ที่รันได้ทุกครั้งอย่างปลอดภัย ไม่กระทบข้อมูลอื่น (2) ป้องกันการลบข้อมูลลูกค้าถาวร — เอาปุ่มลบออกจากหน้าลูกค้า เปลี่ยนเป็นปุ่ม "ปิด/เปิดใช้งาน" แทน (toggleCustomerActive) เพื่อรักษาประวัติการชำระ/ค้างชำระไว้เสมอ, deleteCustomer() เดิมถูกปิดใช้งานถาวร (3) เพิ่มระบบ "หนี้สูญ" — ตัดใบแจ้งหนี้ที่เก็บเงินไม่ได้ออกจาก Dashboard/รายงานค้างชำระทั้งหมด (markBadDebt) ไปไว้หน้า "หนี้สูญ" ใหม่ ยังนำกลับมาติดตามได้ถ้าลูกค้ากลับมาชำระ (restoreBadDebt) และลบถาวรได้จากหน้าหนี้สูญเมื่อต้องการ (deleteBadDebtInvoice) — เพิ่ม status 'baddebt' ใน calcInvoiceStatus/calcInvoiceAgingBucket ให้ถูกตัดออกจากทุกจุดคำนวณ AR โดยอัตโนมัติ
      changelog v2.10.3: วิดเจ็ต "ใบแจ้งหนี้ที่ต้องติดตาม" บน Dashboard เดิมโชว์แค่ 8 แถวแรกแล้วตัดที่เหลือทิ้งเงียบๆ (เรียงเกินกำหนดมากสุดก่อน ทำให้ใบที่เกินกำหนดน้อย เช่น 1 วัน หลุดจากลิสต์ถ้ามีใบอื่นเกินกำหนดมากกว่า 8 ใบ) — เพิ่มข้อความ "แสดง 8 จาก N รายการ" พร้อมลิงก์ไปหน้าใบแจ้งหนี้เต็ม เมื่อมีรายการเกิน 8 แถว จะได้ไม่มีใบไหนหายไปแบบไม่รู้ตัวอีก
@@ -32,7 +33,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.1 — 2026-09-05</title>
+<title>AR System | v2.11.2 — 2026-09-05</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -463,7 +464,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.1 — 2026-09-05</div>
+    <div class="logo-sub">v2.11.2 — 2026-09-05</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1797,7 +1798,11 @@ function renderDashboard() {
     <div class="report-card">
       <div class="report-card-title">📊 สถานะใบแจ้งหนี้</div>
       ${['sent','partial','overdue','paid','baddebt'].map(st=>{
-        const cnt=invs.filter(i=>calcInvoiceStatus(i)===st).length;
+        // "ชำระบางส่วน" นับแยกอิสระ ไม่ผูกกับลำดับความสำคัญของ calcInvoiceStatus
+        // (ใบที่เกินกำหนด+ชำระบางส่วน จะถูกนับในกลุ่มนี้ด้วย ไม่ใช่แค่กลุ่ม "เกินกำหนด" เพียงอย่างเดียว)
+        const cnt = st==='partial'
+          ? invs.filter(i=>!['baddebt','paid','cancelled','draft'].includes(calcInvoiceStatus(i)) && (Number(i.paidAmount)||0)>0 && calcInvoiceRemain(i)>0).length
+          : invs.filter(i=>calcInvoiceStatus(i)===st).length;
         const total=invs.length||1;
         const colors={sent:'var(--accent)',partial:'#f97316',overdue:'var(--red)',paid:'var(--green)',baddebt:'#7f1d1d'};
         return `<div style="margin-bottom:10px">
@@ -2170,7 +2175,10 @@ function refreshINVTable() {
   const moF=document.getElementById('f-mo-inv')?.value||'';
   let rows=[...data.invoices];
   if(coF) rows=rows.filter(r=>r.companyId===coF);
-  if(stF) rows=rows.filter(r=>invStatus(r)===stF);
+  if(stF) rows=rows.filter(r=>{
+    if(stF==='partial') return !['baddebt','paid','cancelled','draft'].includes(invStatus(r)) && (Number(r.paidAmount)||0)>0 && remainAmount(r)>0;
+    return invStatus(r)===stF;
+  });
   if(moF) rows=rows.filter(r=>r.docDate?.startsWith(moF));
   const tbody=document.getElementById('inv-tbody');
   if(!tbody) return;
