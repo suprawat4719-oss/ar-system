@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.11.0 — 2026-09-05
+<!-- AR SYSTEM v2.11.1 — 2026-09-05
+     changelog v2.11.1: แก้ช่องโหว่ Stored XSS ทั่วทั้งแอป — ชื่อลูกค้า/บริษัท/รายการสินค้า/หมายเหตุ/ช่องทางชำระเงิน ที่แสดงผลในตารางและการ์ดต่างๆ (Dashboard, รายการใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล, รายงานค้างชำระ, Aging Report, หน้ารับชำระ, หน้าลูกค้า, Admin Panel รวมถึง admShowConfirm ที่ render เป็น HTML) เดิมแสดงข้อความดิบไม่ผ่านการ escape ทำให้ใครก็ตามที่ตั้งชื่อ/รายละเอียดเป็นโค้ด HTML/JavaScript (เช่น &lt;img onerror=...&gt;) จะรันโค้ดนั้นได้ทุกครั้งที่มีคนเปิดหน้าที่แสดงข้อมูลนั้น — แก้ด้วยการห่อทุกจุดด้วย escHtml() ก่อนแสดงผล (ฟิลด์ระบบที่ผู้ใช้แก้ไขไม่ได้ เช่น docNumber ที่ auto-generate ยังไม่ escape เพราะความเสี่ยงต่ำ)
      changelog v2.11.0: สามข้อใหญ่ตามคำขอ — (1) เติมรหัสลูกค้า (CUS-XXXX) ให้ลูกค้าที่สร้างไว้ก่อนมีระบบรหัส ผ่าน backfillMissingCustomerCodes() ที่รันได้ทุกครั้งอย่างปลอดภัย ไม่กระทบข้อมูลอื่น (2) ป้องกันการลบข้อมูลลูกค้าถาวร — เอาปุ่มลบออกจากหน้าลูกค้า เปลี่ยนเป็นปุ่ม "ปิด/เปิดใช้งาน" แทน (toggleCustomerActive) เพื่อรักษาประวัติการชำระ/ค้างชำระไว้เสมอ, deleteCustomer() เดิมถูกปิดใช้งานถาวร (3) เพิ่มระบบ "หนี้สูญ" — ตัดใบแจ้งหนี้ที่เก็บเงินไม่ได้ออกจาก Dashboard/รายงานค้างชำระทั้งหมด (markBadDebt) ไปไว้หน้า "หนี้สูญ" ใหม่ ยังนำกลับมาติดตามได้ถ้าลูกค้ากลับมาชำระ (restoreBadDebt) และลบถาวรได้จากหน้าหนี้สูญเมื่อต้องการ (deleteBadDebtInvoice) — เพิ่ม status 'baddebt' ใน calcInvoiceStatus/calcInvoiceAgingBucket ให้ถูกตัดออกจากทุกจุดคำนวณ AR โดยอัตโนมัติ
      changelog v2.10.3: วิดเจ็ต "ใบแจ้งหนี้ที่ต้องติดตาม" บน Dashboard เดิมโชว์แค่ 8 แถวแรกแล้วตัดที่เหลือทิ้งเงียบๆ (เรียงเกินกำหนดมากสุดก่อน ทำให้ใบที่เกินกำหนดน้อย เช่น 1 วัน หลุดจากลิสต์ถ้ามีใบอื่นเกินกำหนดมากกว่า 8 ใบ) — เพิ่มข้อความ "แสดง 8 จาก N รายการ" พร้อมลิงก์ไปหน้าใบแจ้งหนี้เต็ม เมื่อมีรายการเกิน 8 แถว จะได้ไม่มีใบไหนหายไปแบบไม่รู้ตัวอีก
      changelog v2.10.2: แก้ปัญหาช่อง input วันที่ (native date picker) แสดงผลตาม locale ของเครื่อง/เบราว์เซอร์ (เช่น MM/DD/YYYY บนเครื่องตั้งค่าภาษาอังกฤษ) ทำให้อ่านสลับวัน/เดือนผิด — เพิ่มคำอ่านภาษาไทยกำกับใต้ทุกช่องวันที่โดยอัตโนมัติ (เช่น "📅 4 ก.ย. 2569") ผ่าน MutationObserver ที่สแกนหาช่อง type="date" ใหม่ทุกครั้งที่ DOM เปลี่ยน ครอบคลุมทุกฟอร์ม/โมดัลในระบบโดยไม่ต้องแก้ทีละจุด
@@ -31,7 +32,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.0 — 2026-09-05</title>
+<title>AR System | v2.11.1 — 2026-09-05</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -462,7 +463,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.0 — 2026-09-05</div>
+    <div class="logo-sub">v2.11.1 — 2026-09-05</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1836,8 +1837,8 @@ function renderDashboard() {
         const daysLabel = i._daysOvd !== null ? (i._daysOvd > 0 ? `+${i._daysOvd}` : i._daysOvd) : '—';
         return `<tr>
           <td class="mono">${i.docNumber}</td>
-          <td>${i.custName}</td>
-          <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
+          <td>${escHtml(i.custName||'')}</td>
+          <td style="font-size:12px;color:var(--ink4)">${escHtml(i.companyName||'')}</td>
           <td style="font-size:12px${dueColor}">${i.docDue||i.dueDate||i.invoiceDue||i.dateDue||'—'}</td>
           <td class="c mono" style="font-size:12px${dueColor}">${daysLabel}</td>
           <td class="r mono bold">${fmt(i._remain)}</td>
@@ -1901,7 +1902,7 @@ function renderQuotations() {
   document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="goPage('new-qt')">+ สร้างใบเสนอราคา</button>`;
   const html = `
   <div class="filters">
-    <select id="f-co-qt" onchange="renderQuotations()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+    <select id="f-co-qt" onchange="renderQuotations()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${escHtml(c.name||'')}</option>`).join('')}</select>
     <select id="f-st-qt" onchange="renderQuotations()"><option value="">— ทุกสถานะ —</option><option value="draft">ร่าง</option><option value="sent">ส่งแล้ว</option><option value="approved">อนุมัติ</option><option value="cancelled">ยกเลิก</option></select>
     <input type="month" id="f-mo-qt" onchange="renderQuotations()">
   </div>
@@ -1926,8 +1927,8 @@ function refreshQTTable() {
     <tr>
       <td class="mono">${q.docNumber}</td>
       <td>${q.docDate}</td>
-      <td style="font-size:12px;color:var(--ink4)">${q.companyName}</td>
-      <td>${q.custName}</td>
+      <td style="font-size:12px;color:var(--ink4)">${escHtml(q.companyName||'')}</td>
+      <td>${escHtml(q.custName||'')}</td>
       <td class="r mono bold">${fmt(q.total)}</td>
       <td class="c"><span class="badge ${q.hasVat?'badge-sent':'badge-draft'}">${q.hasVat?'มี VAT':'ไม่มี'}</span></td>
       <td>${badgeHTML(q.status)}${q.linkedInvoice?'<span class="badge badge-inv" style="margin-left:4px">INV</span>':''}</td>
@@ -2151,7 +2152,7 @@ function renderInvoices() {
   document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="goPage('new-inv')">+ สร้างใบแจ้งหนี้</button>`;
   document.getElementById('page-content').innerHTML = `
   <div class="filters">
-    <select id="f-co-inv" onchange="refreshINVTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+    <select id="f-co-inv" onchange="refreshINVTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${escHtml(c.name||'')}</option>`).join('')}</select>
     <select id="f-st-inv" onchange="refreshINVTable()"><option value="">— ทุกสถานะ —</option><option value="sent">ส่งแล้ว</option><option value="partial">ชำระบางส่วน</option><option value="paid">ชำระแล้ว</option><option value="overdue">เกินกำหนด</option><option value="baddebt">หนี้สูญ</option></select>
     <input type="month" id="f-mo-inv" onchange="refreshINVTable()">
   </div>
@@ -2180,8 +2181,8 @@ function refreshINVTable() {
       <td class="mono">${i.docNumber}</td>
       <td>${i.docDate}</td>
       <td style="font-size:12px${st==='overdue'?';color:var(--red);font-weight:700':''}">${i.docDue||'—'}</td>
-      <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
-      <td>${i.custName}</td>
+      <td style="font-size:12px;color:var(--ink4)">${escHtml(i.companyName||'')}</td>
+      <td>${escHtml(i.custName||'')}</td>
       <td class="r mono">${fmt(i.total)}</td>
       <td class="r mono" style="color:var(--green)">${fmt(i.paidAmount||0)}</td>
       <td class="r mono bold" style="color:${rem>0?'var(--red)':'var(--green)'}">${fmt(rem)}</td>
@@ -2454,8 +2455,8 @@ function renderBadDebtPage() {
       <thead><tr><th>เลขที่</th><th>ลูกค้า</th><th>บริษัท</th><th class="r">ยอดค้าง</th><th>วันที่ตัดหนี้สูญ</th><th>เหตุผล</th><th></th></tr></thead>
       <tbody>${rows.length?rows.map(i=>`<tr>
         <td class="mono">${i.docNumber}</td>
-        <td>${i.custName}</td>
-        <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
+        <td>${escHtml(i.custName||'')}</td>
+        <td style="font-size:12px;color:var(--ink4)">${escHtml(i.companyName||'')}</td>
         <td class="r mono bold" style="color:#fca5a5">${fmt(calcInvoiceRemain(i))}</td>
         <td style="font-size:12px">${i.badDebtAt?i.badDebtAt.slice(0,10):'—'}</td>
         <td style="font-size:12px;color:var(--ink4);max-width:220px">${i.badDebtReason||'—'}</td>
@@ -2478,7 +2479,7 @@ function renderBilling() {
   document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="goPage('new-bl')">+ สร้างใบวางบิล</button>`;
   document.getElementById('page-content').innerHTML = `
   <div class="filters">
-    <select id="f-co-bl" onchange="refreshBLTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+    <select id="f-co-bl" onchange="refreshBLTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${escHtml(c.name||'')}</option>`).join('')}</select>
     <select id="f-st-bl" onchange="refreshBLTable()">
       <option value="">— ทุกสถานะ —</option>
       <option value="sent">ส่งแล้ว</option>
@@ -2507,10 +2508,10 @@ function refreshBLTable() {
   const statusOpts=['sent','received','waiting-cheque','partial-paid','paid','cancelled'];
   const statusLabels={sent:'ส่งแล้ว',received:'รับเอกสารแล้ว','waiting-cheque':'รอรับเช็ค','partial-paid':'ชำระบางส่วน',paid:'ชำระแล้ว',cancelled:'ยกเลิก'};
   tbody.innerHTML=rows.length?rows.map(b=>`<tr>
-    <td class="mono">${b.docNumber}</td>
+    <td class="mono">${escHtml(b.docNumber||'')}</td>
     <td>${b.docDate}</td>
-    <td style="font-size:12px;color:var(--ink4)">${b.companyName}</td>
-    <td>${b.custName}</td>
+    <td style="font-size:12px;color:var(--ink4)">${escHtml(b.companyName||'')}</td>
+    <td>${escHtml(b.custName||'')}</td>
     <td class="r mono bold">${fmt(b.total)}</td>
     <td>
       <select class="filters" style="padding:3px 6px;font-size:11px;border-radius:5px" onchange="updateBLStatus('${b.id}',this.value)">
@@ -2659,9 +2660,9 @@ function renderPayments() {
           <td>${payDate}</td>
           <td class="mono">${arMonth}</td>
           <td class="mono">${finMonth}${shiftedBadge}</td>
-          <td class="mono">${p.invNo}</td><td>${p.custName}</td>
-          <td style="font-size:12px;color:var(--ink4)">${p.companyName}</td>
-          <td>${p.method||'—'}</td><td class="muted">${p.note||'—'}</td>
+          <td class="mono">${escHtml(p.invNo||'')}</td><td>${escHtml(p.custName||'')}</td>
+          <td style="font-size:12px;color:var(--ink4)">${escHtml(p.companyName||'')}</td>
+          <td>${escHtml(p.method||'—')}</td><td class="muted">${escHtml(p.note||'—')}</td>
           <td>${stHtml}</td>
           <td class="r mono bold" style="color:var(--green)">${fmt(Number(p.amount)||0)}</td>
         </tr>`;
@@ -2762,7 +2763,7 @@ function buildDocForm(type) {
         ${companies.map(c=>`<div class="co-card" id="co-${c.id}" onclick="selectCo('${c.id}','${type}')">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
             ${coLogoHTML(c,28,10)}
-            <div class="co-name">${c.name}</div>
+            <div class="co-name">${escHtml(c.name||'')}</div>
           </div>
           <div class="co-tax">${c.taxId||'—'}</div>
         </div>`).join('')}
@@ -2923,7 +2924,7 @@ function renderBLInvList() {
       <div class="pmt-icon">🧾</div>
       <div class="pmt-info">
         <div class="mono" style="font-size:12px;font-weight:700">${i.docNumber}</div>
-        <div class="pmt-note">${i.custName} — ${fmt(remainAmount(i))} บาท</div>
+        <div class="pmt-note">${escHtml(i.custName||'')} — ${fmt(remainAmount(i))} บาท</div>
       </div>
       <input type="checkbox" id="bl-chk-${i.id}" value="${i.id}" onchange="updateBLSummary()" style="width:18px;height:18px;cursor:pointer">
     </div>`).join('');
@@ -3249,7 +3250,7 @@ function convertDoc(action, srcId) {
   document.getElementById('convert-body').innerHTML=`
     <div style="background:var(--bg2);padding:14px;border-radius:var(--r);font-size:13px;margin-bottom:12px">
       <div style="font-weight:700">${src?.docNumber}</div>
-      <div style="color:var(--ink4)">${src?.custName} — ${fmt(src?.total)} บาท</div>
+      <div style="color:var(--ink4)">${escHtml(src?.custName||'')} — ${fmt(src?.total)} บาท</div>
     </div>
     <div class="form-grid" style="gap:10px">
       <div class="field"><label>วันที่เอกสาร</label><input type="date" id="cv-date" value="${today()}" onchange="syncConvertDueFromTerms()"></div>
@@ -3333,7 +3334,7 @@ function openPayment(invId) {
   if(!_payingInvoice) return;
   const rem = remainAmount(_payingInvoice);
   document.getElementById('pmt-inv-info').innerHTML = `
-    <strong>${_payingInvoice.docNumber}</strong> — ${_payingInvoice.custName}<br>
+    <strong>${escHtml(_payingInvoice.docNumber||'')}</strong> — ${escHtml(_payingInvoice.custName||'')}<br>
     <span style="color:var(--ink4)">ยอดรวม: ${fmt(_payingInvoice.total)} | รับแล้ว: ${fmt(_payingInvoice.paidAmount||0)} | <b style="color:var(--red)">คงเหลือ: ${fmt(rem)}</b></span>`;
   document.getElementById('pmt-date').value = today();
   document.getElementById('pmt-amount').value = rem.toFixed(2);
@@ -3849,7 +3850,7 @@ function viewDoc(type, id) {
       <div style="display:flex;align-items:flex-start;gap:12px">
         ${logoHtml}
         <div>
-          <div style="font-weight:700;font-size:14px">${co.name}</div>
+          <div style="font-weight:700;font-size:14px">${escHtml(co.name||'')}</div>
           <div style="color:var(--ink4);font-size:11px">${co.nameEn||''}</div>
           <div style="color:var(--ink4);font-size:12px">${co.address||''}</div>
           <div style="color:var(--ink4);font-size:12px">เลขภาษี: ${co.taxId||'—'} ${co.phone?'| โทร: '+co.phone:''}</div>
@@ -3866,7 +3867,7 @@ function viewDoc(type, id) {
     </div>
     <div class="divider"></div>
     <div style="font-size:13px;margin-bottom:12px">
-      <div style="font-weight:700">${src.custName}</div>
+      <div style="font-weight:700">${escHtml(src.custName||'')}</div>
       <div style="color:var(--ink4)">${src.custAddress||''}</div>
       ${src.custTax?`<div style="color:var(--ink4);font-size:12px">เลขภาษี: ${src.custTax}</div>`:''}
     </div>`;
@@ -3876,7 +3877,7 @@ function viewDoc(type, id) {
     body+=`<table class="tbl" style="margin-bottom:12px"><thead><tr>
       <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th>${showVatCol?'<th class="c">VAT</th>':''}
     </tr></thead><tbody>${src.items.map((r,i)=>`<tr>
-      <td style="color:var(--ink4)">${i+1}</td><td>${r.desc}</td><td class="r mono">${r.qty}</td>
+      <td style="color:var(--ink4)">${i+1}</td><td>${escHtml(r.desc||'')}</td><td class="r mono">${r.qty}</td>
       <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td><td class="r mono bold">${fmt(r.total)}</td>${showVatCol?`<td class="c" style="font-size:11px;color:${r.vatApplicable!==false?'var(--green)':'var(--ink4)'}">${r.vatApplicable!==false?'✓':'—'}</td>`:''}
     </tr>`).join('')}</tbody></table>
     <div class="summary-box">
@@ -3902,7 +3903,7 @@ function viewDoc(type, id) {
           <div class="pmt-item">
             <div class="pmt-icon">💳</div>
             <div class="pmt-info"><div style="font-weight:600;font-size:13px">${fmt(p.amount)} บาท</div>
-              <div class="pmt-note">${p.date} · ${p.method||''} ${p.note?'· '+p.note:''}</div></div>
+              <div class="pmt-note">${p.date} · ${escHtml(p.method||'')} ${p.note?'· '+escHtml(p.note):''}</div></div>
           </div>`).join(''):'<div style="color:var(--ink4);font-size:13px">ยังไม่มีการรับชำระ</div>'}
       </div>
     </div>`;
@@ -4019,11 +4020,11 @@ function printCurrentDoc() {
       <div class="hd-left">
         ${logoBlock}
         <div>
-          <div class="hd-co-name">${co.name}</div>
+          <div class="hd-co-name">${escHtml(co.name||'')}</div>
           <div class="hd-co-en">${co.nameEn||''}</div>
           <div class="hd-co-info">
             ${co.address?co.address.replace(/\n/g,'<br>'):''}
-            ${co.phone?`<br>โทร: <b>${co.phone}</b>`:''}
+            ${co.phone?`<br>โทร: <b>${escHtml(co.phone)}</b>`:''}
             ${co.email?` | อีเมล: ${co.email}`:''}
             ${co.website?`<br>${co.website}`:''}
             <br>เลขประจำตัวผู้เสียภาษี: <b>${co.taxId||'—'}</b>
@@ -4045,7 +4046,7 @@ function printCurrentDoc() {
     <div class="parties">
       <div class="party-box">
         <div class="party-label">เรียน / ลูกค้า</div>
-        <div class="party-name">${src.custName}</div>
+        <div class="party-name">${escHtml(src.custName||'')}</div>
         <div class="party-info">
           ${src.custAddress?src.custAddress.replace(/\n/g,'<br>'):''}
           ${src.custTax?`<br>เลขภาษี: ${src.custTax}`:''}
@@ -4058,7 +4059,7 @@ function printCurrentDoc() {
           ${src.paymentTerms||src.terms?`เงื่อนไข: <b>${src.paymentTerms||src.terms}</b><br>`:''}
           ${src.preparedBy?`ผู้จัดทำ: <b>${src.preparedBy}</b><br>`:''}
           ${co.contactPerson&&!src.preparedBy?`ผู้ติดต่อ: <b>${co.contactPerson}</b><br>`:''}
-          ${co.contactPhone?`โทร (ผู้ติดต่อ): <b>${co.contactPhone}</b><br>`:co.phone?`โทร: <b>${co.phone}</b><br>`:''}
+          ${co.contactPhone?`โทร (ผู้ติดต่อ): <b>${escHtml(co.contactPhone)}</b><br>`:co.phone?`โทร: <b>${escHtml(co.phone)}</b><br>`:''}
           ${co.contactEmail?`อีเมล: ${co.contactEmail}<br>`:''}
           ${src.payMethod?.method?`วิธีชำระ: <b>${src.payMethod.method}</b>`:''}
         </div>
@@ -4079,7 +4080,7 @@ function printCurrentDoc() {
       <tbody>
         ${src.items.map((r,i)=>`<tr>
           <td class="num">${i+1}</td>
-          <td>${r.desc}</td>
+          <td>${escHtml(r.desc||'')}</td>
           <td class="r mono">${r.qty.toLocaleString()}</td>
           <td>${r.unit||''}</td>
           <td class="r mono">${fmt(r.price)}</td>
@@ -4139,7 +4140,7 @@ function printCurrentDoc() {
 
     <!-- FOOTER -->
     <div class="footer">
-      <span>${co.name} | เลขภาษี: ${co.taxId||'—'}</span>
+      <span>${escHtml(co.name||'')} | เลขภาษี: ${escHtml(co.taxId||'—')}</span>
       <span>${src.docNumber} | พิมพ์: ${new Date().toLocaleDateString('th-TH')}</span>
     </div>
   </div>`;
@@ -4177,7 +4178,7 @@ function renderReportAR() {
     <tbody>${rows.map(r=>{
       const pct=r.total?r.paid/r.total*100:0;
       return `<tr>
-        <td style="font-weight:600">${r.name}</td>
+        <td style="font-weight:600">${escHtml(r.name||'')}</td>
         <td class="r mono">${fmt(r.total)}</td>
         <td class="r mono" style="color:var(--green)">${fmt(r.paid)}</td>
         <td class="r mono bold" style="color:var(--red)">${fmt(r.remain)}</td>
@@ -4204,7 +4205,7 @@ function renderReportCO() {
     <tbody>${rows.map(r=>{
       const pct=r.total?r.paid/r.total*100:0;
       return `<tr>
-        <td style="font-weight:700">${r.name}</td>
+        <td style="font-weight:700">${escHtml(r.name||'')}</td>
         <td class="r mono">${fmt(r.total)}</td>
         <td class="r mono" style="color:var(--green)">${fmt(r.paid)}</td>
         <td class="r mono bold" style="color:var(--red)">${fmt(r.remain)}</td>
@@ -4272,8 +4273,8 @@ function renderReportAging() {
       <table class="tbl"><thead><tr><th>เลขที่</th><th>บริษัท</th><th>ลูกค้า</th><th>ครบกำหนด</th><th>เกินกำหนด(วัน)</th><th class="r">ค้างชำระ</th><th></th></tr></thead>
       <tbody>${b.rows.map(i=>`<tr>
         <td class="mono">${i.docNumber}</td>
-        <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
-        <td style="font-weight:600">${i.custName}</td>
+        <td style="font-size:12px;color:var(--ink4)">${escHtml(i.companyName||'')}</td>
+        <td style="font-weight:600">${escHtml(i.custName||'')}</td>
         <td style="color:${b.color};font-weight:700">${i.docDue}</td>
         <td class="c mono bold" style="color:${b.color}">${i.overdueDays}</td>
         <td class="r mono bold" style="color:${b.color}">${fmt(i.remain)}</td>
@@ -4312,9 +4313,9 @@ function renderReportReceipt() {
       </div>
       <table class="tbl"><thead><tr><th>วันที่</th><th>ลูกค้า</th><th>บริษัท</th><th>ช่องทาง</th><th>หมายเหตุ</th><th class="r">จำนวน</th></tr></thead>
       <tbody>${m.items.map(p=>`<tr>
-        <td>${p.date}</td><td>${p.custName}</td>
-        <td style="font-size:12px;color:var(--ink4)">${p.companyName}</td>
-        <td>${p.method||'—'}</td><td class="muted">${p.note||'—'}</td>
+        <td>${p.date}</td><td>${escHtml(p.custName||'')}</td>
+        <td style="font-size:12px;color:var(--ink4)">${escHtml(p.companyName||'')}</td>
+        <td>${escHtml(p.method||'—')}</td><td class="muted">${escHtml(p.note||'—')}</td>
         <td class="r mono bold" style="color:var(--green)">${fmt(p.amount)}</td>
       </tr>`).join('')}</tbody>
       <tfoot><tr style="background:var(--bg2)">
@@ -4525,10 +4526,10 @@ function refreshCoList() {
   const tbody=document.getElementById('co-list-tbody'); if(!tbody) return;
   tbody.innerHTML=companies.length?companies.map(c=>`<tr>
     <td>${coLogoHTML(c,36,12)}</td>
-    <td><div style="font-weight:700">${c.name}</div><div style="font-size:11px;color:var(--ink4)">${c.nameEn||''}</div></td>
+    <td><div style="font-weight:700">${escHtml(c.name||'')}</div><div style="font-size:11px;color:var(--ink4)">${escHtml(c.nameEn||'')}</div></td>
     <td class="mono">${c.taxId||'—'}</td>
     <td style="font-size:12px;max-width:200px">${c.address||'—'}</td>
-    <td style="font-size:12px">${c.phone||'—'}</td>
+    <td style="font-size:12px">${escHtml(c.phone||'—')}</td>
     <td class="mono">${c.prefix||'—'}</td>
     <td><span class="badge ${c.hasVat?'badge-sent':'badge-draft'}">${c.hasVat?'มี VAT':'ไม่มี'}</span></td>
     <td>
@@ -4760,13 +4761,13 @@ function refreshCustomerTable() {
   tbody.innerHTML = rows.length ? rows.map(c => `<tr>
     <td class="mono" style="font-size:11px;color:var(--ink4)">${c.customerCode||'—'}</td>
     <td>
-      <div style="font-weight:700">${c.name}</div>
-      ${c.nameEn ? `<div style="font-size:11px;color:var(--ink4)">${c.nameEn}</div>` : ''}
+      <div style="font-weight:700">${escHtml(c.name||'')}</div>
+      ${c.nameEn ? `<div style="font-size:11px;color:var(--ink4)">${escHtml(c.nameEn)}</div>` : ''}
     </td>
     <td><span class="badge badge-draft">${c.customerType||'—'}</span></td>
     <td class="mono" style="font-size:12px">${c.taxId||'—'}</td>
     <td style="font-size:13px">${c.contactPerson||'—'}</td>
-    <td style="font-size:12px">${c.phone||c.contactPhone||'—'}</td>
+    <td style="font-size:12px">${escHtml(c.phone||c.contactPhone||'—')}</td>
     <td class="r mono">${c.creditTerms ? c.creditTerms+' วัน' : '—'}</td>
     <td><span class="badge ${c.isActive===false?'badge-cancelled':'badge-paid'}">${c.isActive===false?'ปิด':'ใช้งาน'}</span></td>
     <td style="white-space:nowrap">
@@ -4952,21 +4953,21 @@ function viewCustomer(id) {
   document.getElementById('page-content').innerHTML += `
   <div class="overlay show" id="modal-view-customer">
     <div class="modal" style="width:620px;max-width:97vw">
-      <div class="modal-title">👤 ${c.name}</div>
+      <div class="modal-title">👤 ${escHtml(c.name||'')}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;margin-bottom:16px">
         <div>
           <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px">ข้อมูลหลัก</div>
-          ${c.nameEn?`<div style="color:var(--ink4);font-size:12px">${c.nameEn}</div>`:''}
+          ${c.nameEn?`<div style="color:var(--ink4);font-size:12px">${escHtml(c.nameEn)}</div>`:''}
           <div><span style="color:var(--ink4)">ประเภท:</span> ${c.customerType||'—'}</div>
           <div><span style="color:var(--ink4)">เลขภาษี:</span> <span style="font-family:monospace;font-weight:700">${c.taxId||'—'}</span></div>
           <div style="margin-top:6px;color:var(--ink3);font-size:12px">${(c.address||'').replace(/\n/g,'<br>')}</div>
         </div>
         <div>
           <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);margin-bottom:6px">ติดต่อ</div>
-          <div>📞 ${c.phone||c.contactPhone||'—'}</div>
+          <div>📞 ${escHtml(c.phone||c.contactPhone||'—')}</div>
           <div>✉️ ${c.email||'—'}</div>
           ${c.website?`<div>🌐 ${c.website}</div>`:''}
-          ${c.contactPerson?`<div style="margin-top:6px;font-weight:600">👤 ${c.contactPerson}</div>`:''}
+          ${c.contactPerson?`<div style="margin-top:6px;font-weight:600">👤 ${escHtml(c.contactPerson)}</div>`:''}
           ${c.contactPhone&&c.contactPhone!==c.phone?`<div style="font-size:12px">📞 ${c.contactPhone}</div>`:''}
           ${c.contactEmail?`<div style="font-size:12px">✉️ ${c.contactEmail}</div>`:''}
         </div>
@@ -4985,7 +4986,7 @@ function viewCustomer(id) {
           <div style="font-size:20px;font-weight:700;color:var(--orange)">${invCount}</div>
         </div>
       </div>
-      ${c.note?`<div style="background:var(--yellow-light);border:1px solid var(--yellow-mid);border-radius:var(--r);padding:10px 14px;font-size:13px"><b>หมายเหตุ:</b> ${c.note}</div>`:''}
+      ${c.note?`<div style="background:var(--yellow-light);border:1px solid var(--yellow-mid);border-radius:var(--r);padding:10px 14px;font-size:13px"><b>หมายเหตุ:</b> ${escHtml(c.note)}</div>`:''}
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="document.getElementById('modal-view-customer').remove()">ปิด</button>
         <button class="btn btn-outline" onclick="document.getElementById('modal-view-customer').remove();editCustomer('${c.id}')">✏️ แก้ไข</button>
@@ -5111,7 +5112,7 @@ function buildCustDatalist() {
   const dl = document.getElementById('cust-datalist'); if(!dl) return;
   dl.innerHTML = (data.customers||[])
     .filter(c=>c.isActive!==false)
-    .map(c=>`<option value="${c.name}">`)
+    .map(c=>`<option value="${escHtml(c.name||'')}">`)
     .join('');
 }
 
@@ -5139,7 +5140,7 @@ function openPickCustomer() {
           <div onclick="pickCustomer('${c.id}')" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .15s"
             onmouseover="this.style.background='var(--accent-light)';this.style.borderColor='var(--accent)'"
             onmouseout="this.style.background='';this.style.borderColor='var(--border)'">
-            <div style="font-weight:700">${c.name}</div>
+            <div style="font-weight:700">${escHtml(c.name||'')}</div>
             <div style="font-size:12px;color:var(--ink4)">${c.taxId?'เลขภาษี: '+c.taxId:''} ${c.contactPerson?'| ผู้ติดต่อ: '+c.contactPerson:''}</div>
           </div>`).join('')}
         ${custs.length===0?'<div style="text-align:center;color:var(--ink4);padding:24px">ยังไม่มีข้อมูลลูกค้า</div>':''}
@@ -6047,7 +6048,7 @@ function admPageOverview(){
 function admPageInvoices(){
   document.getElementById('adm-page-content').innerHTML=`
   <div class="adm-filters">
-    <select id="adm-f-co" onchange="admRenderInvTable()"><option value="">— ทุกบริษัท —</option>${ADM.companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+    <select id="adm-f-co" onchange="admRenderInvTable()"><option value="">— ทุกบริษัท —</option>${ADM.companies.map(c=>`<option value="${c.id}">${escHtml(c.name||'')}</option>`).join('')}</select>
     <select id="adm-f-st" onchange="admRenderInvTable()"><option value="">— ทุกสถานะ —</option><option value="sent">ส่งแล้ว</option><option value="partial">บางส่วน</option><option value="paid">ชำระแล้ว</option><option value="overdue">เกินกำหนด</option><option value="cancelled">ยกเลิก</option></select>
     <input type="text" id="adm-f-srch" placeholder="ค้นหา..." oninput="admRenderInvTable()" style="width:160px">
   </div>
@@ -6070,7 +6071,7 @@ function admRenderInvTable(){
     return `<tr>
       <td class="adm-mono">${i.docNumber}</td><td class="adm-mono adm-muted">${i.docDate}</td>
       <td class="adm-mono adm-muted" style="${st==='overdue'?'color:#ef4444':''}">${i.docDue||'—'}</td>
-      <td style="font-size:11px;color:#606078">${i.companyName||'—'}</td><td style="font-weight:600">${i.custName}</td>
+      <td style="font-size:11px;color:#606078">${escHtml(i.companyName||'—')}</td><td style="font-weight:600">${escHtml(i.custName||'')}</td>
       <td class="r adm-mono">${admFmt(i.total)}</td><td class="r adm-mono" style="color:#22c55e">${admFmt(i.paidAmount||0)}</td>
       <td class="r adm-mono adm-bold" style="color:${rem>0?'#ef4444':'#22c55e'}">${admFmt(rem)}</td>
       <td class="c"><span class="adm-badge ${cnt>0?'ab-paid':'ab-draft'}">${cnt}</span></td>
@@ -6135,8 +6136,8 @@ window.admSaveEditInv=admSaveEditInv;
 
 function admForceDelInv(id){
   const inv=ADM.invoices.find(x=>x.id===id); if(!inv) return;
-  admShowConfirm(`⚠️ Force Delete: ${inv.docNumber}`,
-    `ลูกค้า: <strong>${inv.custName}</strong><br>ยอด: ${admFmt(inv.total)} บาท<br>Payments: <strong style="color:#ef4444">${(inv.payments||[]).length} รายการ</strong><br><br>ไม่สามารถย้อนกลับได้`,
+  admShowConfirm(`⚠️ Force Delete: ${escHtml(inv.docNumber||'')}`,
+    `ลูกค้า: <strong>${escHtml(inv.custName||'')}</strong><br>ยอด: ${admFmt(inv.total)} บาท<br>Payments: <strong style="color:#ef4444">${(inv.payments||[]).length} รายการ</strong><br><br>ไม่สามารถย้อนกลับได้`,
     'พิมพ์ DELETE เพื่อยืนยัน','DELETE',()=>{
       if(inv.linkedQt){const qt=ADM.quotations.find(q=>q.id===inv.linkedQt);if(qt){qt.linkedInvoice=null;qt.status='sent';}}
       if(inv.linkedBilling){const bl=ADM.billings.find(b=>b.id===inv.linkedBilling);if(bl)bl.invoiceIds=(bl.invoiceIds||[]).filter(x=>x!==id);}
@@ -6168,7 +6169,7 @@ function admRenderPmtsModal(inv){
     <div style="background:${rem>0?'rgba(239,68,68,.08)':'rgba(34,197,94,.08)'};padding:11px;border-radius:6px;text-align:center;border:1px solid ${rem>0?'rgba(239,68,68,.2)':'rgba(34,197,94,.2)'}"><div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:${rem>0?'#ef4444':'#22c55e'};text-transform:uppercase;margin-bottom:3px">คงเหลือ</div><div style="font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;color:${rem>0?'#ef4444':'#22c55e'}">${admFmt(rem)}</div></div>
   </div>
   <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#606078;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Payment Records (${pmts.length})</div>
-  ${pmts.map(p=>`<div class="adm-pmt-row"><div class="adm-pmt-date">${p.date}</div><div class="adm-pmt-method">${p.method||'—'}</div><div class="adm-pmt-note">${p.note||''}</div><div class="adm-pmt-amt">+${admFmt(p.amount)}</div>
+  ${pmts.map(p=>`<div class="adm-pmt-row"><div class="adm-pmt-date">${p.date}</div><div class="adm-pmt-method">${escHtml(p.method||'—')}</div><div class="adm-pmt-note">${escHtml(p.note||'')}</div><div class="adm-pmt-amt">+${admFmt(p.amount)}</div>
     <button class="adm-btn adm-btn-xs adm-btn-warn" onclick="admEditPmt('${inv.id}','${p.id}')">✏️</button>
     <button class="adm-btn adm-btn-xs adm-btn-danger" onclick="admDelPmt('${inv.id}','${p.id}')">🗑</button>
   </div>`).join('')||'<div class="adm-empty" style="padding:16px"><p>ยังไม่มี payment</p></div>'}
@@ -6283,7 +6284,7 @@ function admPageQuotations(){
   <table class="adm-tbl"><thead><tr><th>เลขที่</th><th>วันที่</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">ยอด</th><th>สถานะ</th><th>linked</th><th>Actions</th></tr></thead>
   <tbody>${ADM.quotations.map(q=>`<tr>
     <td class="adm-mono">${q.docNumber}</td><td class="adm-mono adm-muted">${q.docDate}</td>
-    <td style="font-size:11px;color:#606078">${q.companyName||'—'}</td><td style="font-weight:600">${q.custName}</td>
+    <td style="font-size:11px;color:#606078">${escHtml(q.companyName||'—')}</td><td style="font-weight:600">${escHtml(q.custName||'')}</td>
     <td class="r adm-mono">${admFmt(q.total)}</td><td>${admBadge(q.status||'draft')}</td>
     <td class="adm-mono" style="font-size:10px;color:${q.linkedInvoice?'#22c55e':'#606078'}">${q.linkedInvoice?'✓ INV':'—'}</td>
     <td style="white-space:nowrap">
@@ -6304,7 +6305,7 @@ function admEditQT(id){
 window.admEditQT=admEditQT;
 function admForceDelQT(id){
   const q=ADM.quotations.find(x=>x.id===id); if(!q) return;
-  admShowConfirm(`⚠️ Force Delete QT: ${q.docNumber}`,`ลูกค้า: <strong>${q.custName}</strong><br>ยอด: ${admFmt(q.total)} บาท`,'พิมพ์ DELETE','DELETE',()=>{
+  admShowConfirm(`⚠️ Force Delete QT: ${escHtml(q.docNumber||'')}`,`ลูกค้า: <strong>${escHtml(q.custName||'')}</strong><br>ยอด: ${admFmt(q.total)} บาท`,'พิมพ์ DELETE','DELETE',()=>{
     if(q.linkedInvoice){const inv=ADM.invoices.find(i=>i.id===q.linkedInvoice);if(inv)inv.linkedQt=null;admSaveCol('invoices');}
     ADM.quotations=ADM.quotations.filter(x=>x.id!==id); admSaveCol('quotations');
     data.quotations=ADM.quotations; admPageQuotations(); admToast('Deleted ✅','ok');
@@ -6320,7 +6321,7 @@ function admPageBillings(){
   <table class="adm-tbl"><thead><tr><th>เลขที่</th><th>วันที่</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">มูลค่า</th><th>สถานะ</th><th>Actions</th></tr></thead>
   <tbody>${ADM.billings.map(b=>`<tr>
     <td class="adm-mono">${b.docNumber}</td><td class="adm-mono adm-muted">${b.docDate}</td>
-    <td style="font-size:11px;color:#606078">${b.companyName||'—'}</td><td style="font-weight:600">${b.custName}</td>
+    <td style="font-size:11px;color:#606078">${escHtml(b.companyName||'—')}</td><td style="font-weight:600">${escHtml(b.custName||'')}</td>
     <td class="r adm-mono">${admFmt(b.total)}</td>
     <td><select style="background:#1c1c22;border:1px solid #2a2a38;border-radius:4px;color:#e8e8f0;font-size:11px;padding:2px 6px" onchange="admUpdateBLStatus('${b.id}',this.value)">
       ${stOpts.map(s=>`<option value="${s}"${(b.status||'sent')===s?' selected':''}>${stLabel[s]}</option>`).join('')}
@@ -6337,7 +6338,7 @@ function admUpdateBLStatus(id,status){
 window.admUpdateBLStatus=admUpdateBLStatus;
 function admForceDelBL(id){
   const b=ADM.billings.find(x=>x.id===id); if(!b) return;
-  admShowConfirm(`⚠️ Force Delete BL: ${b.docNumber}`,`ลูกค้า: <strong>${b.custName}</strong><br>มูลค่า: ${admFmt(b.total)} บาท`,'พิมพ์ DELETE','DELETE',()=>{
+  admShowConfirm(`⚠️ Force Delete BL: ${escHtml(b.docNumber||'')}`,`ลูกค้า: <strong>${escHtml(b.custName||'')}</strong><br>มูลค่า: ${admFmt(b.total)} บาท`,'พิมพ์ DELETE','DELETE',()=>{
     (b.invoiceIds||[]).forEach(invId=>{const inv=ADM.invoices.find(i=>i.id===invId);if(inv)inv.linkedBilling=null;});
     admSaveCol('invoices'); ADM.billings=ADM.billings.filter(x=>x.id!==id); admSaveCol('billings');
     data.invoices=ADM.invoices; data.billings=ADM.billings; admPageBillings(); admToast('Deleted ✅','ok');
@@ -6365,8 +6366,8 @@ function admPagePayments(){
   <table class="adm-tbl"><thead><tr><th>วันที่</th><th>ใบแจ้งหนี้</th><th>ลูกค้า</th><th>บริษัท</th><th>ช่องทาง</th><th>หมายเหตุ</th><th class="r">จำนวน</th><th>Actions</th></tr></thead>
   <tbody>${all.map(p=>`<tr>
     <td class="adm-mono">${p.date}</td><td class="adm-mono">${p.invNo}</td>
-    <td style="font-weight:600">${p.custName}</td><td style="font-size:11px;color:#606078">${p.companyName}</td>
-    <td>${p.method||'—'}</td><td class="adm-muted">${p.note||'—'}</td>
+    <td style="font-weight:600">${escHtml(p.custName||'')}</td><td style="font-size:11px;color:#606078">${escHtml(p.companyName||'')}</td>
+    <td>${escHtml(p.method||'—')}</td><td class="adm-muted">${escHtml(p.note||'—')}</td>
     <td class="r adm-mono adm-bold" style="color:#22c55e">${admFmt(p.amount)}</td>
     <td style="white-space:nowrap">
       <button class="adm-btn adm-btn-xs adm-btn-warn" onclick="admEditPmt('${p.invId}','${p.id}')">✏️</button>
