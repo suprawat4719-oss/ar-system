@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.10.3 — 2026-09-05
+<!-- AR SYSTEM v2.11.0 — 2026-09-05
+     changelog v2.11.0: สามข้อใหญ่ตามคำขอ — (1) เติมรหัสลูกค้า (CUS-XXXX) ให้ลูกค้าที่สร้างไว้ก่อนมีระบบรหัส ผ่าน backfillMissingCustomerCodes() ที่รันได้ทุกครั้งอย่างปลอดภัย ไม่กระทบข้อมูลอื่น (2) ป้องกันการลบข้อมูลลูกค้าถาวร — เอาปุ่มลบออกจากหน้าลูกค้า เปลี่ยนเป็นปุ่ม "ปิด/เปิดใช้งาน" แทน (toggleCustomerActive) เพื่อรักษาประวัติการชำระ/ค้างชำระไว้เสมอ, deleteCustomer() เดิมถูกปิดใช้งานถาวร (3) เพิ่มระบบ "หนี้สูญ" — ตัดใบแจ้งหนี้ที่เก็บเงินไม่ได้ออกจาก Dashboard/รายงานค้างชำระทั้งหมด (markBadDebt) ไปไว้หน้า "หนี้สูญ" ใหม่ ยังนำกลับมาติดตามได้ถ้าลูกค้ากลับมาชำระ (restoreBadDebt) และลบถาวรได้จากหน้าหนี้สูญเมื่อต้องการ (deleteBadDebtInvoice) — เพิ่ม status 'baddebt' ใน calcInvoiceStatus/calcInvoiceAgingBucket ให้ถูกตัดออกจากทุกจุดคำนวณ AR โดยอัตโนมัติ
      changelog v2.10.3: วิดเจ็ต "ใบแจ้งหนี้ที่ต้องติดตาม" บน Dashboard เดิมโชว์แค่ 8 แถวแรกแล้วตัดที่เหลือทิ้งเงียบๆ (เรียงเกินกำหนดมากสุดก่อน ทำให้ใบที่เกินกำหนดน้อย เช่น 1 วัน หลุดจากลิสต์ถ้ามีใบอื่นเกินกำหนดมากกว่า 8 ใบ) — เพิ่มข้อความ "แสดง 8 จาก N รายการ" พร้อมลิงก์ไปหน้าใบแจ้งหนี้เต็ม เมื่อมีรายการเกิน 8 แถว จะได้ไม่มีใบไหนหายไปแบบไม่รู้ตัวอีก
      changelog v2.10.2: แก้ปัญหาช่อง input วันที่ (native date picker) แสดงผลตาม locale ของเครื่อง/เบราว์เซอร์ (เช่น MM/DD/YYYY บนเครื่องตั้งค่าภาษาอังกฤษ) ทำให้อ่านสลับวัน/เดือนผิด — เพิ่มคำอ่านภาษาไทยกำกับใต้ทุกช่องวันที่โดยอัตโนมัติ (เช่น "📅 4 ก.ย. 2569") ผ่าน MutationObserver ที่สแกนหาช่อง type="date" ใหม่ทุกครั้งที่ DOM เปลี่ยน ครอบคลุมทุกฟอร์ม/โมดัลในระบบโดยไม่ต้องแก้ทีละจุด
      changelog v2.10.1: เปลี่ยนค่าเริ่มต้นของ "เงื่อนไขการชำระ" ในฟอร์มสร้างใบเสนอราคา/ใบแจ้งหนี้ จาก "30 วัน" เป็น "ชำระทันที" ตามค่าเริ่มต้นที่ต้องการ (ยังเลือกเป็น 7/15/30/60 วันได้ตามปกติ)
@@ -30,7 +31,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.10.3 — 2026-09-05</title>
+<title>AR System | v2.11.0 — 2026-09-05</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -144,6 +145,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .badge-paid{background:var(--green-light);color:var(--green)}
 .badge-overdue{background:var(--red-light);color:var(--red)}
 .badge-cancelled{background:#f4f4f5;color:var(--ink4)}
+.badge-baddebt{background:#1c1917;color:#fca5a5;border:1px solid #7f1d1d}
 .badge-billed{background:var(--purple-light);color:var(--purple)}
 .badge-inv{background:var(--orange-light);color:var(--orange)}
 .badge-qt{background:var(--accent-light);color:var(--accent)}
@@ -460,7 +462,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.10.3 — 2026-09-05</div>
+    <div class="logo-sub">v2.11.0 — 2026-09-05</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -472,6 +474,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="nav-section">รายงาน</div>
   <button class="nav-item" onclick="goPage('report-ar')" id="nav-report-ar"><span class="nav-icon">👥</span>ค้างชำระรายลูกค้า</button>
   <button class="nav-item" onclick="goPage('report-co')" id="nav-report-co"><span class="nav-icon">🏢</span>ค้างชำระรายบริษัท</button>
+  <button class="nav-item" onclick="goPage('baddebt')" id="nav-baddebt"><span class="nav-icon">💀</span>หนี้สูญ</button>
   <button class="nav-item" onclick="goPage('report-aging')" id="nav-report-aging"><span class="nav-icon">⏳</span>Aging Report</button>
   <button class="nav-item" onclick="goPage('report-receipt')" id="nav-report-receipt"><span class="nav-icon">📅</span>เงินรับรายเดือน</button>
   <div class="nav-section">ตั้งค่า</div>
@@ -1476,7 +1479,7 @@ function goPage(p) {
     'report-aging':'Aging Report','report-receipt':'เงินรับรายเดือน',
     companies:'จัดการบริษัท',settings:'ตั้งค่าระบบ','new-qt':'สร้างใบเสนอราคา',
     'new-inv':'สร้างใบแจ้งหนี้','new-bl':'สร้างใบวางบิล',
-    products:'รายละเอียดสินค้า'
+    products:'รายละเอียดสินค้า', baddebt:'หนี้สูญ'
   };
   document.getElementById('page-title').textContent = titles[p]||p;
   document.getElementById('page-sub').textContent = '';
@@ -1490,7 +1493,7 @@ function goPage(p) {
     'report-ar': renderReportAR, 'report-co': renderReportCO,
     'report-aging': renderReportAging, 'report-receipt': renderReportReceipt,
     'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
-    products: renderProducts,
+    products: renderProducts, baddebt: renderBadDebtPage,
   };
   pc.innerHTML = '';
   if(pages[p]) pages[p]();
@@ -1696,6 +1699,7 @@ function remainAmount(inv) { return calcInvoiceRemain(inv); }
 function calcInvoiceStatus(inv) {
   if (inv.status === 'cancelled') return 'cancelled';
   if (inv.status === 'draft')     return 'draft';
+  if (inv.isBadDebt)              return 'baddebt';
   const remain = calcInvoiceRemain(inv);
   if (remain <= 0)                return 'paid';
   const due = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue || '';
@@ -1710,7 +1714,7 @@ function invStatus(inv) { return calcInvoiceStatus(inv); }
 function calcInvoiceAgingBucket(inv) {
   const remain = calcInvoiceRemain(inv);
   if (remain <= 0) return null;
-  if (['cancelled','draft'].includes(calcInvoiceStatus(inv))) return null;
+  if (['cancelled','draft','baddebt'].includes(calcInvoiceStatus(inv))) return null;
   const due = inv.docDue || inv.dueDate || inv.invoiceDue || inv.dateDue || '';
   if (!due) return 'current';
   const daysOverdue = daysDiff(due, todayLocal()); // positive = overdue
@@ -1724,6 +1728,7 @@ function calcInvoiceAgingBucket(inv) {
 function badgeHTML(status) {
   const m={draft:'badge-draft ร่าง',sent:'badge-sent ส่งแล้ว',partial:'badge-partial ชำระบางส่วน',
     paid:'badge-paid ชำระแล้ว',overdue:'badge-overdue เกินกำหนด',cancelled:'badge-cancelled ยกเลิก',
+    baddebt:'badge-baddebt หนี้สูญ',
     approved:'badge-paid อนุมัติ',billed:'badge-billed วางบิลแล้ว',inv:'badge-inv ออก INV แล้ว',
     'waiting-cheque':'badge-partial รอรับเช็ค','received':'badge-billed รับเอกสารแล้ว',
     'partial-paid':'badge-partial ชำระบางส่วน'};
@@ -1754,7 +1759,7 @@ function renderDashboard() {
   });
 
   const thisMonth = todayLocal().slice(0,7);
-  const totalAR   = invs.filter(i=>!['paid','cancelled','draft'].includes(calcInvoiceStatus(i)))
+  const totalAR   = invs.filter(i=>!['paid','cancelled','draft','baddebt'].includes(calcInvoiceStatus(i)))
                         .reduce((s,i)=>s+calcInvoiceRemain(i), 0);
   const overdueAR = invs.filter(i=>calcInvoiceStatus(i)==='overdue')
                         .reduce((s,i)=>s+calcInvoiceRemain(i), 0);
@@ -1790,10 +1795,10 @@ function renderDashboard() {
   <div class="report-grid">
     <div class="report-card">
       <div class="report-card-title">📊 สถานะใบแจ้งหนี้</div>
-      ${['sent','partial','overdue','paid'].map(st=>{
+      ${['sent','partial','overdue','paid','baddebt'].map(st=>{
         const cnt=invs.filter(i=>calcInvoiceStatus(i)===st).length;
         const total=invs.length||1;
-        const colors={sent:'var(--accent)',partial:'#f97316',overdue:'var(--red)',paid:'var(--green)'};
+        const colors={sent:'var(--accent)',partial:'#f97316',overdue:'var(--red)',paid:'var(--green)',baddebt:'#7f1d1d'};
         return `<div style="margin-bottom:10px">
           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
             ${badgeHTML(st)}<span class="mono" style="font-weight:700">${cnt} ใบ</span>
@@ -2147,7 +2152,7 @@ function renderInvoices() {
   document.getElementById('page-content').innerHTML = `
   <div class="filters">
     <select id="f-co-inv" onchange="refreshINVTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
-    <select id="f-st-inv" onchange="refreshINVTable()"><option value="">— ทุกสถานะ —</option><option value="sent">ส่งแล้ว</option><option value="partial">ชำระบางส่วน</option><option value="paid">ชำระแล้ว</option><option value="overdue">เกินกำหนด</option></select>
+    <select id="f-st-inv" onchange="refreshINVTable()"><option value="">— ทุกสถานะ —</option><option value="sent">ส่งแล้ว</option><option value="partial">ชำระบางส่วน</option><option value="paid">ชำระแล้ว</option><option value="overdue">เกินกำหนด</option><option value="baddebt">หนี้สูญ</option></select>
     <input type="month" id="f-mo-inv" onchange="refreshINVTable()">
   </div>
   <div class="card">
@@ -2186,10 +2191,12 @@ function refreshINVTable() {
       </td>
       <td style="white-space:nowrap">
         <button class="btn btn-xs btn-outline" onclick="viewDoc('inv','${i.id}')">ดู</button>
-        ${st!=='paid'&&st!=='cancelled'?`<button class="btn btn-xs btn-outline" onclick="editINV('${i.id}')">✏️</button>`:''}
-        ${st!=='paid'&&st!=='cancelled'?`<button class="btn btn-xs btn-success" onclick="openPayment('${i.id}')">+ รับชำระ</button>`:''}
-        ${!i.linkedBilling&&st!=='cancelled'&&st!=='paid'?`<button class="btn btn-xs btn-outline" style="color:var(--purple)" onclick="convertDoc('inv2bl','${i.id}')">→ บิล</button>`:''}
-        ${st!=='paid'?`<button class="btn btn-xs btn-danger" onclick="deleteINV('${i.id}')">🗑</button>`:''}
+        ${st!=='paid'&&st!=='cancelled'&&st!=='baddebt'?`<button class="btn btn-xs btn-outline" onclick="editINV('${i.id}')">✏️</button>`:''}
+        ${st!=='paid'&&st!=='cancelled'&&st!=='baddebt'?`<button class="btn btn-xs btn-success" onclick="openPayment('${i.id}')">+ รับชำระ</button>`:''}
+        ${!i.linkedBilling&&st!=='cancelled'&&st!=='paid'&&st!=='baddebt'?`<button class="btn btn-xs btn-outline" style="color:var(--purple)" onclick="convertDoc('inv2bl','${i.id}')">→ บิล</button>`:''}
+        ${['sent','partial','overdue'].includes(st)?`<button class="btn btn-xs btn-outline" style="color:#7f1d1d;border-color:#7f1d1d" onclick="markBadDebt('${i.id}')" title="ตัดเป็นหนี้สูญ">💀</button>`:''}
+        ${st==='baddebt'?`<button class="btn btn-xs btn-outline" onclick="restoreBadDebt('${i.id}')" title="นำกลับมาติดตาม">🔄</button>`:''}
+        ${st!=='paid'&&st!=='baddebt'?`<button class="btn btn-xs btn-danger" onclick="deleteINV('${i.id}')">🗑</button>`:''}
       </td>
     </tr>`;}).join(''):'<tr><td colspan="10"><div class="empty"><div class="empty-icon">🧾</div><p>ยังไม่มีใบแจ้งหนี้</p></div></td></tr>';
 }
@@ -2381,6 +2388,88 @@ async function deleteINV(id) {
   refreshINVTable(); toast('ลบใบแจ้งหนี้เรียบร้อย','ok');
 }
 window.deleteINV=deleteINV;
+
+// ══════════════════════════════════════════════════════
+// หนี้สูญ (BAD DEBT) — ตัดออกจากการติดตาม AR ปกติ แต่ยังกู้คืนได้
+// ══════════════════════════════════════════════════════
+async function markBadDebt(id) {
+  const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
+  const remain = calcInvoiceRemain(inv);
+  if(remain<=0) { toast('ใบนี้ชำระครบแล้ว ไม่ต้องตัดหนี้สูญ','err'); return; }
+  const reason = prompt(`ตัดเป็นหนี้สูญ: ${inv.docNumber}\nยอดค้าง ${fmt(remain)} บาท\n\nระบุเหตุผล (เช่น ติดต่อลูกค้าไม่ได้, เลิกกิจการ) — ไม่บังคับ:`, '');
+  if(reason===null) return; // กดยกเลิก
+  if(!confirm(`ยืนยันตัดหนี้สูญใบ ${inv.docNumber} ยอด ${fmt(remain)} บาท ?\n\nรายการนี้จะถูกย้ายออกจาก Dashboard/รายงานค้างชำระ ไปไว้ที่หน้า "หนี้สูญ" แทน (ยังนำกลับมาติดตามได้ภายหลังถ้าลูกค้ากลับมาชำระ)`)) return;
+  inv.isBadDebt=true; inv.badDebtAt=new Date().toISOString(); inv.badDebtReason=reason||''; inv.updatedAt=new Date().toISOString();
+  await storeUpdate('invoices', id, {isBadDebt:true, badDebtAt:inv.badDebtAt, badDebtReason:inv.badDebtReason, updatedAt:inv.updatedAt});
+  syncLS('invoices', data.invoices);
+  toast(`ตัดหนี้สูญเรียบร้อย — ${inv.docNumber}`, 'ok');
+  refreshINVTable();
+}
+window.markBadDebt=markBadDebt;
+
+async function restoreBadDebt(id) {
+  const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
+  if(!confirm(`นำใบ ${inv.docNumber} กลับมาติดตามชำระตามปกติ ?`)) return;
+  inv.isBadDebt=false; inv.badDebtRestoredAt=new Date().toISOString(); inv.updatedAt=new Date().toISOString();
+  await storeUpdate('invoices', id, {isBadDebt:false, badDebtRestoredAt:inv.badDebtRestoredAt, updatedAt:inv.updatedAt});
+  syncLS('invoices', data.invoices);
+  toast(`นำ ${inv.docNumber} กลับมาติดตามปกติแล้ว`, 'ok');
+  if(document.getElementById('nav-baddebt')) renderBadDebtPage();
+  refreshINVTable();
+}
+window.restoreBadDebt=restoreBadDebt;
+
+async function deleteBadDebtInvoice(id) {
+  const inv=data.invoices.find(x=>x.id===id); if(!inv) return;
+  if(inv.linkedBilling) { toast('❌ ไม่สามารถลบถาวรได้ — ใบนี้ผูกกับใบวางบิลอยู่','err'); return; }
+  if(!confirm(`ลบข้อมูลหนี้สูญ "${inv.docNumber}" ออกจากระบบถาวร ?\n\nยอด ${fmt(calcInvoiceRemain(inv))} บาท จะหายไปจากระบบทั้งหมด กู้คืนไม่ได้อีก\n\nใช้เฉพาะกรณีตัดหนี้สูญจริง ไม่ต้องการเก็บประวัติไว้แล้วเท่านั้น`)) return;
+  if(inv.linkedQt) {
+    const qt=data.quotations.find(q=>q.id===inv.linkedQt);
+    if(qt) { const ok=await storeUpdate('quotations',qt.id,{linkedInvoice:null,status:'sent'}); if(ok){qt.linkedInvoice=null; qt.status='sent'; syncLS('quotations',data.quotations);} }
+  }
+  data.invoices=data.invoices.filter(x=>x.id!==id);
+  await storeDelete('invoices', id);
+  syncLS('invoices', data.invoices);
+  renderBadDebtPage();
+  toast('ลบข้อมูลหนี้สูญถาวรเรียบร้อย','ok');
+}
+window.deleteBadDebtInvoice=deleteBadDebtInvoice;
+
+function renderBadDebtPage() {
+  document.getElementById('topbar-actions').innerHTML = '';
+  const rows = data.invoices.filter(i=>i.isBadDebt===true).sort((a,b)=>(b.badDebtAt||'').localeCompare(a.badDebtAt||''));
+  const totalBadDebt = rows.reduce((s,i)=>s+calcInvoiceRemain(i),0);
+  document.getElementById('page-content').innerHTML = `
+  <div class="stat-grid" style="grid-template-columns:1fr 1fr;max-width:400px">
+    <div class="stat-card" style="border-color:#7f1d1d">
+      <div class="stat-label">จำนวนใบหนี้สูญ</div><div class="stat-value">${rows.length}</div>
+    </div>
+    <div class="stat-card" style="border-color:#7f1d1d">
+      <div class="stat-label">ยอดหนี้สูญรวม</div><div class="stat-value" style="color:#fca5a5">${fmtInt(Math.round(totalBadDebt))}</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">💀 รายการหนี้สูญ</div><div class="card-sub" style="font-size:12px;color:var(--ink4)">ตัดออกจากยอดค้างชำระ/Dashboard แล้ว — นำกลับมาติดตามได้ถ้าลูกค้ากลับมาชำระ</div></div>
+    <table class="tbl">
+      <thead><tr><th>เลขที่</th><th>ลูกค้า</th><th>บริษัท</th><th class="r">ยอดค้าง</th><th>วันที่ตัดหนี้สูญ</th><th>เหตุผล</th><th></th></tr></thead>
+      <tbody>${rows.length?rows.map(i=>`<tr>
+        <td class="mono">${i.docNumber}</td>
+        <td>${i.custName}</td>
+        <td style="font-size:12px;color:var(--ink4)">${i.companyName}</td>
+        <td class="r mono bold" style="color:#fca5a5">${fmt(calcInvoiceRemain(i))}</td>
+        <td style="font-size:12px">${i.badDebtAt?i.badDebtAt.slice(0,10):'—'}</td>
+        <td style="font-size:12px;color:var(--ink4);max-width:220px">${i.badDebtReason||'—'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-xs btn-outline" onclick="viewDoc('inv','${i.id}')">ดู</button>
+          <button class="btn btn-xs btn-success" onclick="restoreBadDebt('${i.id}')" title="นำกลับมาติดตาม">🔄 นำกลับ</button>
+          <button class="btn btn-xs btn-danger" onclick="deleteBadDebtInvoice('${i.id}')" title="ลบถาวร">🗑 ลบถาวร</button>
+        </td>
+      </tr>`).join(''):'<tr><td colspan="7"><div class="empty"><div class="empty-icon">💀</div><p>ไม่มีรายการหนี้สูญ</p></div></td></tr>'}
+      </tbody>
+    </table>
+  </div>`;
+}
+window.renderBadDebtPage=renderBadDebtPage;
 
 // ══════════════════════════════════════════════════════
 // BILLING LIST
@@ -3772,6 +3861,7 @@ function viewDoc(type, id) {
         <div style="font-size:12px;color:var(--ink4)">วันที่: ${src.docDate}</div>
         ${src.docDue?`<div style="font-size:12px;color:var(--ink4)">ครบกำหนด: ${src.docDue}</div>`:''}
         ${src.docValid?`<div style="font-size:12px;color:var(--ink4)">ใช้ได้ถึง: ${src.docValid}</div>`:''}
+        ${src.isBadDebt?`<div style="margin-top:6px">${badgeHTML('baddebt')}</div>${src.badDebtReason?`<div style="font-size:11px;color:var(--ink4);margin-top:2px">เหตุผล: ${src.badDebtReason}</div>`:''}`:''}
       </div>
     </div>
     <div class="divider"></div>
@@ -4068,7 +4158,7 @@ window.printNewDoc=printNewDoc;
 // ══════════════════════════════════════════════════════
 function renderReportAR() {
   const byCust={};
-  data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
+  data.invoices.filter(i=>remainAmount(i)>0 && !i.isBadDebt).forEach(i=>{
     const k = i.customerId || resolveCustomerIdForDoc(i) || normalizeCustomerName(i.custName||i.customerName);
     const displayName = i.custName||i.customerName||k;
     if(!byCust[k]) byCust[k]={name:displayName,total:0,paid:0,remain:0,invs:[]};
@@ -4102,7 +4192,7 @@ function renderReportAR() {
 
 function renderReportCO() {
   const byCo={};
-  data.invoices.filter(i=>remainAmount(i)>0).forEach(i=>{
+  data.invoices.filter(i=>remainAmount(i)>0 && !i.isBadDebt).forEach(i=>{
     const k=i.companyId; if(!byCo[k]) byCo[k]={name:i.companyName,total:0,paid:0,remain:0,invCount:0};
     byCo[k].total+=i.total; byCo[k].paid+=(i.paidAmount||0);
     byCo[k].remain+=remainAmount(i); byCo[k].invCount++;
@@ -4637,6 +4727,21 @@ function renderCustomers() {
 }
 window.renderCustomers = renderCustomers;
 
+// สลับสถานะเปิด/ปิดใช้งานลูกค้าแบบเร็ว — ไม่ลบข้อมูล แค่ซ่อนจากตัวเลือกเอกสารใหม่
+async function toggleCustomerActive(id) {
+  const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
+  const newActive = c.isActive===false; // ถ้าปัจจุบันปิดอยู่ → เปิด, ถ้าเปิดอยู่ → ปิด
+  const label = newActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน';
+  if(!confirm(`${label}ลูกค้า "${c.name}" ?`)) return;
+  c.isActive = newActive;
+  c.updatedAt = new Date().toISOString();
+  await storeUpdate('customers', id, {isActive:c.isActive, updatedAt:c.updatedAt});
+  syncLS('customers', data.customers);
+  refreshCustomerTable();
+  toast(`${label}เรียบร้อย`, 'ok');
+}
+window.toggleCustomerActive = toggleCustomerActive;
+
 function refreshCustomerTable() {
   const search = (document.getElementById('f-cust-search')?.value || '').toLowerCase();
   const typeF = document.getElementById('f-cust-type')?.value || '';
@@ -4667,7 +4772,7 @@ function refreshCustomerTable() {
     <td style="white-space:nowrap">
       <button class="btn btn-xs btn-outline" onclick="viewCustomer('${c.id}')">ดู</button>
       <button class="btn btn-xs btn-outline" onclick="editCustomer('${c.id}')">✏️</button>
-      <button class="btn btn-xs btn-danger" onclick="deleteCustomer('${c.id}')">🗑</button>
+      <button class="btn btn-xs ${c.isActive===false?'btn-success':'btn-outline'}" onclick="toggleCustomerActive('${c.id}')" title="${c.isActive===false?'เปิดใช้งาน':'ปิดใช้งาน'}">${c.isActive===false?'🔓':'🔒'}</button>
     </td>
   </tr>`).join('') :
   '<tr><td colspan="9"><div class="empty"><div class="empty-icon">👤</div><p>ยังไม่มีข้อมูลลูกค้า</p></div></td></tr>';
@@ -4892,17 +4997,11 @@ window.viewCustomer = viewCustomer;
 
 async function deleteCustomer(id) {
   const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
-  const linked = ['quotations','invoices','billings'].reduce((sum, col) =>
-    sum + (data[col]||[]).filter(d => d.customerId === id).length, 0);
-  if (linked > 0) {
-    toast(`ไม่สามารถลบได้ — ลูกค้านี้มีเอกสาร ${linked} รายการ (ใช้ "ไม่ใช้งาน" แทน)`, 'err'); return;
-  }
-  if(!confirm(`ลบข้อมูลลูกค้า "${c.name}" ?\nการลบไม่สามารถย้อนกลับได้`)) return;
-  await storeDelete('customers', id);
-  data.customers = data.customers.filter(x=>x.id!==id);
-  syncLS('customers', data.customers);
-  refreshCustomerTable();
-  toast('ลบลูกค้าเรียบร้อย','ok');
+  // ป้องกันการลบข้อมูลลูกค้าแบบถาวร — แม้ยังไม่มีเอกสารผูกอยู่ก็ตาม เพราะในอนาคตอาจมีการ
+  // สร้างใบเสนอราคา/ใบแจ้งหนี้/ประวัติการชำระผูกกับลูกค้ารายนี้ ถ้าลบไปแล้วจะดูประวัติไม่ได้อีก
+  // ให้ใช้ "ปิดใช้งาน" แทน (แก้ไขลูกค้า → สถานะ → ปิดใช้งาน) ซึ่งซ่อนจากการเลือกใช้งานใหม่
+  // แต่ยังรักษาประวัติเอกสาร/การชำระเงินทั้งหมดไว้ครบ
+  toast(`ไม่สามารถลบข้อมูลลูกค้าได้ — เพื่อป้องกันประวัติการชำระ/ค้างชำระหายไป กรุณาใช้ "ปิดใช้งาน" แทน (แก้ไข → สถานะ → ปิดใช้งาน)`, 'err');
 }
 window.deleteCustomer = deleteCustomer;
 
@@ -5639,7 +5738,37 @@ function migrateCustomersV23() {
   screen.classList.add('fade-out');
   setTimeout(() => { screen.style.display = 'none'; }, 450);
 
-  migrateCustomersV23(); // เติม customerCode/norms และรวมลูกค้าซ้ำ (ครั้งเดียว)
+// เติม customerCode ให้ลูกค้าที่ยังไม่มี — ต่างจาก migrateCustomersV23() ตรงที่รันได้ทุกครั้งอย่าง
+// ปลอดภัย (ไม่ผูกกับ flag ครั้งเดียว) เพราะแตะเฉพาะลูกค้าที่ "ไม่มี customerCode" เท่านั้น
+// ไม่ยุ่งกับชื่อ/การรวมลูกค้าซ้ำ/เอกสารอื่นใดๆ — ครอบคลุมลูกค้าที่สร้างก่อนมีระบบรหัส หรือลูกค้า
+// ที่ sync เข้ามาจากอุปกรณ์อื่นซึ่งไม่เคยรัน migration นี้มาก่อน
+function backfillMissingCustomerCodes() {
+  const customers = data.customers || [];
+  if(!customers.length) return;
+  let maxCode = 0;
+  customers.forEach(c => {
+    const m = (c.customerCode||'').match(/^CUS-(\d+)$/);
+    if(m) maxCode = Math.max(maxCode, parseInt(m[1],10));
+  });
+  let changed = false;
+  customers.forEach(c => {
+    if(!c.customerCode) {
+      maxCode++;
+      c.customerCode = 'CUS-' + String(maxCode).padStart(4,'0');
+      c.updatedAt = new Date().toISOString();
+      changed = true;
+      if(_fbdb) fbUpdate('customers', c.id, {customerCode:c.customerCode, updatedAt:c.updatedAt}).catch(()=>{});
+    }
+  });
+  if(changed) {
+    syncLS('customers', data.customers);
+    toast('เติมรหัสลูกค้า (CUS-XXXX) ที่ขาดหายเรียบร้อย','ok');
+  }
+}
+window.backfillMissingCustomerCodes = backfillMissingCustomerCodes;
+
+migrateCustomersV23(); // เติม customerCode/norms และรวมลูกค้าซ้ำ (ครั้งเดียว)
+backfillMissingCustomerCodes(); // กันตกหล่น — รันได้ทุกครั้ง ไม่กระทบข้อมูลอื่น
   startRealtimeListeners(); // เริ่ม onSnapshot — ครอบคลุม syncCheckConnection ด้วย
   goPage('dashboard');
 })();
