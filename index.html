@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.10.2 — 2026-09-05
+<!-- AR SYSTEM v2.10.3 — 2026-09-05
+     changelog v2.10.3: วิดเจ็ต "ใบแจ้งหนี้ที่ต้องติดตาม" บน Dashboard เดิมโชว์แค่ 8 แถวแรกแล้วตัดที่เหลือทิ้งเงียบๆ (เรียงเกินกำหนดมากสุดก่อน ทำให้ใบที่เกินกำหนดน้อย เช่น 1 วัน หลุดจากลิสต์ถ้ามีใบอื่นเกินกำหนดมากกว่า 8 ใบ) — เพิ่มข้อความ "แสดง 8 จาก N รายการ" พร้อมลิงก์ไปหน้าใบแจ้งหนี้เต็ม เมื่อมีรายการเกิน 8 แถว จะได้ไม่มีใบไหนหายไปแบบไม่รู้ตัวอีก
      changelog v2.10.2: แก้ปัญหาช่อง input วันที่ (native date picker) แสดงผลตาม locale ของเครื่อง/เบราว์เซอร์ (เช่น MM/DD/YYYY บนเครื่องตั้งค่าภาษาอังกฤษ) ทำให้อ่านสลับวัน/เดือนผิด — เพิ่มคำอ่านภาษาไทยกำกับใต้ทุกช่องวันที่โดยอัตโนมัติ (เช่น "📅 4 ก.ย. 2569") ผ่าน MutationObserver ที่สแกนหาช่อง type="date" ใหม่ทุกครั้งที่ DOM เปลี่ยน ครอบคลุมทุกฟอร์ม/โมดัลในระบบโดยไม่ต้องแก้ทีละจุด
      changelog v2.10.1: เปลี่ยนค่าเริ่มต้นของ "เงื่อนไขการชำระ" ในฟอร์มสร้างใบเสนอราคา/ใบแจ้งหนี้ จาก "30 วัน" เป็น "ชำระทันที" ตามค่าเริ่มต้นที่ต้องการ (ยังเลือกเป็น 7/15/30/60 วันได้ตามปกติ)
      changelog v2.10.0: เพิ่มการเลือก VAT แยกรายรายการ (per-item VAT) ในตารางรายการสินค้า/บริการ ทั้งฟอร์มสร้างใบเสนอราคา/ใบแจ้งหนี้ใหม่ และหน้าแก้ไข — แต่ละแถวมีติ๊ก VAT ของตัวเอง (ค่าเริ่มต้นติ๊ก = คิด VAT) คำนวณ VAT 7% เฉพาะยอดรวมของรายการที่ติ๊กเท่านั้น (ใช้ helper vatableSubtotal() ร่วมกันทุกฟอร์ม), บันทึก vatApplicable ต่อรายการลง items[], เพิ่มคอลัมน์ VAT ในหน้าดูตัวอย่าง/พิมพ์เอกสารเมื่อมีรายการผสมกัน (มี VAT บางรายการ ไม่มีบางรายการ)
@@ -29,7 +30,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.10.2 — 2026-09-05</title>
+<title>AR System | v2.10.3 — 2026-09-05</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -459,7 +460,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.10.2 — 2026-09-05</div>
+    <div class="logo-sub">v2.10.3 — 2026-09-05</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1841,6 +1842,10 @@ function renderDashboard() {
       }).join('')||'<tr><td colspan="8"><div class="empty"><p>ไม่มีรายการค้างชำระ 🎉</p></div></td></tr>'}
       </tbody>
     </table>
+    ${followUpInvs.length>8?`<div style="padding:10px 16px;font-size:12px;color:var(--ink4);border-top:1px solid var(--line)">
+      แสดง 8 จาก ${followUpInvs.length} รายการที่ต้องติดตาม (เรียงเกินกำหนดมากสุดก่อน) —
+      <a href="javascript:void(0)" onclick="goPage('invoices')" style="color:var(--accent-mid);text-decoration:underline">ดูทั้งหมดที่หน้าใบแจ้งหนี้</a>
+    </div>`:''}
   </div>`;
   })()}
   `;
