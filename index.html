@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.11.2 — 2026-09-05
+<!-- AR SYSTEM v2.11.3 — 2026-09-05
+     changelog v2.11.3: เพิ่ม watermark สถานะจางๆ ทแยงมุมกลางเอกสาร (ชำระแล้ว/เกินกำหนด/หนี้สูญ/ยกเลิก) ในหน้าพิมพ์ใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล (printCurrentDoc) — แสดงเฉพาะสถานะสำคัญเท่านั้น ไม่โชว์กับเอกสารสถานะปกติ (ส่งแล้ว/ร่าง) เพื่อไม่ให้รกเกินจำเป็น เป็นการแสดงผลอย่างเดียว ไม่กระทบข้อมูล/การคำนวณ/เทมเพลตเดิมที่มีอยู่แล้ว (โครงหัวกระดาษ, ช่องเซ็นชื่อ, ขนาด A4, กล่องบัญชีธนาคาร ของเดิมทำไว้ครบแล้วตั้งแต่ก่อนหน้านี้ ไม่ต้องแก้เพิ่ม) — ยังไม่รวม QR PromptPay ตามที่ระบุ
      changelog v2.11.2: แก้กลุ่ม "ชำระบางส่วน" ใน Dashboard (สถานะใบแจ้งหนี้) และตัวกรองสถานะในหน้าใบแจ้งหนี้ ที่โชว์ 0/ไม่นับใบที่จริงชำระบางส่วนแล้ว — สาเหตุคือ calcInvoiceStatus() จัดใบที่ "เกินกำหนด + ชำระบางส่วน" ให้อยู่กลุ่ม "เกินกำหนด" เพียงอย่างเดียว (ลำดับความสำคัญ) ทำให้กลุ่ม "ชำระบางส่วน" นับตกหล่นใบที่เกินกำหนดไปด้วย — แก้โดยให้ "ชำระบางส่วน" นับแยกอิสระจากลำดับสถานะ (paidAmount>0 และยังไม่จ่ายครบ ไม่ว่าจะเกินกำหนดหรือไม่) ทั้ง 2 จุดนี้ ไม่กระทบ badge/ลำดับความสำคัญของ "เกินกำหนด" ที่อื่นในระบบ
      changelog v2.11.1: แก้ช่องโหว่ Stored XSS ทั่วทั้งแอป — ชื่อลูกค้า/บริษัท/รายการสินค้า/หมายเหตุ/ช่องทางชำระเงิน ที่แสดงผลในตารางและการ์ดต่างๆ (Dashboard, รายการใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล, รายงานค้างชำระ, Aging Report, หน้ารับชำระ, หน้าลูกค้า, Admin Panel รวมถึง admShowConfirm ที่ render เป็น HTML) เดิมแสดงข้อความดิบไม่ผ่านการ escape ทำให้ใครก็ตามที่ตั้งชื่อ/รายละเอียดเป็นโค้ด HTML/JavaScript (เช่น &lt;img onerror=...&gt;) จะรันโค้ดนั้นได้ทุกครั้งที่มีคนเปิดหน้าที่แสดงข้อมูลนั้น — แก้ด้วยการห่อทุกจุดด้วย escHtml() ก่อนแสดงผล (ฟิลด์ระบบที่ผู้ใช้แก้ไขไม่ได้ เช่น docNumber ที่ auto-generate ยังไม่ escape เพราะความเสี่ยงต่ำ)
      changelog v2.11.0: สามข้อใหญ่ตามคำขอ — (1) เติมรหัสลูกค้า (CUS-XXXX) ให้ลูกค้าที่สร้างไว้ก่อนมีระบบรหัส ผ่าน backfillMissingCustomerCodes() ที่รันได้ทุกครั้งอย่างปลอดภัย ไม่กระทบข้อมูลอื่น (2) ป้องกันการลบข้อมูลลูกค้าถาวร — เอาปุ่มลบออกจากหน้าลูกค้า เปลี่ยนเป็นปุ่ม "ปิด/เปิดใช้งาน" แทน (toggleCustomerActive) เพื่อรักษาประวัติการชำระ/ค้างชำระไว้เสมอ, deleteCustomer() เดิมถูกปิดใช้งานถาวร (3) เพิ่มระบบ "หนี้สูญ" — ตัดใบแจ้งหนี้ที่เก็บเงินไม่ได้ออกจาก Dashboard/รายงานค้างชำระทั้งหมด (markBadDebt) ไปไว้หน้า "หนี้สูญ" ใหม่ ยังนำกลับมาติดตามได้ถ้าลูกค้ากลับมาชำระ (restoreBadDebt) และลบถาวรได้จากหน้าหนี้สูญเมื่อต้องการ (deleteBadDebtInvoice) — เพิ่ม status 'baddebt' ใน calcInvoiceStatus/calcInvoiceAgingBucket ให้ถูกตัดออกจากทุกจุดคำนวณ AR โดยอัตโนมัติ
@@ -33,7 +34,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.2 — 2026-09-05</title>
+<title>AR System | v2.11.3 — 2026-09-05</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -464,7 +465,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.2 — 2026-09-05</div>
+    <div class="logo-sub">v2.11.3 — 2026-09-05</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -3953,12 +3954,34 @@ function printCurrentDoc() {
     ? `<img src="${co.logoData}" style="width:90px;height:90px;object-fit:contain;border-radius:10px;display:block">`
     : `<div style="width:90px;height:90px;border-radius:12px;background:${coLogoColor(co.prefix||co.name)};display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#fff;font-family:monospace;letter-spacing:1px">${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}</div>`;
 
+  // ── WATERMARK — สแตมป์สถานะจางๆ ทแยงมุมกลางเอกสาร ──
+  // แสดงเฉพาะสถานะสำคัญที่ควรเห็นเด่นชัดตอนพิมพ์/ส่งให้ลูกค้า ไม่แสดงกับเอกสารสถานะปกติ (ส่งแล้ว/ร่าง)
+  // เพื่อไม่ให้รกเกินจำเป็น — เป็นการแสดงผลอย่างเดียว ไม่กระทบข้อมูลหรือการคำนวณใดๆ
+  const watermark = (()=>{
+    if(type==='inv') {
+      const st = calcInvoiceStatus(src);
+      if(st==='paid')     return {text:'ชำระแล้ว / PAID', color:'#15803d'};
+      if(st==='baddebt')  return {text:'หนี้สูญ / BAD DEBT', color:'#7f1d1d'};
+      if(st==='overdue')  return {text:'เกินกำหนด / OVERDUE', color:'#b91c1c'};
+      if(st==='cancelled')return {text:'ยกเลิก / CANCELLED', color:'#71717a'};
+    } else if(src.status==='cancelled') {
+      return {text:'ยกเลิก / CANCELLED', color:'#71717a'};
+    }
+    return null;
+  })();
+  const watermarkHtml = watermark ? `<div class="watermark" style="color:${watermark.color}">${watermark.text}</div>` : '';
+
   const html=`
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Sarabun',sans-serif;font-size:13px;color:#1a1a2e;background:#fff;padding:0}
-    .page{width:210mm;min-height:297mm;padding:14mm 16mm 12mm;position:relative}
+    .page{width:210mm;min-height:297mm;padding:14mm 16mm 12mm;position:relative;overflow:hidden}
+
+    /* ── WATERMARK ── */
+    .watermark{position:absolute;top:48%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);
+      font-size:64px;font-weight:900;letter-spacing:.06em;opacity:.10;white-space:nowrap;
+      font-family:'IBM Plex Mono',monospace;pointer-events:none;z-index:-1;text-transform:uppercase}
 
     /* ── HEADER ── */
     .hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:16px;border-bottom:3px solid ${accentColor}}
@@ -4023,6 +4046,7 @@ function printCurrentDoc() {
   </style>
 
   <div class="page">
+    ${watermarkHtml}
     <!-- HEADER -->
     <div class="hd">
       <div class="hd-left">
