@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.11.3 — 2026-09-05
+<!-- AR SYSTEM v2.11.4 — 2026-09-05
+     changelog v2.11.4: (1) Empty state ของใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล/ลูกค้า เพิ่มปุ่ม CTA "+ สร้าง...แรก" ให้กดสร้างรายการแรกได้ทันทีจากหน้าว่างเปล่า แทนที่จะเห็นแค่ข้อความ, ขยาย icon ให้ใหญ่ขึ้นและ padding ดูโปร่งสบายตาขึ้น (2) เพิ่ม fade transition (~180ms) ตอนสลับหน้าเมนูต่างๆ ผ่าน goPage() ให้รู้สึกลื่นขึ้น ไม่กระตุกเวลาสลับ innerHTML ทันที — ทั้งสองข้อเป็นการปรับ UI ล้วนๆ ไม่กระทบข้อมูล/การคำนวณ/ฟังก์ชันเดิมที่ทำงานอยู่แล้วเลย
      changelog v2.11.3: เพิ่ม watermark สถานะจางๆ ทแยงมุมกลางเอกสาร (ชำระแล้ว/เกินกำหนด/หนี้สูญ/ยกเลิก) ในหน้าพิมพ์ใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล (printCurrentDoc) — แสดงเฉพาะสถานะสำคัญเท่านั้น ไม่โชว์กับเอกสารสถานะปกติ (ส่งแล้ว/ร่าง) เพื่อไม่ให้รกเกินจำเป็น เป็นการแสดงผลอย่างเดียว ไม่กระทบข้อมูล/การคำนวณ/เทมเพลตเดิมที่มีอยู่แล้ว (โครงหัวกระดาษ, ช่องเซ็นชื่อ, ขนาด A4, กล่องบัญชีธนาคาร ของเดิมทำไว้ครบแล้วตั้งแต่ก่อนหน้านี้ ไม่ต้องแก้เพิ่ม) — ยังไม่รวม QR PromptPay ตามที่ระบุ
      changelog v2.11.2: แก้กลุ่ม "ชำระบางส่วน" ใน Dashboard (สถานะใบแจ้งหนี้) และตัวกรองสถานะในหน้าใบแจ้งหนี้ ที่โชว์ 0/ไม่นับใบที่จริงชำระบางส่วนแล้ว — สาเหตุคือ calcInvoiceStatus() จัดใบที่ "เกินกำหนด + ชำระบางส่วน" ให้อยู่กลุ่ม "เกินกำหนด" เพียงอย่างเดียว (ลำดับความสำคัญ) ทำให้กลุ่ม "ชำระบางส่วน" นับตกหล่นใบที่เกินกำหนดไปด้วย — แก้โดยให้ "ชำระบางส่วน" นับแยกอิสระจากลำดับสถานะ (paidAmount>0 และยังไม่จ่ายครบ ไม่ว่าจะเกินกำหนดหรือไม่) ทั้ง 2 จุดนี้ ไม่กระทบ badge/ลำดับความสำคัญของ "เกินกำหนด" ที่อื่นในระบบ
      changelog v2.11.1: แก้ช่องโหว่ Stored XSS ทั่วทั้งแอป — ชื่อลูกค้า/บริษัท/รายการสินค้า/หมายเหตุ/ช่องทางชำระเงิน ที่แสดงผลในตารางและการ์ดต่างๆ (Dashboard, รายการใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล, รายงานค้างชำระ, Aging Report, หน้ารับชำระ, หน้าลูกค้า, Admin Panel รวมถึง admShowConfirm ที่ render เป็น HTML) เดิมแสดงข้อความดิบไม่ผ่านการ escape ทำให้ใครก็ตามที่ตั้งชื่อ/รายละเอียดเป็นโค้ด HTML/JavaScript (เช่น &lt;img onerror=...&gt;) จะรันโค้ดนั้นได้ทุกครั้งที่มีคนเปิดหน้าที่แสดงข้อมูลนั้น — แก้ด้วยการห่อทุกจุดด้วย escHtml() ก่อนแสดงผล (ฟิลด์ระบบที่ผู้ใช้แก้ไขไม่ได้ เช่น docNumber ที่ auto-generate ยังไม่ escape เพราะความเสี่ยงต่ำ)
@@ -34,7 +35,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.3 — 2026-09-05</title>
+<title>AR System | v2.11.4 — 2026-09-05</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -77,7 +78,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .topbar-title{font-size:15px;font-weight:700;color:var(--ink)}
 .topbar-sub{font-size:12px;color:var(--ink4);margin-left:2px}
 .topbar-space{flex:1}
-.content{padding:24px 28px;max-width:1280px}
+.content{padding:24px 28px;max-width:1280px;transition:opacity .18s ease}
 
 /* ── CARDS ── */
 .card{background:var(--white);border:1px solid var(--border);border-radius:var(--r2);box-shadow:var(--sh);margin-bottom:18px;overflow:hidden}
@@ -262,9 +263,10 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .toast.info{background:var(--ink);color:#fff}
 
 /* ── EMPTY ── */
-.empty{text-align:center;padding:50px 20px;color:var(--ink4)}
-.empty-icon{font-size:40px;margin-bottom:10px}
-.empty p{font-size:14px}
+.empty{text-align:center;padding:56px 20px}
+.empty-icon{font-size:52px;margin-bottom:14px;line-height:1;opacity:.85}
+.empty p{font-size:14px;color:var(--ink4);margin-bottom:16px}
+.empty .btn{margin:0 auto}
 
 /* ── REPORT ── */
 .report-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
@@ -465,7 +467,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.3 — 2026-09-05</div>
+    <div class="logo-sub">v2.11.4 — 2026-09-05</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -1498,8 +1500,11 @@ function goPage(p) {
     'new-qt': renderNewQT, 'new-inv': renderNewINV, 'new-bl': renderNewBL,
     products: renderProducts, baddebt: renderBadDebtPage,
   };
+  pc.style.opacity = '0';
   pc.innerHTML = '';
   if(pages[p]) pages[p]();
+  // fade เข้าเบาๆ หลังเนื้อหาใหม่พร้อม — ไม่กระทบ logic การ render เดิมเลย แค่ทำให้การสลับหน้าลื่นขึ้น
+  requestAnimationFrame(()=>{ requestAnimationFrame(()=>{ pc.style.opacity = '1'; }); });
 }
 window.goPage = goPage;
 
@@ -1945,7 +1950,7 @@ function refreshQTTable() {
         ${!q.linkedInvoice&&q.status!=='cancelled'?`<button class="btn btn-xs btn-ghost" onclick="updateQTStatus('${q.id}','cancelled')">ยกเลิก</button>`:''}
         <button class="btn btn-xs btn-danger" onclick="deleteQT('${q.id}')">🗑</button>
       </td>
-    </tr>`).join('') : '<tr><td colspan="8"><div class="empty"><div class="empty-icon">📋</div><p>ยังไม่มีใบเสนอราคา</p></div></td></tr>';
+    </tr>`).join('') : '<tr><td colspan="8"><div class="empty"><div class="empty-icon">📋</div><p>ยังไม่มีใบเสนอราคา</p><button class="btn btn-primary btn-sm" onclick="goPage(\'new-qt\')">+ สร้างใบเสนอราคาแรก</button></div></td></tr>';
 }
 window.refreshQTTable=refreshQTTable;
 async function updateQTStatus(id,status) {
@@ -2208,7 +2213,7 @@ function refreshINVTable() {
         ${st==='baddebt'?`<button class="btn btn-xs btn-outline" onclick="restoreBadDebt('${i.id}')" title="นำกลับมาติดตาม">🔄</button>`:''}
         ${st!=='paid'&&st!=='baddebt'?`<button class="btn btn-xs btn-danger" onclick="deleteINV('${i.id}')">🗑</button>`:''}
       </td>
-    </tr>`;}).join(''):'<tr><td colspan="10"><div class="empty"><div class="empty-icon">🧾</div><p>ยังไม่มีใบแจ้งหนี้</p></div></td></tr>';
+    </tr>`;}).join(''):'<tr><td colspan="10"><div class="empty"><div class="empty-icon">🧾</div><p>ยังไม่มีใบแจ้งหนี้</p><button class="btn btn-primary btn-sm" onclick="goPage(\'new-inv\')">+ สร้างใบแจ้งหนี้แรก</button></div></td></tr>';
 }
 window.refreshINVTable=refreshINVTable;
 
@@ -2533,7 +2538,7 @@ function refreshBLTable() {
       <button class="btn btn-xs btn-outline" onclick="printBL('${b.id}')">🖨</button>
       <button class="btn btn-xs btn-danger" onclick="deleteBL('${b.id}')">🗑</button>
     </td>
-  </tr>`).join(''):'<tr><td colspan="7"><div class="empty"><div class="empty-icon">📬</div><p>ยังไม่มีใบวางบิล</p></div></td></tr>';
+  </tr>`).join(''):'<tr><td colspan="7"><div class="empty"><div class="empty-icon">📬</div><p>ยังไม่มีใบวางบิล</p><button class="btn btn-primary btn-sm" onclick="goPage(\'new-bl\')">+ สร้างใบวางบิลแรก</button></div></td></tr>';
 }
 window.refreshBLTable=refreshBLTable;
 
@@ -4808,7 +4813,7 @@ function refreshCustomerTable() {
       <button class="btn btn-xs ${c.isActive===false?'btn-success':'btn-outline'}" onclick="toggleCustomerActive('${c.id}')" title="${c.isActive===false?'เปิดใช้งาน':'ปิดใช้งาน'}">${c.isActive===false?'🔓':'🔒'}</button>
     </td>
   </tr>`).join('') :
-  '<tr><td colspan="9"><div class="empty"><div class="empty-icon">👤</div><p>ยังไม่มีข้อมูลลูกค้า</p></div></td></tr>';
+  '<tr><td colspan="9"><div class="empty"><div class="empty-icon">👤</div><p>ยังไม่มีข้อมูลลูกค้า</p><button class="btn btn-primary btn-sm" onclick="openNewCustomer()">+ เพิ่มลูกค้าแรก</button></div></td></tr>';
 }
 window.refreshCustomerTable = refreshCustomerTable;
 
