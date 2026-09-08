@@ -1,4 +1,5 @@
 <!-- AR SYSTEM v2.11.5 — 2026-09-08
+     changelog v2.11.6: ปรับหน้าดูตัวอย่างและหน้าพิมพ์/PDF ให้เป็นเอกสารบริษัทที่อ่านง่ายขึ้น โดยแก้กรอบโลโก้จากสี่เหลี่ยมเล็กเป็นกรอบแนวนอนขนาดใหญ่ที่รักษาสัดส่วนโลโก้จริง, จัดหัวเอกสารและลำดับข้อมูลใหม่, เพิ่มความชัดของตาราง/ยอดสุทธิ/ข้อมูลธนาคาร และปรับ responsive บนมือถือ โดยไม่กระทบข้อมูลหรือการคำนวณ
      changelog v2.11.5: รีดีไซน์เทมเพลตพิมพ์/PDF ของใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล (printCurrentDoc) ให้ดูมืออาชีพและน่าเชื่อถือขึ้น — (1) แถบสี masthead บนสุดของหน้ากระดาษ (2) ลายพื้นหลังจางมาก (~4.5% opacity) ทำซ้ำชื่อบริษัท/เลขผู้เสียภาษีทั่วหน้า สไตล์เดียวกับลายป้องกันการปลอมแปลงบนเอกสารการเงิน (3) เปลี่ยนป้าย "ประเภทเอกสาร" เป็น pill พร้อมชื่ออังกฤษกำกับ และเลขที่เอกสารเป็นกล่อง mono ตัวใหญ่มีเส้นสีข้าง (4) หัวตารางรายการเปลี่ยนเป็นพื้นเข้ม (ไม่ใช่สีเต็มแบบเดิม) มีเส้นใต้สีเน้นแทน ดูภูมิฐานกว่า (5) แปลง watermark สถานะเดิม (ชำระแล้ว/เกินกำหนด/หนี้สูญ/ยกเลิก) เป็นตราประทับสไตล์ตรายางมุมขวาบนแทนตัวอักษรใหญ่กลางหน้า (6) กล่องบัญชีธนาคาร/สรุปยอดใช้โทนสีอ่อนลง ไล่เฉดในแถบยอดสุทธิ (7) เพิ่มบรรทัดอ้างอิงเอกสาร+เวลาพิมพ์ใน footer — ยังคง 3 สีต่อประเภทเอกสารเดิม (ฟ้า/เขียว/ม่วง) ตามที่ระบุ, ยังไม่แตะหน้าจอ list/dashboard (เฉพาะเอกสารพิมพ์ก่อน), ไม่กระทบข้อมูล/การคำนวณ/QR PromptPay (ยังไม่ใส่ตามเดิม)
      changelog v2.11.4: (1) Empty state ของใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล/ลูกค้า เพิ่มปุ่ม CTA "+ สร้าง...แรก" ให้กดสร้างรายการแรกได้ทันทีจากหน้าว่างเปล่า แทนที่จะเห็นแค่ข้อความ, ขยาย icon ให้ใหญ่ขึ้นและ padding ดูโปร่งสบายตาขึ้น (2) เพิ่ม fade transition (~180ms) ตอนสลับหน้าเมนูต่างๆ ผ่าน goPage() ให้รู้สึกลื่นขึ้น ไม่กระตุกเวลาสลับ innerHTML ทันที — ทั้งสองข้อเป็นการปรับ UI ล้วนๆ ไม่กระทบข้อมูล/การคำนวณ/ฟังก์ชันเดิมที่ทำงานอยู่แล้วเลย
      changelog v2.11.3: เพิ่ม watermark สถานะจางๆ ทแยงมุมกลางเอกสาร (ชำระแล้ว/เกินกำหนด/หนี้สูญ/ยกเลิก) ในหน้าพิมพ์ใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล (printCurrentDoc) — แสดงเฉพาะสถานะสำคัญเท่านั้น ไม่โชว์กับเอกสารสถานะปกติ (ส่งแล้ว/ร่าง) เพื่อไม่ให้รกเกินจำเป็น เป็นการแสดงผลอย่างเดียว ไม่กระทบข้อมูล/การคำนวณ/เทมเพลตเดิมที่มีอยู่แล้ว (โครงหัวกระดาษ, ช่องเซ็นชื่อ, ขนาด A4, กล่องบัญชีธนาคาร ของเดิมทำไว้ครบแล้วตั้งแต่ก่อนหน้านี้ ไม่ต้องแก้เพิ่ม) — ยังไม่รวม QR PromptPay ตามที่ระบุ
@@ -410,6 +411,41 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .logo-preview-box{width:80px;height:80px;border:1px solid var(--border);border-radius:var(--r);display:flex;align-items:center;justify-content:center;background:var(--bg2);overflow:hidden;flex-shrink:0}
 .logo-clear-btn{font-size:11px;color:var(--red);cursor:pointer;text-decoration:underline}
 
+/* ── DOCUMENT PREVIEW ── */
+.doc-preview{--doc-accent:var(--accent);--doc-tint:var(--accent-light);font-size:13px;color:var(--ink);background:#fff}
+.doc-preview-head{display:grid;grid-template-columns:minmax(0,1fr) 215px;gap:24px;align-items:start;padding:4px 0 18px;border-bottom:2px solid var(--doc-accent);margin-bottom:18px}
+.doc-preview-brand{display:flex;align-items:flex-start;gap:18px;min-width:0}
+.doc-preview-logo-img{width:128px;height:80px;object-fit:contain;object-position:left center;display:block;background:#fff;flex-shrink:0}
+.doc-preview-logo-auto{width:80px;height:80px;flex-shrink:0}
+.doc-preview-co-name{font-size:17px;font-weight:800;line-height:1.35;color:var(--ink);margin-bottom:3px}
+.doc-preview-co-en{font-size:11px;color:var(--ink4);letter-spacing:.02em;margin-bottom:5px}
+.doc-preview-co-info{font-size:12px;color:var(--ink3);line-height:1.65}
+.doc-preview-meta{text-align:right;border-right:4px solid var(--doc-accent);padding-right:14px}
+.doc-preview-title{font-size:26px;line-height:1.2;font-weight:800;color:var(--doc-accent);margin-bottom:3px}
+.doc-preview-title-en{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.18em;color:var(--ink4);margin-bottom:8px}
+.doc-preview-no{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px}
+.doc-preview-date{font-size:12px;color:var(--ink4);line-height:1.7}
+.doc-preview-customer{background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid var(--doc-accent);border-radius:8px;padding:11px 14px;margin-bottom:15px}
+.doc-preview-customer-label{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--doc-accent);margin-bottom:3px}
+.doc-preview .tbl{border:1px solid #dbe2ea;border-radius:8px;overflow:hidden}
+.doc-preview .tbl thead th{background:#eff6ff;color:#1e3a8a;border-bottom:2px solid #bfdbfe;font-weight:700;padding-top:10px;padding-bottom:10px}
+.doc-preview .tbl tbody td{padding-top:10px;padding-bottom:10px}
+.doc-preview .summary-box{background:#fff;border-color:#dbe2ea;border-radius:8px;overflow:hidden;padding:0}
+.doc-preview .summary-box .s-row{padding:7px 13px}
+.doc-preview .summary-box .s-row.total{background:#eff6ff;border-top:1px solid #bfdbfe;margin:0;padding:11px 13px;color:#1e3a8a}
+.doc-preview .summary-box .s-row.total .val{font-size:17px;color:#1d4ed8}
+.doc-preview-bank{background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:13px 16px;font-size:12px;margin-top:16px}
+.doc-preview-bank-title{font-weight:700;color:#1d4ed8;margin-bottom:8px}
+.doc-preview-bank-no{font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:700;letter-spacing:.06em;color:#1d4ed8}
+@media(max-width:600px){
+  .doc-preview-head{grid-template-columns:1fr;gap:14px}
+  .doc-preview-meta{text-align:left;border-right:0;border-left:4px solid var(--doc-accent);padding:0 0 0 12px}
+  .doc-preview-logo-img{width:112px;height:70px}
+  .doc-preview-logo-auto{width:70px;height:70px}
+  .doc-preview-co-name{font-size:15px}
+  .doc-preview-title{font-size:22px}
+}
+
 /* ── SMALL MOBILE (≤400px) ── */
 @media(max-width:400px){
   .stat-grid{grid-template-columns:1fr 1fr}
@@ -468,7 +504,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.5 — 2026-09-08</div>
+    <div class="logo-sub">v2.11.6 — 2026-09-08</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -3859,32 +3895,36 @@ function viewDoc(type, id) {
   const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
   document.getElementById('modal-doc-title').textContent = `${typeLabels[type]} — ${src.docNumber}`;
   const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
-  const logoHtml = coLogoHTML(co, 56, 16);
+  const logoHtml = co.logoData
+    ? `<img src="${co.logoData}" class="doc-preview-logo-img" alt="โลโก้ ${escHtml(co.name||'บริษัท')}">`
+    : `<div class="doc-preview-logo-auto">${coLogoHTML(co, 80, 22)}</div>`;
   let body=`
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;font-size:13px">
-      <div style="display:flex;align-items:flex-start;gap:12px">
+    <div class="doc-preview">
+    <div class="doc-preview-head">
+      <div class="doc-preview-brand">
         ${logoHtml}
         <div>
-          <div style="font-weight:700;font-size:14px">${escHtml(co.name||'')}</div>
-          <div style="color:var(--ink4);font-size:11px">${co.nameEn||''}</div>
-          <div style="color:var(--ink4);font-size:12px">${co.address||''}</div>
-          <div style="color:var(--ink4);font-size:12px">เลขภาษี: ${co.taxId||'—'} ${co.phone?'| โทร: '+co.phone:''}</div>
+          <div class="doc-preview-co-name">${escHtml(co.name||'')}</div>
+          <div class="doc-preview-co-en">${escHtml(co.nameEn||'')}</div>
+          <div class="doc-preview-co-info">${escHtml(co.address||'')}</div>
+          <div class="doc-preview-co-info">เลขประจำตัวผู้เสียภาษี: ${escHtml(co.taxId||'—')} ${co.phone?' | โทร: '+escHtml(co.phone):''}</div>
         </div>
       </div>
-      <div style="text-align:right">
-        <div style="font-size:20px;font-weight:700;color:var(--accent)">${typeLabels[type]}</div>
-        <div class="mono" style="font-size:12px;margin-top:4px">${src.docNumber}</div>
-        <div style="font-size:12px;color:var(--ink4)">วันที่: ${src.docDate}</div>
-        ${src.docDue?`<div style="font-size:12px;color:var(--ink4)">ครบกำหนด: ${src.docDue}</div>`:''}
-        ${src.docValid?`<div style="font-size:12px;color:var(--ink4)">ใช้ได้ถึง: ${src.docValid}</div>`:''}
+      <div class="doc-preview-meta">
+        <div class="doc-preview-title">${typeLabels[type]}</div>
+        <div class="doc-preview-title-en">${type==='qt'?'QUOTATION':type==='inv'?'INVOICE':'BILLING NOTE'}</div>
+        <div class="doc-preview-no">${src.docNumber}</div>
+        <div class="doc-preview-date">วันที่: ${src.docDate}</div>
+        ${src.docDue?`<div class="doc-preview-date">ครบกำหนด: ${src.docDue}</div>`:''}
+        ${src.docValid?`<div class="doc-preview-date">ใช้ได้ถึง: ${src.docValid}</div>`:''}
         ${src.isBadDebt?`<div style="margin-top:6px">${badgeHTML('baddebt')}</div>${src.badDebtReason?`<div style="font-size:11px;color:var(--ink4);margin-top:2px">เหตุผล: ${src.badDebtReason}</div>`:''}`:''}
       </div>
     </div>
-    <div class="divider"></div>
-    <div style="font-size:13px;margin-bottom:12px">
+    <div class="doc-preview-customer">
+      <div class="doc-preview-customer-label">เรียน / ลูกค้า</div>
       <div style="font-weight:700">${escHtml(src.custName||'')}</div>
-      <div style="color:var(--ink4)">${src.custAddress||''}</div>
-      ${src.custTax?`<div style="color:var(--ink4);font-size:12px">เลขภาษี: ${src.custTax}</div>`:''}
+      <div style="color:var(--ink4)">${escHtml(src.custAddress||'')}</div>
+      ${src.custTax?`<div style="color:var(--ink4);font-size:12px">เลขภาษี: ${escHtml(src.custTax)}</div>`:''}
     </div>`;
 
   if(src.items?.length) {
@@ -3931,19 +3971,19 @@ function viewDoc(type, id) {
   const bankInfoList = pm?.bankInfo ? [pm.bankInfo]
     : (pm?.method==='เงินสด' ? [] : (co2?.banks||[]));
   if(bankInfoList.length) {
-    body+=`<div class="divider"></div>
-    <div style="background:var(--accent-light);border:1px solid var(--accent-mid);border-radius:var(--r);padding:12px;font-size:12px">
-      <div style="font-weight:700;color:var(--accent);margin-bottom:8px">💳 ชำระเงินโดยการโอนเข้าบัญชี</div>
+    body+=`<div class="doc-preview-bank">
+      <div class="doc-preview-bank-title">ชำระเงินโดยการโอนเข้าบัญชี</div>
       ${bankInfoList.map(b=>`
       <div style="margin-bottom:6px">
-        <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType}${b.branch?' | สาขา: '+b.branch:''}</div>
-        <div>ชื่อบัญชี: <b>${b.accName}</b></div>
-        <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:var(--accent)">${b.accNo}</span></div>
+        <div>ธนาคาร: <b>${escHtml(b.bankName)}</b> | ประเภท: ${escHtml(b.accType)}${b.branch?' | สาขา: '+escHtml(b.branch):''}</div>
+        <div>ชื่อบัญชี: <b>${escHtml(b.accName)}</b></div>
+        <div>เลขบัญชี: <span class="doc-preview-bank-no">${escHtml(b.accNo)}</span></div>
       </div>`).join('<hr style="border:none;border-top:1px dashed var(--border);margin:6px 0">')}
     </div>`;
   } else if(pm?.method==='เงินสด') {
     body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)">💵 ชำระเป็น <b>เงินสด</b></div>`;
   }
+  body+='</div>';
   document.getElementById('modal-doc-body').innerHTML=body;
   document.getElementById('modal-doc').classList.add('show');
 }
@@ -3963,8 +4003,8 @@ function printCurrentDoc() {
   const accentDark = typeColorsDark[type]||'#1e3a8a';
   const tintColor = typeTints[type]||'#eef3ff';
   const logoBlock = co.logoData
-    ? `<img src="${co.logoData}" style="width:74px;height:74px;object-fit:contain;border-radius:10px;display:block;border:1px solid #eef0f4">`
-    : `<div style="width:74px;height:74px;border-radius:12px;background:linear-gradient(155deg,${accentColor},${accentDark});display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px">${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}</div>`;
+    ? `<img src="${co.logoData}" class="print-logo-img" alt="โลโก้ ${escHtml(co.name||'บริษัท')}">`
+    : `<div class="print-logo-auto">${escHtml((co.prefix||co.name||'?').slice(0,3).toUpperCase())}</div>`;
 
   // ── SECURITY PATTERN — ลายพื้นหลังจางมากๆ ทั่วหน้ากระดาษ ทำซ้ำชื่อบริษัท/เลขผู้เสียภาษี ──
   // แนวทางเดียวกับเอกสารทางการเงิน/เช็ค/ใบหุ้น ที่มีลายป้องกันการปลอมแปลง ช่วยให้เอกสารดูน่าเชื่อถือขึ้น
@@ -4008,7 +4048,7 @@ function printCurrentDoc() {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Sarabun',sans-serif;font-size:13px;color:#14161f;background:#fff;padding:0}
-    .page{width:210mm;min-height:297mm;padding:16mm 16mm 12mm;position:relative;overflow:hidden}
+    .page{width:210mm;min-height:297mm;padding:17mm 16mm 12mm;position:relative;overflow:hidden}
 
     /* ── TOP MASTHEAD BAR ── */
     .topbar{position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,${accentColor},${accentDark})}
@@ -4025,15 +4065,17 @@ function printCurrentDoc() {
     .stamp-en{font-size:9px;font-weight:600;letter-spacing:.22em;margin-top:1px}
 
     /* ── HEADER ── */
-    .hd{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #e6e7ee}
-    .hd-left{display:flex;align-items:flex-start;gap:14px}
-    .hd-co-name{font-size:16px;font-weight:700;color:#111;margin-bottom:2px}
+    .hd{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:16px;padding-bottom:14px;border-bottom:2px solid ${accentColor}}
+    .hd-left{display:flex;align-items:flex-start;gap:16px;min-width:0}
+    .print-logo-img{width:116px;height:78px;object-fit:contain;object-position:left center;display:block;flex-shrink:0}
+    .print-logo-auto{width:78px;height:78px;border-radius:12px;background:linear-gradient(155deg,${accentColor},${accentDark});display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px;flex-shrink:0}
+    .hd-co-name{font-size:17px;font-weight:800;color:#111;margin-bottom:2px;line-height:1.35}
     .hd-co-en{font-size:10.5px;color:#6b6e78;margin-bottom:5px}
     .hd-co-info{font-size:11px;color:#4b4e58;line-height:1.65}
-    .hd-right{text-align:right;min-width:190px}
-    .doc-chip{display:inline-block;background:${tintColor};color:${accentDark};border:1px solid ${accentColor}55;border-radius:999px;padding:4px 14px;font-size:11.5px;font-weight:700;letter-spacing:.02em;margin-bottom:8px}
-    .doc-chip-en{font-size:9px;font-weight:600;letter-spacing:.16em;color:${accentColor};display:block;margin-top:1px}
-    .doc-no{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;color:#1c1e29;border-left:3px solid ${accentColor};padding:2px 0 2px 10px;margin-bottom:8px}
+    .hd-right{text-align:right;min-width:190px;border-right:4px solid ${accentColor};padding-right:12px}
+    .doc-chip{display:block;color:${accentDark};font-size:23px;font-weight:800;line-height:1.15;margin-bottom:7px}
+    .doc-chip-en{font-size:8.5px;font-weight:600;letter-spacing:.18em;color:#737782;display:block;margin-top:3px}
+    .doc-no{font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:700;color:#1c1e29;margin-bottom:6px}
     .doc-meta{font-size:11px;color:#5c5f6b;line-height:1.85}
     .doc-meta b{font-weight:600;color:#20222c}
 
@@ -4046,8 +4088,9 @@ function printCurrentDoc() {
 
     /* ── TABLE ── */
     .items-table{position:relative;z-index:1;width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px}
-    .items-table thead tr{background:#191a22;color:#fff}
-    .items-table th{padding:9px 10px;text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.03em;border-bottom:2px solid ${accentColor}}
+    .items-table{border:1px solid #dce2ea;border-radius:7px;overflow:hidden}
+    .items-table thead tr{background:${tintColor};color:${accentDark}}
+    .items-table th{padding:9px 10px;text-align:left;font-weight:700;font-size:10.5px;letter-spacing:.03em;border-bottom:2px solid ${accentColor}66}
     .items-table th.r,.items-table td.r{text-align:right}
     .items-table td{padding:7px 10px;border-bottom:1px solid #eef0f4;vertical-align:top}
     .items-table tbody tr:nth-child(even) td{background:#fafbfd}
@@ -4059,13 +4102,13 @@ function printCurrentDoc() {
     .summary-box{width:265px;border:1px solid #e6e7ee;border-radius:9px;overflow:hidden}
     .sr{display:flex;justify-content:space-between;padding:6px 14px;font-size:12px;border-bottom:1px solid #f0f0f4;color:#3c3e48}
     .sr:last-child{border-bottom:none}
-    .sr.total{background:linear-gradient(90deg,${accentDark},${accentColor});color:#fff;font-size:15px;font-weight:700;padding:11px 14px}
+    .sr.total{background:${tintColor};color:${accentDark};border-top:1px solid ${accentColor}55;font-size:15px;font-weight:800;padding:11px 14px}
     .sr.total span:last-child{font-family:'IBM Plex Mono',monospace}
     .sr span:last-child{font-family:'IBM Plex Mono',monospace;font-weight:600}
 
     /* ── BANK INFO ── */
     .bank-box{position:relative;z-index:1;border:1px solid ${accentColor}55;border-radius:9px;padding:12px 16px;margin-bottom:14px;background:${tintColor}}
-    .bank-title{font-size:11px;font-weight:700;color:${accentDark};margin-bottom:8px}
+    .bank-title{font-size:11.5px;font-weight:700;color:${accentDark};margin-bottom:8px}
     .bank-no{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;color:${accentDark};letter-spacing:.06em}
 
     /* ── NOTE ── */
@@ -4083,7 +4126,8 @@ function printCurrentDoc() {
 
     @media print{
       body{padding:0}
-      .page{padding:12mm 14mm}
+      .page{padding:14mm 15mm 10mm}
+      .print-logo-img{width:108px;height:72px}
     }
   </style>
 
