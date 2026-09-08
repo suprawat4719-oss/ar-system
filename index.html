@@ -1,6 +1,8 @@
-<!-- AR SYSTEM v2.11.5 — 2026-09-08
-     changelog v2.11.6: ปรับหน้าดูตัวอย่างและหน้าพิมพ์/PDF ให้เป็นเอกสารบริษัทที่อ่านง่ายขึ้น โดยแก้กรอบโลโก้จากสี่เหลี่ยมเล็กเป็นกรอบแนวนอนขนาดใหญ่ที่รักษาสัดส่วนโลโก้จริง, จัดหัวเอกสารและลำดับข้อมูลใหม่, เพิ่มความชัดของตาราง/ยอดสุทธิ/ข้อมูลธนาคาร และปรับ responsive บนมือถือ โดยไม่กระทบข้อมูลหรือการคำนวณ
-     changelog v2.11.5: รีดีไซน์เทมเพลตพิมพ์/PDF ของใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล (printCurrentDoc) ให้ดูมืออาชีพและน่าเชื่อถือขึ้น — (1) แถบสี masthead บนสุดของหน้ากระดาษ (2) ลายพื้นหลังจางมาก (~4.5% opacity) ทำซ้ำชื่อบริษัท/เลขผู้เสียภาษีทั่วหน้า สไตล์เดียวกับลายป้องกันการปลอมแปลงบนเอกสารการเงิน (3) เปลี่ยนป้าย "ประเภทเอกสาร" เป็น pill พร้อมชื่ออังกฤษกำกับ และเลขที่เอกสารเป็นกล่อง mono ตัวใหญ่มีเส้นสีข้าง (4) หัวตารางรายการเปลี่ยนเป็นพื้นเข้ม (ไม่ใช่สีเต็มแบบเดิม) มีเส้นใต้สีเน้นแทน ดูภูมิฐานกว่า (5) แปลง watermark สถานะเดิม (ชำระแล้ว/เกินกำหนด/หนี้สูญ/ยกเลิก) เป็นตราประทับสไตล์ตรายางมุมขวาบนแทนตัวอักษรใหญ่กลางหน้า (6) กล่องบัญชีธนาคาร/สรุปยอดใช้โทนสีอ่อนลง ไล่เฉดในแถบยอดสุทธิ (7) เพิ่มบรรทัดอ้างอิงเอกสาร+เวลาพิมพ์ใน footer — ยังคง 3 สีต่อประเภทเอกสารเดิม (ฟ้า/เขียว/ม่วง) ตามที่ระบุ, ยังไม่แตะหน้าจอ list/dashboard (เฉพาะเอกสารพิมพ์ก่อน), ไม่กระทบข้อมูล/การคำนวณ/QR PromptPay (ยังไม่ใส่ตามเดิม)
+<!-- AR SYSTEM v2.11.8 — 2026-09-08
+     changelog v2.11.8: ขยายโลโก้บริษัทให้ใหญ่ขึ้นให้ดูมีน้ำหนัก/เด่นขึ้นในหัวเอกสาร — หน้าพิมพ์/PDF (printCurrentDoc) จาก 64px เป็น 84px (font ตัวอักษร fallback จาก 19px เป็น 25px, border-radius 10→12px), หน้า Preview ในแอป (viewDoc) จาก 56px เป็น 68px (font 16px→19px) ให้สัดส่วนใกล้เคียงกันทั้งสองหน้า ไม่กระทบเลย์เอาต์ส่วนอื่น
+     changelog v2.11.7: แก้จุดที่โลโก้ตัวอักษร (กรณีบริษัทไม่มีโลโก้จริง) ในหน้าพิมพ์/PDF (printCurrentDoc) เปลี่ยนสีไปตามประเภทเอกสาร (ฟ้า/เขียว/ม่วง) ทำให้บริษัทเดียวกันโลโก้สีไม่เหมือนกันระหว่างใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล — เปลี่ยนกลับให้ใช้สีคงที่ต่อบริษัทผ่าน coLogoColor() เหมือนหน้า Preview (viewDoc) เสมอ ส่วนสีตามประเภทเอกสารยังคงอยู่แค่ที่ป้ายชื่อเอกสาร/เส้นขอบซ้าย/หัวตาราง/กล่องยอดรวม-บัญชีธนาคารตามเดิม ไม่กระทบโลโก้จริงที่อัปโหลดไว้ (กรณีมี logoData อยู่แล้วไม่เปลี่ยนแปลง)
+     changelog v2.11.6: ปรับดีไซน์เอกสาร (ใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล) ให้เรียบง่าย สะอาดตา ตามภาพตัวอย่างที่ผู้ใช้ส่งมา และให้หน้า Preview ในแอป (viewDoc) กับหน้าพิมพ์/PDF (printCurrentDoc) ใช้ดีไซน์ภาษาเดียวกัน — (1) เอา watermark ตราประทับสถานะและลายพื้นหลัง security pattern จาก v2.11.5 ออกทั้งหมดตามที่ขอ กลับไปเรียบง่าย (2) หัวเอกสาร: ชื่อประเภทเอกสารตัวใหญ่สีตามประเภท + ชื่ออังกฤษกำกับเล็กๆ ใต้ ไม่ใช้ pill/กล่องแล้ว (3) เอากรอบ "party box" ของข้อมูลลูกค้าออก ใช้ข้อความล้วนเหมือนหน้า Preview เดิม (4) หัวตารางรายการเป็นพื้นอ่อน (ไม่ใช่พื้นเข้ม/สีเต็ม) มีเส้นใต้สีเน้นตามประเภทเอกสาร (5) เส้นขอบซ้ายสีบางๆ ตลอดความสูงหน้ากระดาษแทน masthead บนเดิม (6) ใบเสนอราคาลดช่องเซ็นชื่อเหลือ 2 ช่อง (ผู้เสนอราคา/ผู้อนุมัติ) ตามตัวอย่าง ส่วนใบแจ้งหนี้/ใบวางบิลคงช่องลูกค้าผู้รับเอกสารไว้ 3 ช่องเพื่อใช้เป็นหลักฐานติดตามหนี้เหมือนเดิม (7) หน้า Preview (viewDoc) ปรับให้ใช้สีตามประเภทเอกสาร (ฟ้า/เขียว/ม่วง จาก var(--accent)/var(--green)/var(--purple) เดิมของแอป) แทนสีฟ้าเดียวคงที่ — ไม่แตะ CSS variable ส่วนกลางเพื่อไม่กระทบสี nav/ปุ่มที่อื่นในแอป — ยังไม่แตะหน้าจอ list/dashboard, ไม่กระทบข้อมูล/การคำนวณ/QR PromptPay (ยังไม่ใส่ตามเดิม)
+     changelog v2.11.5: รีดีไซน์เทมเพลตพิมพ์/PDF ของใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล (printCurrentDoc) ให้ดูมืออาชีพและน่าเชื่อถือขึ้น — เพิ่ม watermark ตราประทับสถานะและลายพื้นหลัง security pattern (ภายหลังถูกเอาออกใน v2.11.6 ตามคำขอผู้ใช้ให้เรียบง่ายขึ้น)
      changelog v2.11.4: (1) Empty state ของใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล/ลูกค้า เพิ่มปุ่ม CTA "+ สร้าง...แรก" ให้กดสร้างรายการแรกได้ทันทีจากหน้าว่างเปล่า แทนที่จะเห็นแค่ข้อความ, ขยาย icon ให้ใหญ่ขึ้นและ padding ดูโปร่งสบายตาขึ้น (2) เพิ่ม fade transition (~180ms) ตอนสลับหน้าเมนูต่างๆ ผ่าน goPage() ให้รู้สึกลื่นขึ้น ไม่กระตุกเวลาสลับ innerHTML ทันที — ทั้งสองข้อเป็นการปรับ UI ล้วนๆ ไม่กระทบข้อมูล/การคำนวณ/ฟังก์ชันเดิมที่ทำงานอยู่แล้วเลย
      changelog v2.11.3: เพิ่ม watermark สถานะจางๆ ทแยงมุมกลางเอกสาร (ชำระแล้ว/เกินกำหนด/หนี้สูญ/ยกเลิก) ในหน้าพิมพ์ใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล (printCurrentDoc) — แสดงเฉพาะสถานะสำคัญเท่านั้น ไม่โชว์กับเอกสารสถานะปกติ (ส่งแล้ว/ร่าง) เพื่อไม่ให้รกเกินจำเป็น เป็นการแสดงผลอย่างเดียว ไม่กระทบข้อมูล/การคำนวณ/เทมเพลตเดิมที่มีอยู่แล้ว (โครงหัวกระดาษ, ช่องเซ็นชื่อ, ขนาด A4, กล่องบัญชีธนาคาร ของเดิมทำไว้ครบแล้วตั้งแต่ก่อนหน้านี้ ไม่ต้องแก้เพิ่ม) — ยังไม่รวม QR PromptPay ตามที่ระบุ
      changelog v2.11.2: แก้กลุ่ม "ชำระบางส่วน" ใน Dashboard (สถานะใบแจ้งหนี้) และตัวกรองสถานะในหน้าใบแจ้งหนี้ ที่โชว์ 0/ไม่นับใบที่จริงชำระบางส่วนแล้ว — สาเหตุคือ calcInvoiceStatus() จัดใบที่ "เกินกำหนด + ชำระบางส่วน" ให้อยู่กลุ่ม "เกินกำหนด" เพียงอย่างเดียว (ลำดับความสำคัญ) ทำให้กลุ่ม "ชำระบางส่วน" นับตกหล่นใบที่เกินกำหนดไปด้วย — แก้โดยให้ "ชำระบางส่วน" นับแยกอิสระจากลำดับสถานะ (paidAmount>0 และยังไม่จ่ายครบ ไม่ว่าจะเกินกำหนดหรือไม่) ทั้ง 2 จุดนี้ ไม่กระทบ badge/ลำดับความสำคัญของ "เกินกำหนด" ที่อื่นในระบบ
@@ -37,7 +39,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.5 — 2026-09-08</title>
+<title>AR System | v2.11.8 — 2026-09-08</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -411,41 +413,6 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
 .logo-preview-box{width:80px;height:80px;border:1px solid var(--border);border-radius:var(--r);display:flex;align-items:center;justify-content:center;background:var(--bg2);overflow:hidden;flex-shrink:0}
 .logo-clear-btn{font-size:11px;color:var(--red);cursor:pointer;text-decoration:underline}
 
-/* ── DOCUMENT PREVIEW ── */
-.doc-preview{--doc-accent:var(--accent);--doc-tint:var(--accent-light);font-size:13px;color:var(--ink);background:#fff}
-.doc-preview-head{display:grid;grid-template-columns:minmax(0,1fr) 215px;gap:24px;align-items:start;padding:4px 0 18px;border-bottom:2px solid var(--doc-accent);margin-bottom:18px}
-.doc-preview-brand{display:flex;align-items:flex-start;gap:18px;min-width:0}
-.doc-preview-logo-img{width:128px;height:80px;object-fit:contain;object-position:left center;display:block;background:#fff;flex-shrink:0}
-.doc-preview-logo-auto{width:80px;height:80px;flex-shrink:0}
-.doc-preview-co-name{font-size:17px;font-weight:800;line-height:1.35;color:var(--ink);margin-bottom:3px}
-.doc-preview-co-en{font-size:11px;color:var(--ink4);letter-spacing:.02em;margin-bottom:5px}
-.doc-preview-co-info{font-size:12px;color:var(--ink3);line-height:1.65}
-.doc-preview-meta{text-align:right;border-right:4px solid var(--doc-accent);padding-right:14px}
-.doc-preview-title{font-size:26px;line-height:1.2;font-weight:800;color:var(--doc-accent);margin-bottom:3px}
-.doc-preview-title-en{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.18em;color:var(--ink4);margin-bottom:8px}
-.doc-preview-no{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px}
-.doc-preview-date{font-size:12px;color:var(--ink4);line-height:1.7}
-.doc-preview-customer{background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid var(--doc-accent);border-radius:8px;padding:11px 14px;margin-bottom:15px}
-.doc-preview-customer-label{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--doc-accent);margin-bottom:3px}
-.doc-preview .tbl{border:1px solid #dbe2ea;border-radius:8px;overflow:hidden}
-.doc-preview .tbl thead th{background:#eff6ff;color:#1e3a8a;border-bottom:2px solid #bfdbfe;font-weight:700;padding-top:10px;padding-bottom:10px}
-.doc-preview .tbl tbody td{padding-top:10px;padding-bottom:10px}
-.doc-preview .summary-box{background:#fff;border-color:#dbe2ea;border-radius:8px;overflow:hidden;padding:0}
-.doc-preview .summary-box .s-row{padding:7px 13px}
-.doc-preview .summary-box .s-row.total{background:#eff6ff;border-top:1px solid #bfdbfe;margin:0;padding:11px 13px;color:#1e3a8a}
-.doc-preview .summary-box .s-row.total .val{font-size:17px;color:#1d4ed8}
-.doc-preview-bank{background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:13px 16px;font-size:12px;margin-top:16px}
-.doc-preview-bank-title{font-weight:700;color:#1d4ed8;margin-bottom:8px}
-.doc-preview-bank-no{font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:700;letter-spacing:.06em;color:#1d4ed8}
-@media(max-width:600px){
-  .doc-preview-head{grid-template-columns:1fr;gap:14px}
-  .doc-preview-meta{text-align:left;border-right:0;border-left:4px solid var(--doc-accent);padding:0 0 0 12px}
-  .doc-preview-logo-img{width:112px;height:70px}
-  .doc-preview-logo-auto{width:70px;height:70px}
-  .doc-preview-co-name{font-size:15px}
-  .doc-preview-title{font-size:22px}
-}
-
 /* ── SMALL MOBILE (≤400px) ── */
 @media(max-width:400px){
   .stat-grid{grid-template-columns:1fr 1fr}
@@ -504,7 +471,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.6 — 2026-09-08</div>
+    <div class="logo-sub">v2.11.8 — 2026-09-08</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -3893,38 +3860,44 @@ function viewDoc(type, id) {
   if(!src) return;
   _printDocData = {type, src};
   const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
+  const typeLabelsEn={qt:'QUOTATION',inv:'INVOICE',bl:'BILLING NOTE'};
   document.getElementById('modal-doc-title').textContent = `${typeLabels[type]} — ${src.docNumber}`;
   const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
-  const logoHtml = co.logoData
-    ? `<img src="${co.logoData}" class="doc-preview-logo-img" alt="โลโก้ ${escHtml(co.name||'บริษัท')}">`
-    : `<div class="doc-preview-logo-auto">${coLogoHTML(co, 80, 22)}</div>`;
+  const logoHtml = coLogoHTML(co, 68, 19);
+  // ── สีต่อประเภทเอกสาร (ใบเสนอราคา=ฟ้า / ใบแจ้งหนี้=เขียว / ใบวางบิล=ม่วง) ──
+  // ใช้ตัวแปรสีของแอปเดิมที่มีอยู่แล้ว (--accent/--green/--purple) แค่เลือกตามประเภท
+  // ไม่แตะ CSS variable ส่วนกลาง เพื่อไม่ให้กระทบสี nav/ปุ่ม/ที่อื่นในแอป
+  const docColors={
+    qt:{c:'var(--accent)',light:'var(--accent-light)',mid:'var(--accent-mid)'},
+    inv:{c:'var(--green)',light:'var(--green-light)',mid:'var(--green-mid)'},
+    bl:{c:'var(--purple)',light:'var(--purple-light)',mid:'#ddd6fe'}
+  };
+  const dc = docColors[type]||docColors.qt;
   let body=`
-    <div class="doc-preview">
-    <div class="doc-preview-head">
-      <div class="doc-preview-brand">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px;padding-bottom:14px;border-bottom:3px solid ${dc.c};font-size:13px">
+      <div style="display:flex;align-items:flex-start;gap:12px">
         ${logoHtml}
         <div>
-          <div class="doc-preview-co-name">${escHtml(co.name||'')}</div>
-          <div class="doc-preview-co-en">${escHtml(co.nameEn||'')}</div>
-          <div class="doc-preview-co-info">${escHtml(co.address||'')}</div>
-          <div class="doc-preview-co-info">เลขประจำตัวผู้เสียภาษี: ${escHtml(co.taxId||'—')} ${co.phone?' | โทร: '+escHtml(co.phone):''}</div>
+          <div style="font-weight:700;font-size:14px">${escHtml(co.name||'')}</div>
+          <div style="color:var(--ink4);font-size:11px">${co.nameEn||''}</div>
+          <div style="color:var(--ink4);font-size:12px;margin-top:2px">${co.address||''}</div>
+          <div style="color:var(--ink4);font-size:12px">เลขภาษี: ${co.taxId||'—'} ${co.phone?'| โทร: '+co.phone:''}</div>
         </div>
       </div>
-      <div class="doc-preview-meta">
-        <div class="doc-preview-title">${typeLabels[type]}</div>
-        <div class="doc-preview-title-en">${type==='qt'?'QUOTATION':type==='inv'?'INVOICE':'BILLING NOTE'}</div>
-        <div class="doc-preview-no">${src.docNumber}</div>
-        <div class="doc-preview-date">วันที่: ${src.docDate}</div>
-        ${src.docDue?`<div class="doc-preview-date">ครบกำหนด: ${src.docDue}</div>`:''}
-        ${src.docValid?`<div class="doc-preview-date">ใช้ได้ถึง: ${src.docValid}</div>`:''}
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:21px;font-weight:700;color:${dc.c};line-height:1.15">${typeLabels[type]}</div>
+        <div style="font-size:10px;font-weight:600;letter-spacing:.14em;color:var(--ink4);margin-bottom:6px">${typeLabelsEn[type]||''}</div>
+        <div class="mono" style="font-size:12px">${src.docNumber}</div>
+        <div style="font-size:12px;color:var(--ink4);margin-top:2px">วันที่: ${src.docDate}</div>
+        ${src.docDue?`<div style="font-size:12px;color:var(--ink4)">ครบกำหนด: ${src.docDue}</div>`:''}
+        ${src.docValid?`<div style="font-size:12px;color:var(--ink4)">ใช้ได้ถึง: ${src.docValid}</div>`:''}
         ${src.isBadDebt?`<div style="margin-top:6px">${badgeHTML('baddebt')}</div>${src.badDebtReason?`<div style="font-size:11px;color:var(--ink4);margin-top:2px">เหตุผล: ${src.badDebtReason}</div>`:''}`:''}
       </div>
     </div>
-    <div class="doc-preview-customer">
-      <div class="doc-preview-customer-label">เรียน / ลูกค้า</div>
+    <div style="font-size:13px;margin-bottom:12px">
       <div style="font-weight:700">${escHtml(src.custName||'')}</div>
-      <div style="color:var(--ink4)">${escHtml(src.custAddress||'')}</div>
-      ${src.custTax?`<div style="color:var(--ink4);font-size:12px">เลขภาษี: ${escHtml(src.custTax)}</div>`:''}
+      <div style="color:var(--ink4)">${src.custAddress||''}</div>
+      ${src.custTax?`<div style="color:var(--ink4);font-size:12px">เลขภาษี: ${src.custTax}</div>`:''}
     </div>`;
 
   if(src.items?.length) {
@@ -3939,7 +3912,7 @@ function viewDoc(type, id) {
       <div class="s-row"><span>ก่อน VAT</span><span class="val">${fmt(src.subtotal)}</span></div>
       ${src.vat?`<div class="s-row"><span>VAT 7%</span><span class="val">${fmt(src.vat)}</span></div>`:''}
       ${src.wht?`<div class="s-row"><span>หัก ณ ที่จ่าย 3%</span><span class="val" style="color:var(--red)">-${fmt(src.wht)}</span></div>`:''}
-      <div class="s-row total"><span>ยอดสุทธิ</span><span class="val">${fmt(src.total)}</span></div>
+      <div class="s-row total" style="color:${dc.c}"><span>ยอดสุทธิ</span><span class="val" style="color:${dc.c}">${fmt(src.total)}</span></div>
     </div>`;
   }
 
@@ -3971,19 +3944,19 @@ function viewDoc(type, id) {
   const bankInfoList = pm?.bankInfo ? [pm.bankInfo]
     : (pm?.method==='เงินสด' ? [] : (co2?.banks||[]));
   if(bankInfoList.length) {
-    body+=`<div class="doc-preview-bank">
-      <div class="doc-preview-bank-title">ชำระเงินโดยการโอนเข้าบัญชี</div>
+    body+=`<div class="divider"></div>
+    <div style="background:${dc.light};border:1px solid ${dc.mid};border-radius:var(--r);padding:12px;font-size:12px">
+      <div style="font-weight:700;color:${dc.c};margin-bottom:8px">💳 ชำระเงินโดยการโอนเข้าบัญชี</div>
       ${bankInfoList.map(b=>`
       <div style="margin-bottom:6px">
-        <div>ธนาคาร: <b>${escHtml(b.bankName)}</b> | ประเภท: ${escHtml(b.accType)}${b.branch?' | สาขา: '+escHtml(b.branch):''}</div>
-        <div>ชื่อบัญชี: <b>${escHtml(b.accName)}</b></div>
-        <div>เลขบัญชี: <span class="doc-preview-bank-no">${escHtml(b.accNo)}</span></div>
+        <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType}${b.branch?' | สาขา: '+b.branch:''}</div>
+        <div>ชื่อบัญชี: <b>${b.accName}</b></div>
+        <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:${dc.c}">${b.accNo}</span></div>
       </div>`).join('<hr style="border:none;border-top:1px dashed var(--border);margin:6px 0">')}
     </div>`;
   } else if(pm?.method==='เงินสด') {
     body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)">💵 ชำระเป็น <b>เงินสด</b></div>`;
   }
-  body+='</div>';
   document.getElementById('modal-doc-body').innerHTML=body;
   document.getElementById('modal-doc').classList.add('show');
 }
@@ -3995,146 +3968,85 @@ function printCurrentDoc() {
   const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
   const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
   const typeLabelsEn={qt:'QUOTATION',inv:'INVOICE',bl:'BILLING NOTE'};
-  // โทนสีต่อประเภทเอกสาร — คงคอนเซปต์ 3 สีเดิม (ฟ้า/เขียว/ม่วง) แต่ปรับให้เข้มขึ้นเล็กน้อยให้ดูภูมิฐานกว่าเดิม
-  const typeColors={qt:'#1d4ed8',inv:'#047857',bl:'#7c3aed'};
-  const typeColorsDark={qt:'#1e3a8a',inv:'#065f46',bl:'#5b21b6'};
-  const typeTints={qt:'#eef3ff',inv:'#e9f8f2',bl:'#f4eeff'};
-  const accentColor = typeColors[type]||'#1d4ed8';
-  const accentDark = typeColorsDark[type]||'#1e3a8a';
-  const tintColor = typeTints[type]||'#eef3ff';
+  // สีต่อประเภทเอกสาร (ใบเสนอราคา=ฟ้า / ใบแจ้งหนี้=เขียว / ใบวางบิล=ม่วง)
+  // ใช้ตัวแปรสีชุดเดียวกับหน้า Preview ในแอป (var(--accent)/var(--green)/var(--purple)) เพื่อให้สองหน้าตรงกัน
+  const docColors={
+    qt:{c:'var(--accent)',light:'var(--accent-light)',mid:'var(--accent-mid)'},
+    inv:{c:'var(--green)',light:'var(--green-light)',mid:'var(--green-mid)'},
+    bl:{c:'var(--purple)',light:'var(--purple-light)',mid:'#ddd6fe'}
+  };
+  const dc = docColors[type]||docColors.qt;
+  // โลโก้ตัวอักษร (กรณีไม่มีโลโก้จริง) ใช้สีคงที่ต่อบริษัท (coLogoColor) เหมือนหน้า Preview เสมอ
+  // ไม่ผูกกับสีตามประเภทเอกสาร (dc.c) เพราะแบรนด์ของบริษัทไม่ควรเปลี่ยนสีไปมาตามชนิดเอกสารที่พิมพ์
   const logoBlock = co.logoData
-    ? `<img src="${co.logoData}" class="print-logo-img" alt="โลโก้ ${escHtml(co.name||'บริษัท')}">`
-    : `<div class="print-logo-auto">${escHtml((co.prefix||co.name||'?').slice(0,3).toUpperCase())}</div>`;
-
-  // ── SECURITY PATTERN — ลายพื้นหลังจางมากๆ ทั่วหน้ากระดาษ ทำซ้ำชื่อบริษัท/เลขผู้เสียภาษี ──
-  // แนวทางเดียวกับเอกสารทางการเงิน/เช็ค/ใบหุ้น ที่มีลายป้องกันการปลอมแปลง ช่วยให้เอกสารดูน่าเชื่อถือขึ้น
-  // เป็นการตกแต่งพื้นหลังล้วนๆ ไม่กระทบเนื้อหา ข้อมูล หรือการคำนวณใดๆ ทั้งสิ้น
-  const secLabel = escHtml(`${co.taxId||co.name||''} · ${typeLabelsEn[type]||''}`);
-  const securityPatternHtml = `
-    <svg class="sec-pattern" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <pattern id="secpat" width="230" height="90" patternTransform="rotate(-26)" patternUnits="userSpaceOnUse">
-          <text x="0" y="50" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1" fill="${accentColor}">${secLabel}</text>
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#secpat)"/>
-    </svg>`;
-
-  // ── STAMP — ตราประทับสถานะสไตล์ตรายาง มุมขวาบน ──
-  // แสดงเฉพาะสถานะสำคัญที่ควรเห็นเด่นชัดตอนพิมพ์/ส่งให้ลูกค้า ไม่แสดงกับเอกสารสถานะปกติ (ส่งแล้ว/ร่าง)
-  // เพื่อไม่ให้รกเกินจำเป็น — เป็นการแสดงผลอย่างเดียว ไม่กระทบข้อมูล/การคำนวณใดๆ
-  const stamp = (()=>{
-    if(type==='inv') {
-      const st = calcInvoiceStatus(src);
-      if(st==='paid')     return {th:'ชำระแล้ว', en:'PAID', color:'#15803d'};
-      if(st==='baddebt')  return {th:'หนี้สูญ', en:'BAD DEBT', color:'#7f1d1d'};
-      if(st==='overdue')  return {th:'เกินกำหนด', en:'OVERDUE', color:'#b91c1c'};
-      if(st==='cancelled')return {th:'ยกเลิก', en:'CANCELLED', color:'#52525b'};
-    } else if(src.status==='cancelled') {
-      return {th:'ยกเลิก', en:'CANCELLED', color:'#52525b'};
-    }
-    return null;
-  })();
-  const stampHtml = stamp ? `
-    <div class="stamp" style="color:${stamp.color};border-color:${stamp.color}">
-      <div class="stamp-ring">
-        <div class="stamp-th">${stamp.th}</div>
-        <div class="stamp-en">${stamp.en}</div>
-      </div>
-    </div>` : '';
+    ? `<img src="${co.logoData}" style="width:84px;height:84px;object-fit:contain;border-radius:12px;display:block;border:1px solid #eef0f4">`
+    : `<div style="width:84px;height:84px;border-radius:12px;background:${coLogoColor(co.prefix||co.name)};display:flex;align-items:center;justify-content:center;font-size:25px;font-weight:800;color:#fff;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px">${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}</div>`;
 
   const html=`
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Sarabun',sans-serif;font-size:13px;color:#14161f;background:#fff;padding:0}
-    .page{width:210mm;min-height:297mm;padding:17mm 16mm 12mm;position:relative;overflow:hidden}
-
-    /* ── TOP MASTHEAD BAR ── */
-    .topbar{position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,${accentColor},${accentDark})}
-
-    /* ── SECURITY PATTERN ── */
-    .sec-pattern{position:absolute;inset:0;width:100%;height:100%;opacity:.045;pointer-events:none;z-index:0}
-
-    /* ── STATUS STAMP ── */
-    .stamp{position:absolute;top:40mm;right:16mm;z-index:2;transform:rotate(-9deg);opacity:.62;pointer-events:none;
-      font-family:'IBM Plex Mono',monospace;text-align:center}
-    .stamp-ring{border:2.5px solid currentColor;border-radius:10px;padding:7px 14px;position:relative}
-    .stamp-ring::before{content:'';position:absolute;inset:3px;border:1px solid currentColor;border-radius:7px}
-    .stamp-th{font-size:15px;font-weight:700;letter-spacing:.04em;line-height:1.15}
-    .stamp-en{font-size:9px;font-weight:600;letter-spacing:.22em;margin-top:1px}
+    body{font-family:'Sarabun',sans-serif;font-size:13px;color:#18181b;background:#fff;padding:0}
+    .page{width:210mm;min-height:297mm;padding:16mm 18mm 12mm 16mm;position:relative;border-left:5px solid ${dc.c}}
 
     /* ── HEADER ── */
-    .hd{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:16px;padding-bottom:14px;border-bottom:2px solid ${accentColor}}
-    .hd-left{display:flex;align-items:flex-start;gap:16px;min-width:0}
-    .print-logo-img{width:116px;height:78px;object-fit:contain;object-position:left center;display:block;flex-shrink:0}
-    .print-logo-auto{width:78px;height:78px;border-radius:12px;background:linear-gradient(155deg,${accentColor},${accentDark});display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px;flex-shrink:0}
-    .hd-co-name{font-size:17px;font-weight:800;color:#111;margin-bottom:2px;line-height:1.35}
-    .hd-co-en{font-size:10.5px;color:#6b6e78;margin-bottom:5px}
-    .hd-co-info{font-size:11px;color:#4b4e58;line-height:1.65}
-    .hd-right{text-align:right;min-width:190px;border-right:4px solid ${accentColor};padding-right:12px}
-    .doc-chip{display:block;color:${accentDark};font-size:23px;font-weight:800;line-height:1.15;margin-bottom:7px}
-    .doc-chip-en{font-size:8.5px;font-weight:600;letter-spacing:.18em;color:#737782;display:block;margin-top:3px}
-    .doc-no{font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:700;color:#1c1e29;margin-bottom:6px}
-    .doc-meta{font-size:11px;color:#5c5f6b;line-height:1.85}
-    .doc-meta b{font-weight:600;color:#20222c}
+    .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px;padding-bottom:14px;border-bottom:3px solid ${dc.c}}
+    .hd-left{display:flex;align-items:flex-start;gap:12px}
+    .hd-co-name{font-size:14.5px;font-weight:700;color:#111}
+    .hd-co-en{font-size:11px;color:#a1a1aa}
+    .hd-co-info{font-size:12px;color:#a1a1aa;margin-top:2px;line-height:1.6}
+    .hd-right{text-align:right;flex-shrink:0}
+    .doc-type{font-size:22px;font-weight:700;color:${dc.c};line-height:1.15}
+    .doc-type-en{font-size:10px;font-weight:600;letter-spacing:.14em;color:#a1a1aa;margin-bottom:7px}
+    .doc-no{font-family:'IBM Plex Mono',monospace;font-size:12.5px}
+    .doc-meta{font-size:12px;color:#a1a1aa;margin-top:2px;line-height:1.55}
 
-    /* ── PARTIES ── */
-    .parties{position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
-    .party-box{background:#f8f8fb;border-radius:9px;padding:12px 14px;border:1px solid #e6e7ee}
-    .party-label{font-size:11px;font-weight:700;color:${accentDark};margin-bottom:6px;padding-bottom:6px;border-bottom:1px dashed ${accentColor}44}
-    .party-name{font-size:14px;font-weight:700;color:#111;margin-bottom:3px}
-    .party-info{font-size:11px;color:#565963;line-height:1.7}
+    /* ── CUSTOMER ── */
+    .cust{font-size:13px;margin-bottom:14px}
+    .cust-name{font-weight:700;color:#18181b}
+    .cust-info{color:#a1a1aa;font-size:12px}
 
     /* ── TABLE ── */
-    .items-table{position:relative;z-index:1;width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px}
-    .items-table{border:1px solid #dce2ea;border-radius:7px;overflow:hidden}
-    .items-table thead tr{background:${tintColor};color:${accentDark}}
-    .items-table th{padding:9px 10px;text-align:left;font-weight:700;font-size:10.5px;letter-spacing:.03em;border-bottom:2px solid ${accentColor}66}
+    .items-table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12.5px}
+    .items-table th{padding:9px 10px;text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#a1a1aa;background:#f5f4f1;border-bottom:2px solid ${dc.c}}
     .items-table th.r,.items-table td.r{text-align:right}
-    .items-table td{padding:7px 10px;border-bottom:1px solid #eef0f4;vertical-align:top}
-    .items-table tbody tr:nth-child(even) td{background:#fafbfd}
-    .items-table td.num{color:#a3a6b0;font-family:'IBM Plex Mono',monospace;font-size:11px}
+    .items-table td{padding:8px 10px;border-bottom:1px solid #eeece8;vertical-align:top}
+    .items-table td.num{color:#a1a1aa;font-family:'IBM Plex Mono',monospace;font-size:11px}
     .items-table td.mono{font-family:'IBM Plex Mono',monospace}
 
     /* ── SUMMARY ── */
-    .summary-wrap{position:relative;z-index:1;display:flex;justify-content:flex-end;margin-bottom:14px}
-    .summary-box{width:265px;border:1px solid #e6e7ee;border-radius:9px;overflow:hidden}
-    .sr{display:flex;justify-content:space-between;padding:6px 14px;font-size:12px;border-bottom:1px solid #f0f0f4;color:#3c3e48}
-    .sr:last-child{border-bottom:none}
-    .sr.total{background:${tintColor};color:${accentDark};border-top:1px solid ${accentColor}55;font-size:15px;font-weight:800;padding:11px 14px}
-    .sr.total span:last-child{font-family:'IBM Plex Mono',monospace}
+    .summary-wrap{display:flex;justify-content:flex-end;margin-bottom:14px}
+    .summary-box{width:260px;background:#f5f4f1;border-radius:8px;overflow:hidden}
+    .sr{display:flex;justify-content:space-between;padding:7px 14px;font-size:12.5px;color:#3f3f46}
     .sr span:last-child{font-family:'IBM Plex Mono',monospace;font-weight:600}
+    .sr.total{border-top:1px solid #e4e2dd;padding-top:9px;font-size:15px;font-weight:700;color:${dc.c}}
+    .sr.total span:last-child{color:${dc.c}}
 
     /* ── BANK INFO ── */
-    .bank-box{position:relative;z-index:1;border:1px solid ${accentColor}55;border-radius:9px;padding:12px 16px;margin-bottom:14px;background:${tintColor}}
-    .bank-title{font-size:11.5px;font-weight:700;color:${accentDark};margin-bottom:8px}
-    .bank-no{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;color:${accentDark};letter-spacing:.06em}
+    .bank-box{border:1px solid ${dc.mid};border-radius:8px;padding:12px 16px;margin-bottom:14px;background:${dc.light}}
+    .bank-title{font-size:12px;font-weight:700;color:${dc.c};margin-bottom:8px}
+    .bank-no{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:700;color:${dc.c};letter-spacing:.04em}
 
     /* ── NOTE ── */
-    .note-box{position:relative;z-index:1;background:#fffbeb;border-left:3px solid #f59e0b;padding:8px 12px;border-radius:4px;font-size:11.5px;color:#54514a;margin-bottom:14px}
+    .note-box{background:#fffbeb;border-left:3px solid #f59e0b;padding:8px 12px;border-radius:4px;font-size:11.5px;color:#54514a;margin-bottom:14px}
 
     /* ── SIGNATURES ── */
-    .sig{position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:26px;padding-top:16px;border-top:1px solid #e6e7ee}
-    .sig-box{text-align:center;padding-top:38px}
-    .sig-line{border-top:1.5px solid #aaa;margin-bottom:6px}
-    .sig-label{font-size:10.5px;color:#6b6e78;line-height:1.6}
-    .sig-name{font-size:12px;font-weight:600;color:#2a2c36;margin-top:2px}
+    .sig{display:grid;gap:24px;margin-top:26px;padding-top:16px;border-top:1px solid #e4e2dd}
+    .sig-box{text-align:center;padding-top:36px}
+    .sig-line{border-top:1.5px solid #c7c5c0;margin-bottom:6px}
+    .sig-label{font-size:11px;color:#a1a1aa}
+    .sig-name{font-size:12px;font-weight:600;color:#3f3f46;margin-top:2px}
 
     /* ── FOOTER ── */
-    .footer{position:relative;z-index:1;margin-top:16px;padding-top:10px;border-top:1px solid #eee;display:flex;justify-content:space-between;font-size:9.5px;color:#9b9ea6;font-family:'IBM Plex Mono',monospace}
+    .footer{margin-top:16px;padding-top:10px;border-top:1px solid #eeece8;display:flex;justify-content:space-between;font-size:9.5px;color:#c7c5c0;font-family:'IBM Plex Mono',monospace}
 
     @media print{
       body{padding:0}
-      .page{padding:14mm 15mm 10mm}
-      .print-logo-img{width:108px;height:72px}
+      .page{padding:12mm 16mm 10mm 14mm}
     }
   </style>
 
   <div class="page">
-    <div class="topbar"></div>
-    ${securityPatternHtml}
-    ${stampHtml}
     <!-- HEADER -->
     <div class="hd">
       <div class="hd-left">
@@ -4144,46 +4056,36 @@ function printCurrentDoc() {
           <div class="hd-co-en">${co.nameEn||''}</div>
           <div class="hd-co-info">
             ${co.address?co.address.replace(/\n/g,'<br>'):''}
-            ${co.phone?`<br>โทร: <b>${escHtml(co.phone)}</b>`:''}
+            ${co.phone?`<br>โทร: ${escHtml(co.phone)}`:''}
             ${co.email?` | อีเมล: ${co.email}`:''}
-            ${co.website?`<br>${co.website}`:''}
-            <br>เลขประจำตัวผู้เสียภาษี: <b>${co.taxId||'—'}</b>
+            <br>เลขประจำตัวผู้เสียภาษี: ${co.taxId||'—'}
           </div>
         </div>
       </div>
       <div class="hd-right">
-        <div class="doc-chip">${typeLabels[type]}<span class="doc-chip-en">${typeLabelsEn[type]||''}</span></div>
+        <div class="doc-type">${typeLabels[type]}</div>
+        <div class="doc-type-en">${typeLabelsEn[type]||''}</div>
         <div class="doc-no">${src.docNumber}</div>
         <div class="doc-meta">
-          วันที่: <b>${src.docDate}</b><br>
-          ${src.docDue?`ครบกำหนด: <b>${src.docDue}</b><br>`:''}
-          ${src.docValid?`ใช้ได้ถึง: <b>${src.docValid}</b><br>`:''}
+          วันที่: ${src.docDate}<br>
+          ${src.docDue?`ครบกำหนด: ${src.docDue}<br>`:''}
+          ${src.docValid?`ใช้ได้ถึง: ${src.docValid}<br>`:''}
         </div>
       </div>
     </div>
 
-    <!-- PARTIES -->
-    <div class="parties">
-      <div class="party-box">
-        <div class="party-label">เรียน / ลูกค้า</div>
-        <div class="party-name">${escHtml(src.custName||'')}</div>
-        <div class="party-info">
-          ${src.custAddress?src.custAddress.replace(/\n/g,'<br>'):''}
-          ${src.custTax?`<br>เลขภาษี: ${src.custTax}`:''}
-          ${src.custContact?`<br>ผู้ติดต่อ: <b>${src.custContact}</b>`:''}
-        </div>
+    <!-- CUSTOMER -->
+    <div class="cust">
+      <div class="cust-name">${escHtml(src.custName||'')}</div>
+      <div class="cust-info">
+        ${src.custAddress?src.custAddress.replace(/\n/g,'<br>'):''}
+        ${src.custTax?`<br>เลขภาษี: ${src.custTax}`:''}
+        ${src.custContact?`<br>ผู้ติดต่อ: ${src.custContact}`:''}
       </div>
-      <div class="party-box">
-        <div class="party-label">ข้อมูลเอกสาร</div>
-        <div class="party-info" style="line-height:2">
-          ${src.paymentTerms||src.terms?`เงื่อนไข: <b>${src.paymentTerms||src.terms}</b><br>`:''}
-          ${src.preparedBy?`ผู้จัดทำ: <b>${src.preparedBy}</b><br>`:''}
-          ${co.contactPerson&&!src.preparedBy?`ผู้ติดต่อ: <b>${co.contactPerson}</b><br>`:''}
-          ${co.contactPhone?`โทร (ผู้ติดต่อ): <b>${escHtml(co.contactPhone)}</b><br>`:co.phone?`โทร: <b>${escHtml(co.phone)}</b><br>`:''}
-          ${co.contactEmail?`อีเมล: ${co.contactEmail}<br>`:''}
-          ${src.payMethod?.method?`วิธีชำระ: <b>${src.payMethod.method}</b>`:''}
-        </div>
-      </div>
+      ${src.paymentTerms||src.terms||src.payMethod?.method?`<div class="cust-info" style="margin-top:6px">
+        ${src.paymentTerms||src.terms?`เงื่อนไข: ${src.paymentTerms||src.terms}`:''}
+        ${src.payMethod?.method?` · วิธีชำระ: ${src.payMethod.method}`:''}
+      </div>`:''}
     </div>
 
     <!-- ITEMS TABLE -->
@@ -4223,13 +4125,13 @@ function printCurrentDoc() {
     ${(()=>{
       const pm=src.payMethod;
       const banks=pm?.bankInfo?[pm.bankInfo]:(pm?.method==='เงินสด'?[]:(co.banks||[]));
-      if(!banks.length) return pm?.method==='เงินสด'?'<div class="note-box">💵 ชำระเป็น <b>เงินสด</b></div>':'';
+      if(!banks.length) return pm?.method==='เงินสด'?'<div class="note-box">💵 ชำระเป็น เงินสด</div>':'';
       return `<div class="bank-box">
         <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
         ${banks.map(b=>`<div style="margin-bottom:6px">
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType}${b.branch?' สาขา '+b.branch:''}</div>
-          <div style="font-size:12px;color:#555;margin-bottom:4px">ชื่อบัญชี: <b>${b.accName}</b></div>
-          <div style="font-size:12px;color:#555">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
+          <div style="font-size:12.5px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType}${b.branch?' สาขา '+b.branch:''}</div>
+          <div style="font-size:12px;color:#71717a;margin-bottom:4px">ชื่อบัญชี: ${b.accName}</div>
+          <div style="font-size:12px;color:#71717a">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
         </div>`).join('<hr style="border:none;border-top:1px dashed #ddd;margin:6px 0">')}
       </div>`;
     })()}
@@ -4237,13 +4139,25 @@ function printCurrentDoc() {
     <!-- NOTE -->
     ${src.note?`<div class="note-box"><b>หมายเหตุ:</b> ${src.note}</div>`:''}
 
-    <!-- SIGNATURES -->
-    <div class="sig">
+    <!-- SIGNATURES — ใบเสนอราคา: ผู้เสนอ/ผู้อนุมัติ 2 ช่อง; ใบแจ้งหนี้/ใบวางบิล: เพิ่มช่องลูกค้าผู้รับเอกสารไว้เป็นหลักฐานติดตามหนี้ -->
+    ${type==='qt'?`
+    <div class="sig" style="grid-template-columns:1fr 1fr">
       <div class="sig-box">
         <div class="sig-line"></div>
-        <div class="sig-label">ผู้เสนอ / ผู้มีอำนาจลงนาม</div>
+        <div class="sig-label">ผู้เสนอราคา</div>
         ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${src.preparedBy||co.contactPerson})</div>`:'<div class="sig-name">(................................)</div>'}
-        ${src.preparedPhone||co.contactPhone?`<div style="font-size:10px;color:#888;margin-top:2px">โทร: ${src.preparedPhone||co.contactPhone}</div>`:''}
+      </div>
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-label">ผู้อนุมัติ</div>
+        <div class="sig-name">(................................)</div>
+      </div>
+    </div>`:`
+    <div class="sig" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-label">ผู้จัดทำ / ผู้มีอำนาจลงนาม</div>
+        ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${src.preparedBy||co.contactPerson})</div>`:'<div class="sig-name">(................................)</div>'}
       </div>
       <div class="sig-box">
         <div class="sig-line"></div>
@@ -4254,14 +4168,14 @@ function printCurrentDoc() {
         <div class="sig-line"></div>
         <div class="sig-label">ลูกค้าผู้รับเอกสาร</div>
         <div class="sig-name">(................................)</div>
-        <div style="font-size:10px;color:#aaa;margin-top:2px">วันที่รับ: ...................</div>
+        <div style="font-size:10px;color:#c7c5c0;margin-top:2px">วันที่รับ: ...................</div>
       </div>
-    </div>
+    </div>`}
 
     <!-- FOOTER -->
     <div class="footer">
-      <span>${escHtml(co.name||'')} · เลขภาษี: ${escHtml(co.taxId||'—')} · เอกสารนี้ออกจากระบบ AR</span>
-      <span>อ้างอิง ${src.docNumber} · พิมพ์ ${new Date().toLocaleDateString('th-TH')} ${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</span>
+      <span>${escHtml(co.name||'')} · เลขภาษี: ${escHtml(co.taxId||'—')}</span>
+      <span>${src.docNumber} · พิมพ์ ${new Date().toLocaleDateString('th-TH')}</span>
     </div>
   </div>`;
   document.getElementById('print-frame').innerHTML=html;
