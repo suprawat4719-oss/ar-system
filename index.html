@@ -1,4 +1,6 @@
-<!-- AR SYSTEM v2.11.8 — 2026-09-08
+<!-- AR SYSTEM v2.11.10 — 2026-09-08
+     changelog v2.11.10: ปรับให้เอกสาร (หน้า Preview viewDoc และหน้าพิมพ์/PDF printCurrentDoc) แสดงข้อมูลการชำระเงินทั้ง 2 ทางเลือกพร้อมกันเสมอ แทนที่จะโชว์แค่อย่างใดอย่างหนึ่งตามที่เลือกไว้ตอนสร้างเอกสาร — ถ้าเอกสารตั้งวิธีชำระเป็น "เงินสด" จะยังโชว์กล่องเงินสดไว้ก่อน แล้วต่อด้วยกล่องบัญชีธนาคาร (ของบริษัท หรือของเอกสารถ้ามีระบุเจาะจงไว้) เป็นทางเลือกโอนคู่กันเสมอ (หัวกล่องเปลี่ยนเป็น "หรือโอนเข้าบัญชี" ในกรณีนี้) — ถ้าไม่ได้เลือกเงินสดจะโชว์แค่กล่องบัญชีธนาคารตามเดิม ไม่กระทบข้อมูลที่บันทึกไว้ในเอกสาร (payMethod) เป็นแค่การแสดงผลเพิ่มเติม
+     changelog v2.11.9: ปรับโลโก้ตัวอักษร (กรณีไม่มีโลโก้จริง) ให้ใหญ่ขึ้นชัดเจนและดูมีมิติขึ้น — เพิ่ม coLogoHTML() และ logoBlock ในหน้าพิมพ์ให้ใช้ไล่เฉดสี (gradient เข้ม-อ่อนจากสีเดิมของบริษัท ผ่านฟังก์ชันใหม่ shadeColor()) พร้อมเงาบางๆ (box-shadow) แทนพื้นสีเรียบเดิม — ขนาด: หน้าพิมพ์/PDF 84px→100px (font 25px→29px, border-radius 12px→18px), หน้า Preview ในแอป 68px→80px (font 19px→22px) การเปลี่ยนนี้กระทบ coLogoHTML() ที่ใช้ร่วมกันทั้งแอป (หน้ารายชื่อบริษัท/ตาราง) ให้มีไล่เฉด+เงาเหมือนกันหมดด้วย ไม่ใช่แค่หน้าเอกสาร — ไม่กระทบกรณีที่มีโลโก้จริง (logoData) อยู่แล้ว
      changelog v2.11.8: ขยายโลโก้บริษัทให้ใหญ่ขึ้นให้ดูมีน้ำหนัก/เด่นขึ้นในหัวเอกสาร — หน้าพิมพ์/PDF (printCurrentDoc) จาก 64px เป็น 84px (font ตัวอักษร fallback จาก 19px เป็น 25px, border-radius 10→12px), หน้า Preview ในแอป (viewDoc) จาก 56px เป็น 68px (font 16px→19px) ให้สัดส่วนใกล้เคียงกันทั้งสองหน้า ไม่กระทบเลย์เอาต์ส่วนอื่น
      changelog v2.11.7: แก้จุดที่โลโก้ตัวอักษร (กรณีบริษัทไม่มีโลโก้จริง) ในหน้าพิมพ์/PDF (printCurrentDoc) เปลี่ยนสีไปตามประเภทเอกสาร (ฟ้า/เขียว/ม่วง) ทำให้บริษัทเดียวกันโลโก้สีไม่เหมือนกันระหว่างใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล — เปลี่ยนกลับให้ใช้สีคงที่ต่อบริษัทผ่าน coLogoColor() เหมือนหน้า Preview (viewDoc) เสมอ ส่วนสีตามประเภทเอกสารยังคงอยู่แค่ที่ป้ายชื่อเอกสาร/เส้นขอบซ้าย/หัวตาราง/กล่องยอดรวม-บัญชีธนาคารตามเดิม ไม่กระทบโลโก้จริงที่อัปโหลดไว้ (กรณีมี logoData อยู่แล้วไม่เปลี่ยนแปลง)
      changelog v2.11.6: ปรับดีไซน์เอกสาร (ใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิล) ให้เรียบง่าย สะอาดตา ตามภาพตัวอย่างที่ผู้ใช้ส่งมา และให้หน้า Preview ในแอป (viewDoc) กับหน้าพิมพ์/PDF (printCurrentDoc) ใช้ดีไซน์ภาษาเดียวกัน — (1) เอา watermark ตราประทับสถานะและลายพื้นหลัง security pattern จาก v2.11.5 ออกทั้งหมดตามที่ขอ กลับไปเรียบง่าย (2) หัวเอกสาร: ชื่อประเภทเอกสารตัวใหญ่สีตามประเภท + ชื่ออังกฤษกำกับเล็กๆ ใต้ ไม่ใช้ pill/กล่องแล้ว (3) เอากรอบ "party box" ของข้อมูลลูกค้าออก ใช้ข้อความล้วนเหมือนหน้า Preview เดิม (4) หัวตารางรายการเป็นพื้นอ่อน (ไม่ใช่พื้นเข้ม/สีเต็ม) มีเส้นใต้สีเน้นตามประเภทเอกสาร (5) เส้นขอบซ้ายสีบางๆ ตลอดความสูงหน้ากระดาษแทน masthead บนเดิม (6) ใบเสนอราคาลดช่องเซ็นชื่อเหลือ 2 ช่อง (ผู้เสนอราคา/ผู้อนุมัติ) ตามตัวอย่าง ส่วนใบแจ้งหนี้/ใบวางบิลคงช่องลูกค้าผู้รับเอกสารไว้ 3 ช่องเพื่อใช้เป็นหลักฐานติดตามหนี้เหมือนเดิม (7) หน้า Preview (viewDoc) ปรับให้ใช้สีตามประเภทเอกสาร (ฟ้า/เขียว/ม่วง จาก var(--accent)/var(--green)/var(--purple) เดิมของแอป) แทนสีฟ้าเดียวคงที่ — ไม่แตะ CSS variable ส่วนกลางเพื่อไม่กระทบสี nav/ปุ่มที่อื่นในแอป — ยังไม่แตะหน้าจอ list/dashboard, ไม่กระทบข้อมูล/การคำนวณ/QR PromptPay (ยังไม่ใส่ตามเดิม)
@@ -39,7 +41,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.8 — 2026-09-08</title>
+<title>AR System | v2.11.10 — 2026-09-08</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -471,7 +473,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.8 — 2026-09-08</div>
+    <div class="logo-sub">v2.11.10 — 2026-09-08</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -3863,7 +3865,7 @@ function viewDoc(type, id) {
   const typeLabelsEn={qt:'QUOTATION',inv:'INVOICE',bl:'BILLING NOTE'};
   document.getElementById('modal-doc-title').textContent = `${typeLabels[type]} — ${src.docNumber}`;
   const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
-  const logoHtml = coLogoHTML(co, 68, 19);
+  const logoHtml = coLogoHTML(co, 80, 22);
   // ── สีต่อประเภทเอกสาร (ใบเสนอราคา=ฟ้า / ใบแจ้งหนี้=เขียว / ใบวางบิล=ม่วง) ──
   // ใช้ตัวแปรสีของแอปเดิมที่มีอยู่แล้ว (--accent/--green/--purple) แค่เลือกตามประเภท
   // ไม่แตะ CSS variable ส่วนกลาง เพื่อไม่ให้กระทบสี nav/ปุ่ม/ที่อื่นในแอป
@@ -3938,15 +3940,19 @@ function viewDoc(type, id) {
   }
   if(src.note) body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)"><b>หมายเหตุ:</b> ${src.note}</div>`;
 
-  // แสดงข้อมูลการชำระเงิน — fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo ใน invoice
+  // แสดงข้อมูลการชำระเงิน — โชว์ทั้ง "เงินสด" (ถ้าเลือกไว้) และบัญชีธนาคารคู่กันเสมอ เป็น 2 ทางเลือกให้ลูกค้า
+  // fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo เจาะจงในเอกสาร
   const pm=src.payMethod;
   const co2=companies.find(c=>c.id===src.companyId);
-  const bankInfoList = pm?.bankInfo ? [pm.bankInfo]
-    : (pm?.method==='เงินสด' ? [] : (co2?.banks||[]));
+  const bankInfoList = pm?.bankInfo ? [pm.bankInfo] : (co2?.banks||[]);
+  const showCash = pm?.method==='เงินสด';
+  if(showCash) {
+    body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)">💵 ชำระเป็น <b>เงินสด</b></div>`;
+  }
   if(bankInfoList.length) {
     body+=`<div class="divider"></div>
     <div style="background:${dc.light};border:1px solid ${dc.mid};border-radius:var(--r);padding:12px;font-size:12px">
-      <div style="font-weight:700;color:${dc.c};margin-bottom:8px">💳 ชำระเงินโดยการโอนเข้าบัญชี</div>
+      <div style="font-weight:700;color:${dc.c};margin-bottom:8px">💳 ${showCash?'หรือโอนเข้าบัญชี':'ชำระเงินโดยการโอนเข้าบัญชี'}</div>
       ${bankInfoList.map(b=>`
       <div style="margin-bottom:6px">
         <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType}${b.branch?' | สาขา: '+b.branch:''}</div>
@@ -3954,8 +3960,6 @@ function viewDoc(type, id) {
         <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:${dc.c}">${b.accNo}</span></div>
       </div>`).join('<hr style="border:none;border-top:1px dashed var(--border);margin:6px 0">')}
     </div>`;
-  } else if(pm?.method==='เงินสด') {
-    body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)">💵 ชำระเป็น <b>เงินสด</b></div>`;
   }
   document.getElementById('modal-doc-body').innerHTML=body;
   document.getElementById('modal-doc').classList.add('show');
@@ -3978,9 +3982,12 @@ function printCurrentDoc() {
   const dc = docColors[type]||docColors.qt;
   // โลโก้ตัวอักษร (กรณีไม่มีโลโก้จริง) ใช้สีคงที่ต่อบริษัท (coLogoColor) เหมือนหน้า Preview เสมอ
   // ไม่ผูกกับสีตามประเภทเอกสาร (dc.c) เพราะแบรนด์ของบริษัทไม่ควรเปลี่ยนสีไปมาตามชนิดเอกสารที่พิมพ์
+  // ขยายใหญ่ขึ้นและใช้ไล่เฉดสี (gradient) + เงาบางๆ ให้ดูมีมิติ มืออาชีพขึ้น
+  const logoBaseColor = coLogoColor(co.prefix||co.name);
+  const logoDarkColor = shadeColor(logoBaseColor, -0.35);
   const logoBlock = co.logoData
-    ? `<img src="${co.logoData}" style="width:84px;height:84px;object-fit:contain;border-radius:12px;display:block;border:1px solid #eef0f4">`
-    : `<div style="width:84px;height:84px;border-radius:12px;background:${coLogoColor(co.prefix||co.name)};display:flex;align-items:center;justify-content:center;font-size:25px;font-weight:800;color:#fff;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px">${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}</div>`;
+    ? `<img src="${co.logoData}" style="width:100px;height:100px;object-fit:contain;border-radius:16px;display:block;border:1px solid #eef0f4">`
+    : `<div style="width:100px;height:100px;border-radius:18px;background:linear-gradient(135deg,${logoBaseColor},${logoDarkColor});display:flex;align-items:center;justify-content:center;font-size:29px;font-weight:800;color:#fff;font-family:'IBM Plex Mono',monospace;letter-spacing:1px;box-shadow:0 3px 10px ${logoBaseColor}55">${(co.prefix||co.name||'?').slice(0,3).toUpperCase()}</div>`;
 
   const html=`
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -4121,19 +4128,23 @@ function printCurrentDoc() {
       </div>
     </div>`:''}
 
-    <!-- BANK INFO — fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo ใน invoice -->
+    <!-- PAYMENT INFO — โชว์ทั้งเงินสด (ถ้าเลือกไว้) และบัญชีธนาคารคู่กันเสมอ เป็น 2 ทางเลือกให้ลูกค้า -->
+    <!-- fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo เจาะจงในเอกสาร -->
     ${(()=>{
       const pm=src.payMethod;
-      const banks=pm?.bankInfo?[pm.bankInfo]:(pm?.method==='เงินสด'?[]:(co.banks||[]));
-      if(!banks.length) return pm?.method==='เงินสด'?'<div class="note-box">💵 ชำระเป็น เงินสด</div>':'';
-      return `<div class="bank-box">
-        <div class="bank-title">💳 โอนชำระเงินเข้าบัญชี</div>
+      const banks=pm?.bankInfo?[pm.bankInfo]:(co.banks||[]);
+      const showCash = pm?.method==='เงินสด';
+      let out='';
+      if(showCash) out+='<div class="note-box">💵 ชำระเป็น เงินสด</div>';
+      if(banks.length) out+=`<div class="bank-box">
+        <div class="bank-title">💳 ${showCash?'หรือโอนเข้าบัญชี':'โอนชำระเงินเข้าบัญชี'}</div>
         ${banks.map(b=>`<div style="margin-bottom:6px">
           <div style="font-size:12.5px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType}${b.branch?' สาขา '+b.branch:''}</div>
           <div style="font-size:12px;color:#71717a;margin-bottom:4px">ชื่อบัญชี: ${b.accName}</div>
           <div style="font-size:12px;color:#71717a">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
         </div>`).join('<hr style="border:none;border-top:1px dashed #ddd;margin:6px 0">')}
       </div>`;
+      return out;
     })()}
 
     <!-- NOTE -->
@@ -4369,13 +4380,23 @@ function coLogoColor(prefix) {
   let n=0; for(const c of (prefix||'A')) n+=c.charCodeAt(0);
   return LOGO_COLORS[n % LOGO_COLORS.length];
 }
+function shadeColor(hex, percent) {
+  hex = (hex||'#1d4ed8').replace('#','');
+  let r=parseInt(hex.substring(0,2),16), g=parseInt(hex.substring(2,4),16), b=parseInt(hex.substring(4,6),16);
+  r = Math.max(0, Math.min(255, Math.round(r*(1+percent))));
+  g = Math.max(0, Math.min(255, Math.round(g*(1+percent))));
+  b = Math.max(0, Math.min(255, Math.round(b*(1+percent))));
+  return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
 function coLogoHTML(co, size=40, fontSize=14) {
   if(co.logoData) {
     return `<img src="${co.logoData}" class="co-logo-img" width="${size}" height="${size}" style="width:${size}px;height:${size}px">`;
   }
   const label = (co.prefix||co.name||'?').slice(0,3).toUpperCase();
   const bg = coLogoColor(co.prefix||co.name);
-  return `<div class="co-logo-auto" style="width:${size}px;height:${size}px;background:${bg};font-size:${fontSize}px">${label}</div>`;
+  const bgDark = shadeColor(bg, -0.35);
+  const radius = Math.max(8, Math.round(size*0.22));
+  return `<div class="co-logo-auto" style="width:${size}px;height:${size}px;border-radius:${radius}px;background:linear-gradient(135deg,${bg},${bgDark});font-size:${fontSize}px;letter-spacing:.5px;box-shadow:0 2px 6px ${bg}55">${label}</div>`;
 }
 window.coLogoHTML = coLogoHTML;
 
