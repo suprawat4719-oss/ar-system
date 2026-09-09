@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.11.11 — 2026-09-08
+<!-- AR SYSTEM v2.11.12 — 2026-09-08
+     changelog v2.11.12: เพิ่มช่องค้นหาในหน้ารายการใบแจ้งหนี้ (renderInvoices) ที่ไม่เคยมีมาก่อน — ค้นหาครอบคลุมพร้อมกันในหลายฟิลด์: เลขที่เอกสาร, ชื่อลูกค้า, ชื่อบริษัทผู้ออก, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุ, วันที่/วันครบกำหนด, ยอดรวม, และชื่อรายการสินค้า/บริการในเอกสาร (ฟังก์ชันใหม่ invMatchesSearch) — ใช้ร่วมกับตัวกรองบริษัท/สถานะ/เดือนเดิมได้พร้อมกัน (AND กัน) ไม่กระทบตัวกรองเดิม เพิ่มปุ่ม "ล้างตัวกรอง" (clearINVFilters) และแสดงจำนวนผลลัพธ์ "พบ N จาก M รายการ" เมื่อมีการกรอง/ค้นหาอยู่ พร้อมข้อความว่างเปล่าที่แยกกรณี "ไม่พบรายการที่ค้นหา" ออกจากกรณี "ยังไม่มีใบแจ้งหนี้เลย" ไม่กระทบข้อมูล/การคำนวณ/ปุ่มการทำงานอื่นในตารางเดิม
      changelog v2.11.11: แก้ครบทั้ง 4 ข้อจากการตรวจสอบรอบล่าสุด โดยไม่กระทบการทำงาน/ข้อมูลเดิม — (1) ปิดช่องโหว่ stored-XSS ที่ยังหลุดอยู่ในหน้า Preview (viewDoc) และหน้าพิมพ์/PDF (printCurrentDoc) ห่อด้วย escHtml() เพิ่มที่: ที่อยู่บริษัท/ลูกค้า, ชื่อบริษัทภาษาอังกฤษ, อีเมล/เว็บไซต์บริษัท, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุเอกสาร, เงื่อนไข/วิธีชำระเงิน, หน่วยสินค้า (r.unit), วันที่รับชำระ (p.date), และข้อมูลบัญชีธนาคารทุกช่อง (ชื่อธนาคาร/ประเภท/สาขา/ชื่อบัญชี/เลขบัญชี) ทั้งในหน้า Preview และหน้าพิมพ์ — เป็นการ escape เพิ่มเท่านั้น ไม่เปลี่ยนข้อมูลที่บันทึกไว้ (2) เพิ่มเว็บไซต์บริษัท (co.website) กลับเข้าไปในหัวกระดาษหน้าพิมพ์ที่หายไปตอนรีดีไซน์ v2.11.5 แสดงเฉพาะบริษัทที่กรอกไว้ (3) เพิ่มบรรทัด "ติดต่อเรื่องเอกสารนี้" (ผู้จัดทำ/เบอร์/อีเมลผู้ติดต่อ) กลับเข้าไปในส่วนข้อมูลลูกค้าของหน้าพิมพ์แบบย่อ ไม่ทำให้ดูรก (4) เพิ่มตัวแปร --purple-mid เข้า :root ให้ครบชุดสีเหมือนฟ้า/เขียว/แดง แล้วเปลี่ยนโค้ดสีม่วงของใบวางบิลใน viewDoc/printCurrentDoc ให้อ้างอิงตัวแปรนี้แทนเลขสีตรงๆ
      changelog v2.11.10: ปรับให้เอกสาร (หน้า Preview viewDoc และหน้าพิมพ์/PDF printCurrentDoc) แสดงข้อมูลการชำระเงินทั้ง 2 ทางเลือกพร้อมกันเสมอ แทนที่จะโชว์แค่อย่างใดอย่างหนึ่งตามที่เลือกไว้ตอนสร้างเอกสาร — ถ้าเอกสารตั้งวิธีชำระเป็น "เงินสด" จะยังโชว์กล่องเงินสดไว้ก่อน แล้วต่อด้วยกล่องบัญชีธนาคาร (ของบริษัท หรือของเอกสารถ้ามีระบุเจาะจงไว้) เป็นทางเลือกโอนคู่กันเสมอ (หัวกล่องเปลี่ยนเป็น "หรือโอนเข้าบัญชี" ในกรณีนี้) — ถ้าไม่ได้เลือกเงินสดจะโชว์แค่กล่องบัญชีธนาคารตามเดิม ไม่กระทบข้อมูลที่บันทึกไว้ในเอกสาร (payMethod) เป็นแค่การแสดงผลเพิ่มเติม
      changelog v2.11.9: ปรับโลโก้ตัวอักษร (กรณีไม่มีโลโก้จริง) ให้ใหญ่ขึ้นชัดเจนและดูมีมิติขึ้น — เพิ่ม coLogoHTML() และ logoBlock ในหน้าพิมพ์ให้ใช้ไล่เฉดสี (gradient เข้ม-อ่อนจากสีเดิมของบริษัท ผ่านฟังก์ชันใหม่ shadeColor()) พร้อมเงาบางๆ (box-shadow) แทนพื้นสีเรียบเดิม — ขนาด: หน้าพิมพ์/PDF 84px→100px (font 25px→29px, border-radius 12px→18px), หน้า Preview ในแอป 68px→80px (font 19px→22px) การเปลี่ยนนี้กระทบ coLogoHTML() ที่ใช้ร่วมกันทั้งแอป (หน้ารายชื่อบริษัท/ตาราง) ให้มีไล่เฉด+เงาเหมือนกันหมดด้วย ไม่ใช่แค่หน้าเอกสาร — ไม่กระทบกรณีที่มีโลโก้จริง (logoData) อยู่แล้ว
@@ -42,7 +43,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.11 — 2026-09-08</title>
+<title>AR System | v2.11.12 — 2026-09-08</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -474,7 +475,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.11 — 2026-09-08</div>
+    <div class="logo-sub">v2.11.12 — 2026-09-08</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -2170,10 +2171,13 @@ function renderInvoices() {
   document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="goPage('new-inv')">+ สร้างใบแจ้งหนี้</button>`;
   document.getElementById('page-content').innerHTML = `
   <div class="filters">
+    <input type="text" id="f-search-inv" placeholder="🔍 ค้นหา: เลขที่/ลูกค้า/บริษัท/เลขภาษี/ผู้ติดต่อ/หมายเหตุ/รายการ/ยอดเงิน" oninput="refreshINVTable()" style="flex:1;min-width:260px">
     <select id="f-co-inv" onchange="refreshINVTable()"><option value="">— ทุกบริษัท —</option>${companies.map(c=>`<option value="${c.id}">${escHtml(c.name||'')}</option>`).join('')}</select>
     <select id="f-st-inv" onchange="refreshINVTable()"><option value="">— ทุกสถานะ —</option><option value="sent">ส่งแล้ว</option><option value="partial">ชำระบางส่วน</option><option value="paid">ชำระแล้ว</option><option value="overdue">เกินกำหนด</option><option value="baddebt">หนี้สูญ</option></select>
     <input type="month" id="f-mo-inv" onchange="refreshINVTable()">
+    <button class="btn btn-outline btn-sm" onclick="clearINVFilters()">✕ ล้างตัวกรอง</button>
   </div>
+  <div id="inv-result-count" style="font-size:12px;color:var(--ink4);margin:-8px 0 10px"></div>
   <div class="card">
     <table class="tbl">
       <thead><tr><th>เลขที่</th><th>วันที่</th><th>ครบกำหนด</th><th>บริษัท</th><th>ลูกค้า</th><th class="r">ยอดรวม</th><th class="r">รับแล้ว</th><th class="r">คงเหลือ</th><th>สถานะ</th><th></th></tr></thead>
@@ -2182,17 +2186,35 @@ function renderInvoices() {
   </div>`;
   refreshINVTable();
 }
+function clearINVFilters() {
+  const s=document.getElementById('f-search-inv'), c=document.getElementById('f-co-inv'), st=document.getElementById('f-st-inv'), m=document.getElementById('f-mo-inv');
+  if(s) s.value=''; if(c) c.value=''; if(st) st.value=''; if(m) m.value='';
+  refreshINVTable();
+}
+window.clearINVFilters=clearINVFilters;
+// ── ค้นหาใบแจ้งหนี้แบบครอบคลุม: เลขที่เอกสาร, ชื่อ/เลขภาษี/ผู้ติดต่อลูกค้า, ชื่อบริษัทผู้ออก,
+// หมายเหตุ, วันที่/วันครบกำหนด, ยอดรวม, และชื่อรายการสินค้า/บริการในเอกสาร ──
+function invMatchesSearch(inv, q) {
+  const fields = [inv.docNumber, inv.custName, inv.companyName, inv.custTax, inv.custContact, inv.note, inv.docDate, inv.docDue, String(inv.total||'')];
+  if(fields.some(f=>(f||'').toString().toLowerCase().includes(q))) return true;
+  return (inv.items||[]).some(it=>(it.desc||'').toLowerCase().includes(q));
+}
 function refreshINVTable() {
+  const srch=(document.getElementById('f-search-inv')?.value||'').trim().toLowerCase();
   const coF=document.getElementById('f-co-inv')?.value||'';
   const stF=document.getElementById('f-st-inv')?.value||'';
   const moF=document.getElementById('f-mo-inv')?.value||'';
   let rows=[...data.invoices];
+  if(srch) rows=rows.filter(r=>invMatchesSearch(r, srch));
   if(coF) rows=rows.filter(r=>r.companyId===coF);
   if(stF) rows=rows.filter(r=>{
     if(stF==='partial') return !['baddebt','paid','cancelled','draft'].includes(invStatus(r)) && (Number(r.paidAmount)||0)>0 && remainAmount(r)>0;
     return invStatus(r)===stF;
   });
   if(moF) rows=rows.filter(r=>r.docDate?.startsWith(moF));
+  const cntEl=document.getElementById('inv-result-count');
+  const hasFilter = !!(srch||coF||stF||moF);
+  if(cntEl) cntEl.textContent = hasFilter ? `พบ ${rows.length} จาก ${data.invoices.length} รายการ` : '';
   const tbody=document.getElementById('inv-tbody');
   if(!tbody) return;
   tbody.innerHTML=rows.length?rows.map(i=>{
@@ -2220,7 +2242,9 @@ function refreshINVTable() {
         ${st==='baddebt'?`<button class="btn btn-xs btn-outline" onclick="restoreBadDebt('${i.id}')" title="นำกลับมาติดตาม">🔄</button>`:''}
         ${st!=='paid'&&st!=='baddebt'?`<button class="btn btn-xs btn-danger" onclick="deleteINV('${i.id}')">🗑</button>`:''}
       </td>
-    </tr>`;}).join(''):'<tr><td colspan="10"><div class="empty"><div class="empty-icon">🧾</div><p>ยังไม่มีใบแจ้งหนี้</p><button class="btn btn-primary btn-sm" onclick="goPage(\'new-inv\')">+ สร้างใบแจ้งหนี้แรก</button></div></td></tr>';
+    </tr>`;}).join(''):(hasFilter
+      ?'<tr><td colspan="10"><div class="empty"><div class="empty-icon">🔍</div><p>ไม่พบรายการที่ตรงกับการค้นหา/ตัวกรอง</p><button class="btn btn-outline btn-sm" onclick="clearINVFilters()">✕ ล้างตัวกรอง</button></div></td></tr>'
+      :'<tr><td colspan="10"><div class="empty"><div class="empty-icon">🧾</div><p>ยังไม่มีใบแจ้งหนี้</p><button class="btn btn-primary btn-sm" onclick="goPage(\'new-inv\')">+ สร้างใบแจ้งหนี้แรก</button></div></td></tr>');
 }
 window.refreshINVTable=refreshINVTable;
 
