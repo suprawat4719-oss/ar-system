@@ -1,4 +1,5 @@
-<!-- AR SYSTEM v2.11.10 — 2026-09-08
+<!-- AR SYSTEM v2.11.11 — 2026-09-08
+     changelog v2.11.11: แก้ครบทั้ง 4 ข้อจากการตรวจสอบรอบล่าสุด โดยไม่กระทบการทำงาน/ข้อมูลเดิม — (1) ปิดช่องโหว่ stored-XSS ที่ยังหลุดอยู่ในหน้า Preview (viewDoc) และหน้าพิมพ์/PDF (printCurrentDoc) ห่อด้วย escHtml() เพิ่มที่: ที่อยู่บริษัท/ลูกค้า, ชื่อบริษัทภาษาอังกฤษ, อีเมล/เว็บไซต์บริษัท, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุเอกสาร, เงื่อนไข/วิธีชำระเงิน, หน่วยสินค้า (r.unit), วันที่รับชำระ (p.date), และข้อมูลบัญชีธนาคารทุกช่อง (ชื่อธนาคาร/ประเภท/สาขา/ชื่อบัญชี/เลขบัญชี) ทั้งในหน้า Preview และหน้าพิมพ์ — เป็นการ escape เพิ่มเท่านั้น ไม่เปลี่ยนข้อมูลที่บันทึกไว้ (2) เพิ่มเว็บไซต์บริษัท (co.website) กลับเข้าไปในหัวกระดาษหน้าพิมพ์ที่หายไปตอนรีดีไซน์ v2.11.5 แสดงเฉพาะบริษัทที่กรอกไว้ (3) เพิ่มบรรทัด "ติดต่อเรื่องเอกสารนี้" (ผู้จัดทำ/เบอร์/อีเมลผู้ติดต่อ) กลับเข้าไปในส่วนข้อมูลลูกค้าของหน้าพิมพ์แบบย่อ ไม่ทำให้ดูรก (4) เพิ่มตัวแปร --purple-mid เข้า :root ให้ครบชุดสีเหมือนฟ้า/เขียว/แดง แล้วเปลี่ยนโค้ดสีม่วงของใบวางบิลใน viewDoc/printCurrentDoc ให้อ้างอิงตัวแปรนี้แทนเลขสีตรงๆ
      changelog v2.11.10: ปรับให้เอกสาร (หน้า Preview viewDoc และหน้าพิมพ์/PDF printCurrentDoc) แสดงข้อมูลการชำระเงินทั้ง 2 ทางเลือกพร้อมกันเสมอ แทนที่จะโชว์แค่อย่างใดอย่างหนึ่งตามที่เลือกไว้ตอนสร้างเอกสาร — ถ้าเอกสารตั้งวิธีชำระเป็น "เงินสด" จะยังโชว์กล่องเงินสดไว้ก่อน แล้วต่อด้วยกล่องบัญชีธนาคาร (ของบริษัท หรือของเอกสารถ้ามีระบุเจาะจงไว้) เป็นทางเลือกโอนคู่กันเสมอ (หัวกล่องเปลี่ยนเป็น "หรือโอนเข้าบัญชี" ในกรณีนี้) — ถ้าไม่ได้เลือกเงินสดจะโชว์แค่กล่องบัญชีธนาคารตามเดิม ไม่กระทบข้อมูลที่บันทึกไว้ในเอกสาร (payMethod) เป็นแค่การแสดงผลเพิ่มเติม
      changelog v2.11.9: ปรับโลโก้ตัวอักษร (กรณีไม่มีโลโก้จริง) ให้ใหญ่ขึ้นชัดเจนและดูมีมิติขึ้น — เพิ่ม coLogoHTML() และ logoBlock ในหน้าพิมพ์ให้ใช้ไล่เฉดสี (gradient เข้ม-อ่อนจากสีเดิมของบริษัท ผ่านฟังก์ชันใหม่ shadeColor()) พร้อมเงาบางๆ (box-shadow) แทนพื้นสีเรียบเดิม — ขนาด: หน้าพิมพ์/PDF 84px→100px (font 25px→29px, border-radius 12px→18px), หน้า Preview ในแอป 68px→80px (font 19px→22px) การเปลี่ยนนี้กระทบ coLogoHTML() ที่ใช้ร่วมกันทั้งแอป (หน้ารายชื่อบริษัท/ตาราง) ให้มีไล่เฉด+เงาเหมือนกันหมดด้วย ไม่ใช่แค่หน้าเอกสาร — ไม่กระทบกรณีที่มีโลโก้จริง (logoData) อยู่แล้ว
      changelog v2.11.8: ขยายโลโก้บริษัทให้ใหญ่ขึ้นให้ดูมีน้ำหนัก/เด่นขึ้นในหัวเอกสาร — หน้าพิมพ์/PDF (printCurrentDoc) จาก 64px เป็น 84px (font ตัวอักษร fallback จาก 19px เป็น 25px, border-radius 10→12px), หน้า Preview ในแอป (viewDoc) จาก 56px เป็น 68px (font 16px→19px) ให้สัดส่วนใกล้เคียงกันทั้งสองหน้า ไม่กระทบเลย์เอาต์ส่วนอื่น
@@ -41,7 +42,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.10 — 2026-09-08</title>
+<title>AR System | v2.11.11 — 2026-09-08</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -54,7 +55,7 @@
   --green: #15803d; --green-light: #f0fdf4; --green-mid: #bbf7d0;
   --red: #b91c1c; --red-light: #fef2f2; --red-mid: #fecaca;
   --yellow: #92400e; --yellow-light: #fffbeb; --yellow-mid: #fde68a;
-  --purple: #6d28d9; --purple-light: #f5f3ff;
+  --purple: #6d28d9; --purple-light: #f5f3ff; --purple-mid: #ddd6fe;
   --r: 8px; --r2: 12px;
   --sh: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
   --sh2: 0 4px 16px rgba(0,0,0,.09), 0 2px 4px rgba(0,0,0,.06);
@@ -473,7 +474,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.10 — 2026-09-08</div>
+    <div class="logo-sub">v2.11.11 — 2026-09-08</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -3872,7 +3873,7 @@ function viewDoc(type, id) {
   const docColors={
     qt:{c:'var(--accent)',light:'var(--accent-light)',mid:'var(--accent-mid)'},
     inv:{c:'var(--green)',light:'var(--green-light)',mid:'var(--green-mid)'},
-    bl:{c:'var(--purple)',light:'var(--purple-light)',mid:'#ddd6fe'}
+    bl:{c:'var(--purple)',light:'var(--purple-light)',mid:'var(--purple-mid)'}
   };
   const dc = docColors[type]||docColors.qt;
   let body=`
@@ -3881,25 +3882,25 @@ function viewDoc(type, id) {
         ${logoHtml}
         <div>
           <div style="font-weight:700;font-size:14px">${escHtml(co.name||'')}</div>
-          <div style="color:var(--ink4);font-size:11px">${co.nameEn||''}</div>
-          <div style="color:var(--ink4);font-size:12px;margin-top:2px">${co.address||''}</div>
-          <div style="color:var(--ink4);font-size:12px">เลขภาษี: ${co.taxId||'—'} ${co.phone?'| โทร: '+co.phone:''}</div>
+          <div style="color:var(--ink4);font-size:11px">${escHtml(co.nameEn||'')}</div>
+          <div style="color:var(--ink4);font-size:12px;margin-top:2px">${escHtml(co.address||'')}</div>
+          <div style="color:var(--ink4);font-size:12px">เลขภาษี: ${escHtml(co.taxId||'—')} ${co.phone?'| โทร: '+escHtml(co.phone):''}</div>
         </div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div style="font-size:21px;font-weight:700;color:${dc.c};line-height:1.15">${typeLabels[type]}</div>
         <div style="font-size:10px;font-weight:600;letter-spacing:.14em;color:var(--ink4);margin-bottom:6px">${typeLabelsEn[type]||''}</div>
-        <div class="mono" style="font-size:12px">${src.docNumber}</div>
-        <div style="font-size:12px;color:var(--ink4);margin-top:2px">วันที่: ${src.docDate}</div>
-        ${src.docDue?`<div style="font-size:12px;color:var(--ink4)">ครบกำหนด: ${src.docDue}</div>`:''}
-        ${src.docValid?`<div style="font-size:12px;color:var(--ink4)">ใช้ได้ถึง: ${src.docValid}</div>`:''}
-        ${src.isBadDebt?`<div style="margin-top:6px">${badgeHTML('baddebt')}</div>${src.badDebtReason?`<div style="font-size:11px;color:var(--ink4);margin-top:2px">เหตุผล: ${src.badDebtReason}</div>`:''}`:''}
+        <div class="mono" style="font-size:12px">${escHtml(src.docNumber||'')}</div>
+        <div style="font-size:12px;color:var(--ink4);margin-top:2px">วันที่: ${escHtml(src.docDate||'')}</div>
+        ${src.docDue?`<div style="font-size:12px;color:var(--ink4)">ครบกำหนด: ${escHtml(src.docDue)}</div>`:''}
+        ${src.docValid?`<div style="font-size:12px;color:var(--ink4)">ใช้ได้ถึง: ${escHtml(src.docValid)}</div>`:''}
+        ${src.isBadDebt?`<div style="margin-top:6px">${badgeHTML('baddebt')}</div>${src.badDebtReason?`<div style="font-size:11px;color:var(--ink4);margin-top:2px">เหตุผล: ${escHtml(src.badDebtReason)}</div>`:''}`:''}
       </div>
     </div>
     <div style="font-size:13px;margin-bottom:12px">
       <div style="font-weight:700">${escHtml(src.custName||'')}</div>
-      <div style="color:var(--ink4)">${src.custAddress||''}</div>
-      ${src.custTax?`<div style="color:var(--ink4);font-size:12px">เลขภาษี: ${src.custTax}</div>`:''}
+      <div style="color:var(--ink4)">${escHtml(src.custAddress||'')}</div>
+      ${src.custTax?`<div style="color:var(--ink4);font-size:12px">เลขภาษี: ${escHtml(src.custTax)}</div>`:''}
     </div>`;
 
   if(src.items?.length) {
@@ -3908,7 +3909,7 @@ function viewDoc(type, id) {
       <th>#</th><th>รายการ</th><th class="r">จำนวน</th><th>หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">รวม</th>${showVatCol?'<th class="c">VAT</th>':''}
     </tr></thead><tbody>${src.items.map((r,i)=>`<tr>
       <td style="color:var(--ink4)">${i+1}</td><td>${escHtml(r.desc||'')}</td><td class="r mono">${r.qty}</td>
-      <td>${r.unit||''}</td><td class="r mono">${fmt(r.price)}</td><td class="r mono bold">${fmt(r.total)}</td>${showVatCol?`<td class="c" style="font-size:11px;color:${r.vatApplicable!==false?'var(--green)':'var(--ink4)'}">${r.vatApplicable!==false?'✓':'—'}</td>`:''}
+      <td>${escHtml(r.unit||'')}</td><td class="r mono">${fmt(r.price)}</td><td class="r mono bold">${fmt(r.total)}</td>${showVatCol?`<td class="c" style="font-size:11px;color:${r.vatApplicable!==false?'var(--green)':'var(--ink4)'}">${r.vatApplicable!==false?'✓':'—'}</td>`:''}
     </tr>`).join('')}</tbody></table>
     <div class="summary-box">
       <div class="s-row"><span>ก่อน VAT</span><span class="val">${fmt(src.subtotal)}</span></div>
@@ -3933,12 +3934,12 @@ function viewDoc(type, id) {
           <div class="pmt-item">
             <div class="pmt-icon">💳</div>
             <div class="pmt-info"><div style="font-weight:600;font-size:13px">${fmt(p.amount)} บาท</div>
-              <div class="pmt-note">${p.date} · ${escHtml(p.method||'')} ${p.note?'· '+escHtml(p.note):''}</div></div>
+              <div class="pmt-note">${escHtml(p.date||'')} · ${escHtml(p.method||'')} ${p.note?'· '+escHtml(p.note):''}</div></div>
           </div>`).join(''):'<div style="color:var(--ink4);font-size:13px">ยังไม่มีการรับชำระ</div>'}
       </div>
     </div>`;
   }
-  if(src.note) body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)"><b>หมายเหตุ:</b> ${src.note}</div>`;
+  if(src.note) body+=`<div class="divider"></div><div style="font-size:12px;color:var(--ink3)"><b>หมายเหตุ:</b> ${escHtml(src.note)}</div>`;
 
   // แสดงข้อมูลการชำระเงิน — โชว์ทั้ง "เงินสด" (ถ้าเลือกไว้) และบัญชีธนาคารคู่กันเสมอ เป็น 2 ทางเลือกให้ลูกค้า
   // fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo เจาะจงในเอกสาร
@@ -3955,9 +3956,9 @@ function viewDoc(type, id) {
       <div style="font-weight:700;color:${dc.c};margin-bottom:8px">💳 ${showCash?'หรือโอนเข้าบัญชี':'ชำระเงินโดยการโอนเข้าบัญชี'}</div>
       ${bankInfoList.map(b=>`
       <div style="margin-bottom:6px">
-        <div>ธนาคาร: <b>${b.bankName}</b> | ประเภท: ${b.accType}${b.branch?' | สาขา: '+b.branch:''}</div>
-        <div>ชื่อบัญชี: <b>${b.accName}</b></div>
-        <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:${dc.c}">${b.accNo}</span></div>
+        <div>ธนาคาร: <b>${escHtml(b.bankName||'')}</b> | ประเภท: ${escHtml(b.accType||'')}${b.branch?' | สาขา: '+escHtml(b.branch):''}</div>
+        <div>ชื่อบัญชี: <b>${escHtml(b.accName||'')}</b></div>
+        <div>เลขบัญชี: <span style="font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.05em;color:${dc.c}">${escHtml(b.accNo||'')}</span></div>
       </div>`).join('<hr style="border:none;border-top:1px dashed var(--border);margin:6px 0">')}
     </div>`;
   }
@@ -3977,7 +3978,7 @@ function printCurrentDoc() {
   const docColors={
     qt:{c:'var(--accent)',light:'var(--accent-light)',mid:'var(--accent-mid)'},
     inv:{c:'var(--green)',light:'var(--green-light)',mid:'var(--green-mid)'},
-    bl:{c:'var(--purple)',light:'var(--purple-light)',mid:'#ddd6fe'}
+    bl:{c:'var(--purple)',light:'var(--purple-light)',mid:'var(--purple-mid)'}
   };
   const dc = docColors[type]||docColors.qt;
   // โลโก้ตัวอักษร (กรณีไม่มีโลโก้จริง) ใช้สีคงที่ต่อบริษัท (coLogoColor) เหมือนหน้า Preview เสมอ
@@ -4060,23 +4061,24 @@ function printCurrentDoc() {
         ${logoBlock}
         <div>
           <div class="hd-co-name">${escHtml(co.name||'')}</div>
-          <div class="hd-co-en">${co.nameEn||''}</div>
+          <div class="hd-co-en">${escHtml(co.nameEn||'')}</div>
           <div class="hd-co-info">
-            ${co.address?co.address.replace(/\n/g,'<br>'):''}
+            ${co.address?escHtml(co.address).replace(/\n/g,'<br>'):''}
             ${co.phone?`<br>โทร: ${escHtml(co.phone)}`:''}
-            ${co.email?` | อีเมล: ${co.email}`:''}
-            <br>เลขประจำตัวผู้เสียภาษี: ${co.taxId||'—'}
+            ${co.email?` | อีเมล: ${escHtml(co.email)}`:''}
+            ${co.website?` | ${escHtml(co.website)}`:''}
+            <br>เลขประจำตัวผู้เสียภาษี: ${escHtml(co.taxId||'—')}
           </div>
         </div>
       </div>
       <div class="hd-right">
         <div class="doc-type">${typeLabels[type]}</div>
         <div class="doc-type-en">${typeLabelsEn[type]||''}</div>
-        <div class="doc-no">${src.docNumber}</div>
+        <div class="doc-no">${escHtml(src.docNumber||'')}</div>
         <div class="doc-meta">
-          วันที่: ${src.docDate}<br>
-          ${src.docDue?`ครบกำหนด: ${src.docDue}<br>`:''}
-          ${src.docValid?`ใช้ได้ถึง: ${src.docValid}<br>`:''}
+          วันที่: ${escHtml(src.docDate||'')}<br>
+          ${src.docDue?`ครบกำหนด: ${escHtml(src.docDue)}<br>`:''}
+          ${src.docValid?`ใช้ได้ถึง: ${escHtml(src.docValid)}<br>`:''}
         </div>
       </div>
     </div>
@@ -4085,13 +4087,16 @@ function printCurrentDoc() {
     <div class="cust">
       <div class="cust-name">${escHtml(src.custName||'')}</div>
       <div class="cust-info">
-        ${src.custAddress?src.custAddress.replace(/\n/g,'<br>'):''}
-        ${src.custTax?`<br>เลขภาษี: ${src.custTax}`:''}
-        ${src.custContact?`<br>ผู้ติดต่อ: ${src.custContact}`:''}
+        ${src.custAddress?escHtml(src.custAddress).replace(/\n/g,'<br>'):''}
+        ${src.custTax?`<br>เลขภาษี: ${escHtml(src.custTax)}`:''}
+        ${src.custContact?`<br>ผู้ติดต่อ: ${escHtml(src.custContact)}`:''}
       </div>
       ${src.paymentTerms||src.terms||src.payMethod?.method?`<div class="cust-info" style="margin-top:6px">
-        ${src.paymentTerms||src.terms?`เงื่อนไข: ${src.paymentTerms||src.terms}`:''}
-        ${src.payMethod?.method?` · วิธีชำระ: ${src.payMethod.method}`:''}
+        ${src.paymentTerms||src.terms?`เงื่อนไข: ${escHtml(src.paymentTerms||src.terms)}`:''}
+        ${src.payMethod?.method?` · วิธีชำระ: ${escHtml(src.payMethod.method)}`:''}
+      </div>`:''}
+      ${(src.preparedBy||co.contactPerson||co.contactPhone||co.contactEmail)?`<div class="cust-info" style="margin-top:4px">
+        ติดต่อเรื่องเอกสารนี้: ${escHtml(src.preparedBy||co.contactPerson||'')}${(co.contactPhone||co.phone)?' · โทร '+escHtml(co.contactPhone||co.phone):''}${co.contactEmail?' · '+escHtml(co.contactEmail):''}
       </div>`:''}
     </div>
 
@@ -4111,7 +4116,7 @@ function printCurrentDoc() {
           <td class="num">${i+1}</td>
           <td>${escHtml(r.desc||'')}</td>
           <td class="r mono">${r.qty.toLocaleString()}</td>
-          <td>${r.unit||''}</td>
+          <td>${escHtml(r.unit||'')}</td>
           <td class="r mono">${fmt(r.price)}</td>
           <td class="r mono" style="font-weight:600">${fmt(r.total)}</td>
         </tr>`).join('')}
@@ -4139,16 +4144,16 @@ function printCurrentDoc() {
       if(banks.length) out+=`<div class="bank-box">
         <div class="bank-title">💳 ${showCash?'หรือโอนเข้าบัญชี':'โอนชำระเงินเข้าบัญชี'}</div>
         ${banks.map(b=>`<div style="margin-bottom:6px">
-          <div style="font-size:12.5px;font-weight:600;margin-bottom:2px">${b.bankName} — ${b.accType}${b.branch?' สาขา '+b.branch:''}</div>
-          <div style="font-size:12px;color:#71717a;margin-bottom:4px">ชื่อบัญชี: ${b.accName}</div>
-          <div style="font-size:12px;color:#71717a">เลขบัญชี: <span class="bank-no">${b.accNo}</span></div>
+          <div style="font-size:12.5px;font-weight:600;margin-bottom:2px">${escHtml(b.bankName||'')} — ${escHtml(b.accType||'')}${b.branch?' สาขา '+escHtml(b.branch):''}</div>
+          <div style="font-size:12px;color:#71717a;margin-bottom:4px">ชื่อบัญชี: ${escHtml(b.accName||'')}</div>
+          <div style="font-size:12px;color:#71717a">เลขบัญชี: <span class="bank-no">${escHtml(b.accNo||'')}</span></div>
         </div>`).join('<hr style="border:none;border-top:1px dashed #ddd;margin:6px 0">')}
       </div>`;
       return out;
     })()}
 
     <!-- NOTE -->
-    ${src.note?`<div class="note-box"><b>หมายเหตุ:</b> ${src.note}</div>`:''}
+    ${src.note?`<div class="note-box"><b>หมายเหตุ:</b> ${escHtml(src.note)}</div>`:''}
 
     <!-- SIGNATURES — ใบเสนอราคา: ผู้เสนอ/ผู้อนุมัติ 2 ช่อง; ใบแจ้งหนี้/ใบวางบิล: เพิ่มช่องลูกค้าผู้รับเอกสารไว้เป็นหลักฐานติดตามหนี้ -->
     ${type==='qt'?`
@@ -4156,7 +4161,7 @@ function printCurrentDoc() {
       <div class="sig-box">
         <div class="sig-line"></div>
         <div class="sig-label">ผู้เสนอราคา</div>
-        ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${src.preparedBy||co.contactPerson})</div>`:'<div class="sig-name">(................................)</div>'}
+        ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${escHtml(src.preparedBy||co.contactPerson)})</div>`:'<div class="sig-name">(................................)</div>'}
       </div>
       <div class="sig-box">
         <div class="sig-line"></div>
@@ -4168,7 +4173,7 @@ function printCurrentDoc() {
       <div class="sig-box">
         <div class="sig-line"></div>
         <div class="sig-label">ผู้จัดทำ / ผู้มีอำนาจลงนาม</div>
-        ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${src.preparedBy||co.contactPerson})</div>`:'<div class="sig-name">(................................)</div>'}
+        ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${escHtml(src.preparedBy||co.contactPerson)})</div>`:'<div class="sig-name">(................................)</div>'}
       </div>
       <div class="sig-box">
         <div class="sig-line"></div>
@@ -4186,7 +4191,7 @@ function printCurrentDoc() {
     <!-- FOOTER -->
     <div class="footer">
       <span>${escHtml(co.name||'')} · เลขภาษี: ${escHtml(co.taxId||'—')}</span>
-      <span>${src.docNumber} · พิมพ์ ${new Date().toLocaleDateString('th-TH')}</span>
+      <span>${escHtml(src.docNumber||'')} · พิมพ์ ${new Date().toLocaleDateString('th-TH')}</span>
     </div>
   </div>`;
   document.getElementById('print-frame').innerHTML=html;
