@@ -1,5 +1,5 @@
 <!-- AR SYSTEM v2.11.13 — 2026-10-09
-     changelog v2.11.13: (2) แก้ชื่อลูกค้าแล้วระบบถามว่าจะอัปเดตชื่อในใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิลที่ผูกกับลูกค้ารายนั้นด้วยหรือไม่ (propagateCustomerName) — ใช้แก้ชื่อพิมพ์ผิดในเอกสารที่ออกไปแล้ว; (1) แก้บันทึกแก้ไขข้อมูล (เช่น ลูกค้า) ไม่สำเร็จ "Firebase ตอบกลับผิดพลาด" — สาเหตุ: fbUpdate ใช้ .update() ซึ่ง error not-found เมื่อเอกสารมีในเครื่องแต่ไม่มีบน Firebase (เช่น สร้างตอน offline/migration) → เพิ่ม fallback set(merge) ด้วยข้อมูลเต็ม; ตัดค่า undefined/NaN ก่อนเขียน; toast แสดงสาเหตุจริง (permission-denied/not-found/unavailable) และ log ลง console
+     changelog v2.11.13: (3) แก้ลูกค้าขึ้นซ้ำ 2 แถวหลังแก้ไข — ต้นเหตุจริง: เอกสารบาง doc มีฟิลด์ id ในเนื้อข้อมูลไม่ตรงกับ doc ID จริง แอปจึงอ่าน id ผิด → update ไม่เจอเอกสาร (error เดิม) และ fallback ของรอบก่อนไปสร้าง doc ใหม่ซ้ำ → ยกเลิก fallback นั้น, ให้ doc ID จริงมีผลเหนือฟิลด์ id เสมอ, ไม่เขียนฟิลด์ id ลง Firestore อีก, เพิ่ม repairDocIdMismatch() ตอนเปิดแอป: ลบสำเนาเก่าที่ซ้ำ / ย้ายเอกสารไป ID ที่ถูกอ้างอิง (สำรอง local ก่อนทุกครั้ง); (2) แก้ชื่อลูกค้าแล้วระบบถามว่าจะอัปเดตชื่อในใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิลที่ผูกกับลูกค้ารายนั้นด้วยหรือไม่ (propagateCustomerName) — ใช้แก้ชื่อพิมพ์ผิดในเอกสารที่ออกไปแล้ว; (1) แก้บันทึกแก้ไขข้อมูล (เช่น ลูกค้า) ไม่สำเร็จ "Firebase ตอบกลับผิดพลาด" — สาเหตุ: fbUpdate ใช้ .update() ซึ่ง error not-found เมื่อเอกสารมีในเครื่องแต่ไม่มีบน Firebase (เช่น สร้างตอน offline/migration) → เพิ่ม fallback set(merge) ด้วยข้อมูลเต็ม; ตัดค่า undefined/NaN ก่อนเขียน; toast แสดงสาเหตุจริง (permission-denied/not-found/unavailable) และ log ลง console
      changelog v2.11.12 (2026-09-08):     changelog v2.11.12: เพิ่มช่องค้นหาในหน้ารายการใบแจ้งหนี้ (renderInvoices) ที่ไม่เคยมีมาก่อน — ค้นหาครอบคลุมพร้อมกันในหลายฟิลด์: เลขที่เอกสาร, ชื่อลูกค้า, ชื่อบริษัทผู้ออก, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุ, วันที่/วันครบกำหนด, ยอดรวม, และชื่อรายการสินค้า/บริการในเอกสาร (ฟังก์ชันใหม่ invMatchesSearch) — ใช้ร่วมกับตัวกรองบริษัท/สถานะ/เดือนเดิมได้พร้อมกัน (AND กัน) ไม่กระทบตัวกรองเดิม เพิ่มปุ่ม "ล้างตัวกรอง" (clearINVFilters) และแสดงจำนวนผลลัพธ์ "พบ N จาก M รายการ" เมื่อมีการกรอง/ค้นหาอยู่ พร้อมข้อความว่างเปล่าที่แยกกรณี "ไม่พบรายการที่ค้นหา" ออกจากกรณี "ยังไม่มีใบแจ้งหนี้เลย" ไม่กระทบข้อมูล/การคำนวณ/ปุ่มการทำงานอื่นในตารางเดิม
      changelog v2.11.11: แก้ครบทั้ง 4 ข้อจากการตรวจสอบรอบล่าสุด โดยไม่กระทบการทำงาน/ข้อมูลเดิม — (1) ปิดช่องโหว่ stored-XSS ที่ยังหลุดอยู่ในหน้า Preview (viewDoc) และหน้าพิมพ์/PDF (printCurrentDoc) ห่อด้วย escHtml() เพิ่มที่: ที่อยู่บริษัท/ลูกค้า, ชื่อบริษัทภาษาอังกฤษ, อีเมล/เว็บไซต์บริษัท, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุเอกสาร, เงื่อนไข/วิธีชำระเงิน, หน่วยสินค้า (r.unit), วันที่รับชำระ (p.date), และข้อมูลบัญชีธนาคารทุกช่อง (ชื่อธนาคาร/ประเภท/สาขา/ชื่อบัญชี/เลขบัญชี) ทั้งในหน้า Preview และหน้าพิมพ์ — เป็นการ escape เพิ่มเท่านั้น ไม่เปลี่ยนข้อมูลที่บันทึกไว้ (2) เพิ่มเว็บไซต์บริษัท (co.website) กลับเข้าไปในหัวกระดาษหน้าพิมพ์ที่หายไปตอนรีดีไซน์ v2.11.5 แสดงเฉพาะบริษัทที่กรอกไว้ (3) เพิ่มบรรทัด "ติดต่อเรื่องเอกสารนี้" (ผู้จัดทำ/เบอร์/อีเมลผู้ติดต่อ) กลับเข้าไปในส่วนข้อมูลลูกค้าของหน้าพิมพ์แบบย่อ ไม่ทำให้ดูรก (4) เพิ่มตัวแปร --purple-mid เข้า :root ให้ครบชุดสีเหมือนฟ้า/เขียว/แดง แล้วเปลี่ยนโค้ดสีม่วงของใบวางบิลใน viewDoc/printCurrentDoc ให้อ้างอิงตัวแปรนี้แทนเลขสีตรงๆ
      changelog v2.11.10: ปรับให้เอกสาร (หน้า Preview viewDoc และหน้าพิมพ์/PDF printCurrentDoc) แสดงข้อมูลการชำระเงินทั้ง 2 ทางเลือกพร้อมกันเสมอ แทนที่จะโชว์แค่อย่างใดอย่างหนึ่งตามที่เลือกไว้ตอนสร้างเอกสาร — ถ้าเอกสารตั้งวิธีชำระเป็น "เงินสด" จะยังโชว์กล่องเงินสดไว้ก่อน แล้วต่อด้วยกล่องบัญชีธนาคาร (ของบริษัท หรือของเอกสารถ้ามีระบุเจาะจงไว้) เป็นทางเลือกโอนคู่กันเสมอ (หัวกล่องเปลี่ยนเป็น "หรือโอนเข้าบัญชี" ในกรณีนี้) — ถ้าไม่ได้เลือกเงินสดจะโชว์แค่กล่องบัญชีธนาคารตามเดิม ไม่กระทบข้อมูลที่บันทึกไว้ในเอกสาร (payMethod) เป็นแค่การแสดงผลเพิ่มเติม
@@ -976,14 +976,16 @@ async function fbLoad(col) {
       if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
       if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
       delete dd._syncedAt;
-      return {id: d.id, ...dd};
+      return {...dd, id: d.id};
     });
   } catch(e) { return null; }
 }
 let _fbLastErr = '';
 function _fbClean(o) {
-  // Firestore ไม่รับค่า undefined → ตัดทิ้ง
-  return JSON.parse(JSON.stringify(o, (k, v) => (typeof v === 'number' && !isFinite(v)) ? 0 : v));
+  // Firestore ไม่รับค่า undefined → ตัดทิ้ง; ห้ามเขียนฟิลด์ id ลงในเนื้อเอกสาร (id = doc ID เท่านั้น)
+  const out = JSON.parse(JSON.stringify(o, (k, v) => (typeof v === 'number' && !isFinite(v)) ? 0 : v));
+  if(out && typeof out === 'object') delete out.id;
+  return out;
 }
 function _fbErrText(e) {
   const c = e?.code || '';
@@ -1004,18 +1006,50 @@ async function fbUpdate(col, id, d, fullDoc) {
   const clean = _fbClean(d);
   try { await _fbdb.collection(col).doc(id).update(clean); return true; }
   catch(e){
-    // เอกสารมีในเครื่องแต่ไม่มีบน Firebase → สร้างใหม่ด้วยข้อมูลเต็ม (set merge)
-    if(e?.code === 'not-found' && fullDoc) {
-      try {
-        const {id: _omit, ...rest} = fullDoc;
-        await _fbdb.collection(col).doc(id).set({..._fbClean(rest), ...clean}, {merge:true});
-        console.warn('fbUpdate: doc not found on Firebase — recreated', col, id);
-        return true;
-      } catch(e2) { _fbLastErr = _fbErrText(e2); console.error('fbUpdate fallback', col, id, e2); return false; }
-    }
     _fbLastErr = _fbErrText(e); console.error('fbUpdate', col, id, e); return false;
   }
 }
+// ── ซ่อมเอกสารที่ "id ในเนื้อข้อมูล" ไม่ตรงกับ doc ID จริง (ต้นเหตุ บันทึกแก้ไขไม่ได้ / ลูกค้าซ้ำ 2 แถว) ──
+// กรณี A: doc X มี data.id = Y และ doc Y มีอยู่แล้ว → X เป็นสำเนาเก่า (ghost) → ลบ X (ถ้า Y ใหม่กว่าหรือเท่ากัน)
+// กรณี B: doc X มี data.id = Y แต่ไม่มี doc Y → ย้ายข้อมูลไป doc Y (เอกสารอื่นอ้างอิง Y อยู่) แล้วลบ X
+async function repairDocIdMismatch() {
+  if(!_fbdb) return;
+  let ghosts = 0, moved = 0, skipped = 0, failed = 0, backedUp = false;
+  for(const col of ['companies','quotations','invoices','billings','customers','products']) {
+    let snap;
+    try { snap = await _fbdb.collection(col).get(); } catch(e) { continue; }
+    const byId = new Map(snap.docs.map(d => [d.id, d]));
+    for(const d of snap.docs) {
+      const dd = d.data();
+      const sid = dd.id;
+      if(!sid || sid === d.id) continue;
+      if(!backedUp) { try { saveLocalBackup(); } catch(_) {} backedUp = true; }
+      try {
+        const target = byId.get(sid);
+        if(target) {
+          const tUpd = target.data().updatedAt, xUpd = dd.updatedAt;
+          const tStr = tUpd?.toDate ? tUpd.toDate().toISOString() : (tUpd||'');
+          const xStr = xUpd?.toDate ? xUpd.toDate().toISOString() : (xUpd||'');
+          if(tStr && xStr && xStr > tStr) { skipped++; console.warn('[repair] ghost newer than target, skip', col, d.id, '→', sid); continue; }
+          await _fbdb.collection(col).doc(d.id).delete();
+          ghosts++;
+          console.warn('[repair] removed ghost', col, d.id, '(dup of', sid + ')');
+        } else {
+          const {id: _x, ...rest} = dd;
+          await _fbdb.collection(col).doc(sid).set(rest);
+          await _fbdb.collection(col).doc(d.id).delete();
+          moved++;
+          console.warn('[repair] moved', col, d.id, '→', sid);
+        }
+      } catch(e) { failed++; console.error('[repair] failed', col, d.id, e); }
+    }
+  }
+  if(ghosts || moved || failed || skipped) {
+    toast(`ซ่อมข้อมูล: ลบรายการซ้ำ ${ghosts}, ย้าย ID ${moved}` + (skipped?`, ข้าม ${skipped}`:'') + (failed?`, ล้มเหลว ${failed}`:''), failed ? 'err' : 'ok');
+  }
+}
+window.repairDocIdMismatch = repairDocIdMismatch;
+
 async function fbDelete(col, id) {
   if(!_fbdb || !id) return false;
   try { await _fbdb.collection(col).doc(id).delete(); return true; } catch(e){ return false; }
@@ -1029,7 +1063,7 @@ async function fbGetDoc(col, id) {
     if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
     if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
     delete dd._syncedAt;
-    return {id: snap.id, ...dd};
+    return {...dd, id: snap.id};
   } catch(e) { return null; }
 }
 
@@ -1240,7 +1274,7 @@ async function syncPull() {
         const dd = d.data();
         if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
         delete dd._syncedAt;
-        return {id: d.id, ...dd};
+        return {...dd, id: d.id};
       });
       const localArr = lsLoad(col) || [];
       console.log(`[AR] syncPull: ${col} — remote=${remoteCount}, local=${localArr.length}`);
@@ -1385,7 +1419,7 @@ function _applySnapshot(col, snap) {
     if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
     if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
     delete dd._syncedAt;
-    return {id: d.id, ...dd};
+    return {...dd, id: d.id};
   });
 
   const isFirst = !_snapFirstDone[col];
@@ -5741,6 +5775,8 @@ function migrateCustomersV23() {
   try {
     if(_fbdb) {
       // ── มี Firebase → Pull ก่อนเสมอ ──
+      setMsg('เชื่อมต่อ Firebase สำเร็จ', 'กำลังตรวจความถูกต้องของข้อมูล...');
+      try { await repairDocIdMismatch(); } catch(e) { console.error('repairDocIdMismatch', e); }
       setMsg('เชื่อมต่อ Firebase สำเร็จ', 'กำลังดึงข้อมูล...');
       const COLS = ['companies','quotations','invoices','billings','customers'];
       let total = 0;
@@ -5757,7 +5793,7 @@ function migrateCustomersV23() {
           if(dd.createdAt?.toDate) dd.createdAt = dd.createdAt.toDate().toISOString();
           if(dd.updatedAt?.toDate) dd.updatedAt = dd.updatedAt.toDate().toISOString();
           delete dd._syncedAt;
-          return {id: d.id, ...dd};
+          return {...dd, id: d.id};
         });
         const lsArr = lsLoad(col) || [];
         colFbData[col] = { fbArr, lsArr };
