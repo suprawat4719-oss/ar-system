@@ -1,5 +1,6 @@
-<!-- AR SYSTEM v2.11.12 — 2026-09-08
-     changelog v2.11.12: เพิ่มช่องค้นหาในหน้ารายการใบแจ้งหนี้ (renderInvoices) ที่ไม่เคยมีมาก่อน — ค้นหาครอบคลุมพร้อมกันในหลายฟิลด์: เลขที่เอกสาร, ชื่อลูกค้า, ชื่อบริษัทผู้ออก, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุ, วันที่/วันครบกำหนด, ยอดรวม, และชื่อรายการสินค้า/บริการในเอกสาร (ฟังก์ชันใหม่ invMatchesSearch) — ใช้ร่วมกับตัวกรองบริษัท/สถานะ/เดือนเดิมได้พร้อมกัน (AND กัน) ไม่กระทบตัวกรองเดิม เพิ่มปุ่ม "ล้างตัวกรอง" (clearINVFilters) และแสดงจำนวนผลลัพธ์ "พบ N จาก M รายการ" เมื่อมีการกรอง/ค้นหาอยู่ พร้อมข้อความว่างเปล่าที่แยกกรณี "ไม่พบรายการที่ค้นหา" ออกจากกรณี "ยังไม่มีใบแจ้งหนี้เลย" ไม่กระทบข้อมูล/การคำนวณ/ปุ่มการทำงานอื่นในตารางเดิม
+<!-- AR SYSTEM v2.11.13 — 2026-10-09
+     changelog v2.11.13: (2) แก้ชื่อลูกค้าแล้วระบบถามว่าจะอัปเดตชื่อในใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิลที่ผูกกับลูกค้ารายนั้นด้วยหรือไม่ (propagateCustomerName) — ใช้แก้ชื่อพิมพ์ผิดในเอกสารที่ออกไปแล้ว; (1) แก้บันทึกแก้ไขข้อมูล (เช่น ลูกค้า) ไม่สำเร็จ "Firebase ตอบกลับผิดพลาด" — สาเหตุ: fbUpdate ใช้ .update() ซึ่ง error not-found เมื่อเอกสารมีในเครื่องแต่ไม่มีบน Firebase (เช่น สร้างตอน offline/migration) → เพิ่ม fallback set(merge) ด้วยข้อมูลเต็ม; ตัดค่า undefined/NaN ก่อนเขียน; toast แสดงสาเหตุจริง (permission-denied/not-found/unavailable) และ log ลง console
+     changelog v2.11.12 (2026-09-08):     changelog v2.11.12: เพิ่มช่องค้นหาในหน้ารายการใบแจ้งหนี้ (renderInvoices) ที่ไม่เคยมีมาก่อน — ค้นหาครอบคลุมพร้อมกันในหลายฟิลด์: เลขที่เอกสาร, ชื่อลูกค้า, ชื่อบริษัทผู้ออก, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุ, วันที่/วันครบกำหนด, ยอดรวม, และชื่อรายการสินค้า/บริการในเอกสาร (ฟังก์ชันใหม่ invMatchesSearch) — ใช้ร่วมกับตัวกรองบริษัท/สถานะ/เดือนเดิมได้พร้อมกัน (AND กัน) ไม่กระทบตัวกรองเดิม เพิ่มปุ่ม "ล้างตัวกรอง" (clearINVFilters) และแสดงจำนวนผลลัพธ์ "พบ N จาก M รายการ" เมื่อมีการกรอง/ค้นหาอยู่ พร้อมข้อความว่างเปล่าที่แยกกรณี "ไม่พบรายการที่ค้นหา" ออกจากกรณี "ยังไม่มีใบแจ้งหนี้เลย" ไม่กระทบข้อมูล/การคำนวณ/ปุ่มการทำงานอื่นในตารางเดิม
      changelog v2.11.11: แก้ครบทั้ง 4 ข้อจากการตรวจสอบรอบล่าสุด โดยไม่กระทบการทำงาน/ข้อมูลเดิม — (1) ปิดช่องโหว่ stored-XSS ที่ยังหลุดอยู่ในหน้า Preview (viewDoc) และหน้าพิมพ์/PDF (printCurrentDoc) ห่อด้วย escHtml() เพิ่มที่: ที่อยู่บริษัท/ลูกค้า, ชื่อบริษัทภาษาอังกฤษ, อีเมล/เว็บไซต์บริษัท, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุเอกสาร, เงื่อนไข/วิธีชำระเงิน, หน่วยสินค้า (r.unit), วันที่รับชำระ (p.date), และข้อมูลบัญชีธนาคารทุกช่อง (ชื่อธนาคาร/ประเภท/สาขา/ชื่อบัญชี/เลขบัญชี) ทั้งในหน้า Preview และหน้าพิมพ์ — เป็นการ escape เพิ่มเท่านั้น ไม่เปลี่ยนข้อมูลที่บันทึกไว้ (2) เพิ่มเว็บไซต์บริษัท (co.website) กลับเข้าไปในหัวกระดาษหน้าพิมพ์ที่หายไปตอนรีดีไซน์ v2.11.5 แสดงเฉพาะบริษัทที่กรอกไว้ (3) เพิ่มบรรทัด "ติดต่อเรื่องเอกสารนี้" (ผู้จัดทำ/เบอร์/อีเมลผู้ติดต่อ) กลับเข้าไปในส่วนข้อมูลลูกค้าของหน้าพิมพ์แบบย่อ ไม่ทำให้ดูรก (4) เพิ่มตัวแปร --purple-mid เข้า :root ให้ครบชุดสีเหมือนฟ้า/เขียว/แดง แล้วเปลี่ยนโค้ดสีม่วงของใบวางบิลใน viewDoc/printCurrentDoc ให้อ้างอิงตัวแปรนี้แทนเลขสีตรงๆ
      changelog v2.11.10: ปรับให้เอกสาร (หน้า Preview viewDoc และหน้าพิมพ์/PDF printCurrentDoc) แสดงข้อมูลการชำระเงินทั้ง 2 ทางเลือกพร้อมกันเสมอ แทนที่จะโชว์แค่อย่างใดอย่างหนึ่งตามที่เลือกไว้ตอนสร้างเอกสาร — ถ้าเอกสารตั้งวิธีชำระเป็น "เงินสด" จะยังโชว์กล่องเงินสดไว้ก่อน แล้วต่อด้วยกล่องบัญชีธนาคาร (ของบริษัท หรือของเอกสารถ้ามีระบุเจาะจงไว้) เป็นทางเลือกโอนคู่กันเสมอ (หัวกล่องเปลี่ยนเป็น "หรือโอนเข้าบัญชี" ในกรณีนี้) — ถ้าไม่ได้เลือกเงินสดจะโชว์แค่กล่องบัญชีธนาคารตามเดิม ไม่กระทบข้อมูลที่บันทึกไว้ในเอกสาร (payMethod) เป็นแค่การแสดงผลเพิ่มเติม
      changelog v2.11.9: ปรับโลโก้ตัวอักษร (กรณีไม่มีโลโก้จริง) ให้ใหญ่ขึ้นชัดเจนและดูมีมิติขึ้น — เพิ่ม coLogoHTML() และ logoBlock ในหน้าพิมพ์ให้ใช้ไล่เฉดสี (gradient เข้ม-อ่อนจากสีเดิมของบริษัท ผ่านฟังก์ชันใหม่ shadeColor()) พร้อมเงาบางๆ (box-shadow) แทนพื้นสีเรียบเดิม — ขนาด: หน้าพิมพ์/PDF 84px→100px (font 25px→29px, border-radius 12px→18px), หน้า Preview ในแอป 68px→80px (font 19px→22px) การเปลี่ยนนี้กระทบ coLogoHTML() ที่ใช้ร่วมกันทั้งแอป (หน้ารายชื่อบริษัท/ตาราง) ให้มีไล่เฉด+เงาเหมือนกันหมดด้วย ไม่ใช่แค่หน้าเอกสาร — ไม่กระทบกรณีที่มีโลโก้จริง (logoData) อยู่แล้ว
@@ -43,7 +44,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.12 — 2026-09-08</title>
+<title>AR System | v2.11.13 — 2026-10-09</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -475,7 +476,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.12 — 2026-09-08</div>
+    <div class="logo-sub">v2.11.13 — 2026-10-09</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -979,16 +980,41 @@ async function fbLoad(col) {
     });
   } catch(e) { return null; }
 }
+let _fbLastErr = '';
+function _fbClean(o) {
+  // Firestore ไม่รับค่า undefined → ตัดทิ้ง
+  return JSON.parse(JSON.stringify(o, (k, v) => (typeof v === 'number' && !isFinite(v)) ? 0 : v));
+}
+function _fbErrText(e) {
+  const c = e?.code || '';
+  if(c === 'permission-denied') return 'ไม่มีสิทธิ์เขียน (Security Rules)';
+  if(c === 'not-found') return 'ไม่พบเอกสารนี้บน Firebase';
+  if(c === 'unavailable') return 'เชื่อมต่อ Firebase ไม่ได้';
+  return c || (e?.message || 'unknown');
+}
 async function fbSet(col, id, d) {
   if(!_fbdb) return false;
   try {
-    await _fbdb.collection(col).doc(id).set({...d, createdAt: firebase.firestore.FieldValue.serverTimestamp()});
+    await _fbdb.collection(col).doc(id).set({..._fbClean(d), createdAt: firebase.firestore.FieldValue.serverTimestamp()});
     return true;
-  } catch(e) { return false; }
+  } catch(e) { _fbLastErr = _fbErrText(e); console.error('fbSet', col, id, e); return false; }
 }
-async function fbUpdate(col, id, d) {
+async function fbUpdate(col, id, d, fullDoc) {
   if(!_fbdb || !id) return false;
-  try { await _fbdb.collection(col).doc(id).update(d); return true; } catch(e){ return false; }
+  const clean = _fbClean(d);
+  try { await _fbdb.collection(col).doc(id).update(clean); return true; }
+  catch(e){
+    // เอกสารมีในเครื่องแต่ไม่มีบน Firebase → สร้างใหม่ด้วยข้อมูลเต็ม (set merge)
+    if(e?.code === 'not-found' && fullDoc) {
+      try {
+        const {id: _omit, ...rest} = fullDoc;
+        await _fbdb.collection(col).doc(id).set({..._fbClean(rest), ...clean}, {merge:true});
+        console.warn('fbUpdate: doc not found on Firebase — recreated', col, id);
+        return true;
+      } catch(e2) { _fbLastErr = _fbErrText(e2); console.error('fbUpdate fallback', col, id, e2); return false; }
+    }
+    _fbLastErr = _fbErrText(e); console.error('fbUpdate', col, id, e); return false;
+  }
 }
 async function fbDelete(col, id) {
   if(!_fbdb || !id) return false;
@@ -1066,7 +1092,7 @@ async function storeAdd(col, d) {
   const id = uid();
   const enriched = {...d, updatedAt: new Date().toISOString(), updatedBy: _deviceName};
   const fbOk = await fbSet(col, id, enriched);
-  if(_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase ตอบกลับผิดพลาด', 'err'); return null; }
+  if(_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase: ' + (_fbLastErr || 'ตอบกลับผิดพลาด'), 'err'); return null; }
   const arr = lsLoad(col) || [];
   arr.push({id, ...enriched});
   lsSave(col, arr);
@@ -1105,8 +1131,8 @@ async function storeUpdate(col, id, d) {
   }
 
   // Firebase update
-  const fbOk = await fbUpdate(col, id, updates);
-  if(_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase ตอบกลับผิดพลาด', 'err'); return false; }
+  const fbOk = await fbUpdate(col, id, updates, localDoc || (lsLoad(col)||[]).find(x => x.id === id));
+  if(_fbdb && !fbOk) { toast('บันทึกไม่สำเร็จ — Firebase: ' + (_fbLastErr || 'ตอบกลับผิดพลาด'), 'err'); return false; }
   // localStorage + in-memory (ให้ syncLS() ที่ caller เรียกได้ updatedAt ถูกต้อง)
   const arr = lsLoad(col) || [];
   const i = arr.findIndex(x => x.id === id);
@@ -5008,6 +5034,7 @@ async function saveCustomer(id) {
   if(!data.customers) data.customers = [];
   if(editId) {
     const existing = data.customers.find(x=>x.id===editId);
+    const oldName = existing?.name || existing?.customerName || '';
     d.customerCode = existing?.customerCode || '';
     d.customerId = editId;
     const ok = await storeUpdate('customers', editId, d);
@@ -5015,6 +5042,8 @@ async function saveCustomer(id) {
     const idx = data.customers.findIndex(x=>x.id===editId);
     if(idx>=0) Object.assign(data.customers[idx], d);
     toast('แก้ไขข้อมูลลูกค้าเรียบร้อย','ok');
+    // ── ชื่อลูกค้าเปลี่ยน → เสนออัปเดตชื่อในเอกสารที่ผูกกับลูกค้านี้ ──
+    if(oldName && oldName !== name) await propagateCustomerName(editId, oldName, name, d.customerCode);
   } else {
     d.customerCode = generateCustomerCode();
     const newId = await storeAdd('customers', d);
@@ -5028,6 +5057,31 @@ async function saveCustomer(id) {
   if(_currentPage === 'customers') refreshCustomerTable();
 }
 window.saveCustomer = saveCustomer;
+
+async function propagateCustomerName(custId, oldName, newName, custCode) {
+  const oldNorm = normalizeCustomerName(oldName);
+  const cols = [['quotations','ใบเสนอราคา'],['invoices','ใบแจ้งหนี้'],['billings','ใบวางบิล']];
+  const targets = [];
+  cols.forEach(([col,label]) => (data[col]||[]).forEach(doc => {
+    const linked = doc.customerId === custId ||
+      (!doc.customerId && normalizeCustomerName(doc.custName||doc.customerName) === oldNorm);
+    if(linked && (doc.custName !== newName || (doc.customerName && doc.customerName !== newName)))
+      targets.push({col, label, doc});
+  }));
+  if(!targets.length) return;
+  const summary = cols.map(([col,label]) => {
+    const n = targets.filter(t=>t.col===col).length; return n ? `${label} ${n} ฉบับ` : '';
+  }).filter(Boolean).join(', ');
+  if(!confirm(`พบเอกสารที่ยังใช้ชื่อเดิม "${oldName}"\n(${summary})\n\nต้องการแก้ชื่อในเอกสารเหล่านี้เป็น "${newName}" ด้วยหรือไม่?`)) return;
+  let okCount = 0, fail = 0;
+  for(const t of targets) {
+    const ok = await storeUpdate(t.col, t.doc.id, {custName:newName, customerName:newName, customerId:custId, customerCode:custCode||t.doc.customerCode||''});
+    if(ok) okCount++; else fail++;
+  }
+  cols.forEach(([col]) => syncLS(col, data[col]||[]));
+  toast(fail ? `อัปเดตชื่อในเอกสาร ${okCount} ฉบับ, ไม่สำเร็จ ${fail} ฉบับ` : `อัปเดตชื่อในเอกสาร ${okCount} ฉบับเรียบร้อย`, fail ? 'err' : 'ok');
+}
+window.propagateCustomerName = propagateCustomerName;
 
 function viewCustomer(id) {
   const c = (data.customers||[]).find(x=>x.id===id); if(!c) return;
