@@ -1,5 +1,7 @@
-<!-- AR SYSTEM v2.11.13 — 2026-10-09
-     changelog v2.11.13: (5) [รับค่าเลขที่ที่มีช่องว่าง/ขึ้นบรรทัด/เลขไทย/ขีดแบบอื่นได้, ช่องเลขใหม่ใส่แค่ลำดับได้] เพิ่มเครื่องมือ "แก้เลขที่เอกสาร" ในหน้าตั้งค่า (renumberDocument) — เปลี่ยนเลขที่ QT/INV/BL ภายในประเภท/บริษัท/เดือนเดียวกัน กันเลขซ้ำ สำรองก่อน แล้วตั้ง doc_counters = เลขสูงสุดที่มีจริง (resyncDocCounter) ใบถัดไปจึงต่อเนื่อง; (4) ลบใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิลใบล่าสุดของเดือน → คืนเลขที่ให้ (rollbackDocCounter ใน storeDelete) ใบถัดไปจะได้เลขเดิม ไม่กระโดด; ลบใบที่ไม่ใช่ใบล่าสุดจะไม่คืนเลข (กันเลขซ้ำ); (3) แก้ลูกค้าขึ้นซ้ำ 2 แถวหลังแก้ไข — ต้นเหตุจริง: เอกสารบาง doc มีฟิลด์ id ในเนื้อข้อมูลไม่ตรงกับ doc ID จริง แอปจึงอ่าน id ผิด → update ไม่เจอเอกสาร (error เดิม) และ fallback ของรอบก่อนไปสร้าง doc ใหม่ซ้ำ → ยกเลิก fallback นั้น, ให้ doc ID จริงมีผลเหนือฟิลด์ id เสมอ, ไม่เขียนฟิลด์ id ลง Firestore อีก, เพิ่ม repairDocIdMismatch() ตอนเปิดแอป: ลบสำเนาเก่าที่ซ้ำ / ย้ายเอกสารไป ID ที่ถูกอ้างอิง (สำรอง local ก่อนทุกครั้ง); (2) แก้ชื่อลูกค้าแล้วระบบถามว่าจะอัปเดตชื่อในใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิลที่ผูกกับลูกค้ารายนั้นด้วยหรือไม่ (propagateCustomerName) — ใช้แก้ชื่อพิมพ์ผิดในเอกสารที่ออกไปแล้ว; (1) แก้บันทึกแก้ไขข้อมูล (เช่น ลูกค้า) ไม่สำเร็จ "Firebase ตอบกลับผิดพลาด" — สาเหตุ: fbUpdate ใช้ .update() ซึ่ง error not-found เมื่อเอกสารมีในเครื่องแต่ไม่มีบน Firebase (เช่น สร้างตอน offline/migration) → เพิ่ม fallback set(merge) ด้วยข้อมูลเต็ม; ตัดค่า undefined/NaN ก่อนเขียน; toast แสดงสาเหตุจริง (permission-denied/not-found/unavailable) และ log ลง console
+<!-- AR SYSTEM v2.11.15 — 2026-10-14
+     changelog v2.11.15: เพิ่มใบเสร็จรับเงิน (RC) จากใบแจ้งหนี้ที่รับชำระแล้ว — ปุ่ม "ออกใบเสร็จรับเงิน" และ "พิมพ์ใบแจ้งหนี้ + ใบเสร็จ" (พิมพ์ 2 หน้าในครั้งเดียว) ในหน้า Preview ใบแจ้งหนี้; เลขที่ RC-<prefix>-<ปีเดือน>-<ลำดับ> จากตัวนับ doc_counters ออกครั้งแรกแล้วเก็บไว้ที่ใบแจ้งหนี้ (receiptNo/receiptDate) พิมพ์ซ้ำได้เลขเดิม; วันที่ใบเสร็จ = วันที่รับชำระล่าสุด; แสดงจำนวนเงินตัวอักษรไทย (bahtText), ประวัติการรับชำระ, หมายเหตุกรณีเช็ค, ช่องลงนามผู้จ่ายเงิน/ผู้รับเงิน; หลังบันทึกรับชำระถามว่าจะออกใบเสร็จเลยหรือไม่; แยก printCurrentDoc เป็น buildDocPrintHtml(type,src,rc) ใช้ร่วมกัน
+     changelog v2.11.14 (2026-10-14): ใบแจ้งหนี้ที่พิมพ์ (printCurrentDoc) ไม่มีส่วน ยอดรวม/รับแล้ว/คงเหลือ และประวัติการรับชำระ แบบที่หน้า Preview มี → เพิ่มส่วนนี้ในงานพิมพ์ (แสดงเมื่อมีการรับชำระแล้วเท่านั้น); บังคับพิมพ์สีพื้นหลัง (print-color-adjust:exact) ให้กล่องสรุปไม่หายบนกระดาษ
+     changelog v2.11.13 (2026-10-09): (5) [รับค่าเลขที่ที่มีช่องว่าง/ขึ้นบรรทัด/เลขไทย/ขีดแบบอื่นได้, ช่องเลขใหม่ใส่แค่ลำดับได้] เพิ่มเครื่องมือ "แก้เลขที่เอกสาร" ในหน้าตั้งค่า (renumberDocument) — เปลี่ยนเลขที่ QT/INV/BL ภายในประเภท/บริษัท/เดือนเดียวกัน กันเลขซ้ำ สำรองก่อน แล้วตั้ง doc_counters = เลขสูงสุดที่มีจริง (resyncDocCounter) ใบถัดไปจึงต่อเนื่อง; (4) ลบใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิลใบล่าสุดของเดือน → คืนเลขที่ให้ (rollbackDocCounter ใน storeDelete) ใบถัดไปจะได้เลขเดิม ไม่กระโดด; ลบใบที่ไม่ใช่ใบล่าสุดจะไม่คืนเลข (กันเลขซ้ำ); (3) แก้ลูกค้าขึ้นซ้ำ 2 แถวหลังแก้ไข — ต้นเหตุจริง: เอกสารบาง doc มีฟิลด์ id ในเนื้อข้อมูลไม่ตรงกับ doc ID จริง แอปจึงอ่าน id ผิด → update ไม่เจอเอกสาร (error เดิม) และ fallback ของรอบก่อนไปสร้าง doc ใหม่ซ้ำ → ยกเลิก fallback นั้น, ให้ doc ID จริงมีผลเหนือฟิลด์ id เสมอ, ไม่เขียนฟิลด์ id ลง Firestore อีก, เพิ่ม repairDocIdMismatch() ตอนเปิดแอป: ลบสำเนาเก่าที่ซ้ำ / ย้ายเอกสารไป ID ที่ถูกอ้างอิง (สำรอง local ก่อนทุกครั้ง); (2) แก้ชื่อลูกค้าแล้วระบบถามว่าจะอัปเดตชื่อในใบเสนอราคา/ใบแจ้งหนี้/ใบวางบิลที่ผูกกับลูกค้ารายนั้นด้วยหรือไม่ (propagateCustomerName) — ใช้แก้ชื่อพิมพ์ผิดในเอกสารที่ออกไปแล้ว; (1) แก้บันทึกแก้ไขข้อมูล (เช่น ลูกค้า) ไม่สำเร็จ "Firebase ตอบกลับผิดพลาด" — สาเหตุ: fbUpdate ใช้ .update() ซึ่ง error not-found เมื่อเอกสารมีในเครื่องแต่ไม่มีบน Firebase (เช่น สร้างตอน offline/migration) → เพิ่ม fallback set(merge) ด้วยข้อมูลเต็ม; ตัดค่า undefined/NaN ก่อนเขียน; toast แสดงสาเหตุจริง (permission-denied/not-found/unavailable) และ log ลง console
      changelog v2.11.12 (2026-09-08):     changelog v2.11.12: เพิ่มช่องค้นหาในหน้ารายการใบแจ้งหนี้ (renderInvoices) ที่ไม่เคยมีมาก่อน — ค้นหาครอบคลุมพร้อมกันในหลายฟิลด์: เลขที่เอกสาร, ชื่อลูกค้า, ชื่อบริษัทผู้ออก, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุ, วันที่/วันครบกำหนด, ยอดรวม, และชื่อรายการสินค้า/บริการในเอกสาร (ฟังก์ชันใหม่ invMatchesSearch) — ใช้ร่วมกับตัวกรองบริษัท/สถานะ/เดือนเดิมได้พร้อมกัน (AND กัน) ไม่กระทบตัวกรองเดิม เพิ่มปุ่ม "ล้างตัวกรอง" (clearINVFilters) และแสดงจำนวนผลลัพธ์ "พบ N จาก M รายการ" เมื่อมีการกรอง/ค้นหาอยู่ พร้อมข้อความว่างเปล่าที่แยกกรณี "ไม่พบรายการที่ค้นหา" ออกจากกรณี "ยังไม่มีใบแจ้งหนี้เลย" ไม่กระทบข้อมูล/การคำนวณ/ปุ่มการทำงานอื่นในตารางเดิม
      changelog v2.11.11: แก้ครบทั้ง 4 ข้อจากการตรวจสอบรอบล่าสุด โดยไม่กระทบการทำงาน/ข้อมูลเดิม — (1) ปิดช่องโหว่ stored-XSS ที่ยังหลุดอยู่ในหน้า Preview (viewDoc) และหน้าพิมพ์/PDF (printCurrentDoc) ห่อด้วย escHtml() เพิ่มที่: ที่อยู่บริษัท/ลูกค้า, ชื่อบริษัทภาษาอังกฤษ, อีเมล/เว็บไซต์บริษัท, เลขภาษีลูกค้า, ผู้ติดต่อลูกค้า, หมายเหตุเอกสาร, เงื่อนไข/วิธีชำระเงิน, หน่วยสินค้า (r.unit), วันที่รับชำระ (p.date), และข้อมูลบัญชีธนาคารทุกช่อง (ชื่อธนาคาร/ประเภท/สาขา/ชื่อบัญชี/เลขบัญชี) ทั้งในหน้า Preview และหน้าพิมพ์ — เป็นการ escape เพิ่มเท่านั้น ไม่เปลี่ยนข้อมูลที่บันทึกไว้ (2) เพิ่มเว็บไซต์บริษัท (co.website) กลับเข้าไปในหัวกระดาษหน้าพิมพ์ที่หายไปตอนรีดีไซน์ v2.11.5 แสดงเฉพาะบริษัทที่กรอกไว้ (3) เพิ่มบรรทัด "ติดต่อเรื่องเอกสารนี้" (ผู้จัดทำ/เบอร์/อีเมลผู้ติดต่อ) กลับเข้าไปในส่วนข้อมูลลูกค้าของหน้าพิมพ์แบบย่อ ไม่ทำให้ดูรก (4) เพิ่มตัวแปร --purple-mid เข้า :root ให้ครบชุดสีเหมือนฟ้า/เขียว/แดง แล้วเปลี่ยนโค้ดสีม่วงของใบวางบิลใน viewDoc/printCurrentDoc ให้อ้างอิงตัวแปรนี้แทนเลขสีตรงๆ
      changelog v2.11.10: ปรับให้เอกสาร (หน้า Preview viewDoc และหน้าพิมพ์/PDF printCurrentDoc) แสดงข้อมูลการชำระเงินทั้ง 2 ทางเลือกพร้อมกันเสมอ แทนที่จะโชว์แค่อย่างใดอย่างหนึ่งตามที่เลือกไว้ตอนสร้างเอกสาร — ถ้าเอกสารตั้งวิธีชำระเป็น "เงินสด" จะยังโชว์กล่องเงินสดไว้ก่อน แล้วต่อด้วยกล่องบัญชีธนาคาร (ของบริษัท หรือของเอกสารถ้ามีระบุเจาะจงไว้) เป็นทางเลือกโอนคู่กันเสมอ (หัวกล่องเปลี่ยนเป็น "หรือโอนเข้าบัญชี" ในกรณีนี้) — ถ้าไม่ได้เลือกเงินสดจะโชว์แค่กล่องบัญชีธนาคารตามเดิม ไม่กระทบข้อมูลที่บันทึกไว้ในเอกสาร (payMethod) เป็นแค่การแสดงผลเพิ่มเติม
@@ -44,7 +46,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AR System | v2.11.13 — 2026-10-09</title>
+<title>AR System | v2.11.15 — 2026-10-14</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -476,7 +478,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
   <div class="sidebar-logo" id="sidebar-logo-adm-trigger" style="-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;">
     <div class="logo-mark">▸ AR SYSTEM</div>
     <div class="logo-name">บัญชีลูกหนี้</div>
-    <div class="logo-sub">v2.11.13 — 2026-10-09</div>
+    <div class="logo-sub">v2.11.15 — 2026-10-14</div>
   </div>
   <div class="nav-section">เอกสาร</div>
   <button class="nav-item active" onclick="goPage('dashboard')" id="nav-dashboard"><span class="nav-icon">📊</span>Dashboard</button>
@@ -582,6 +584,8 @@ body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--ink);font
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-doc')">ปิด</button>
       <button class="btn btn-outline" onclick="printCurrentDoc()">🖨 พิมพ์</button>
+      <button class="btn btn-outline" id="btn-print-rc" style="display:none" onclick="printReceipt('rc')">🧾 ออกใบเสร็จรับเงิน</button>
+      <button class="btn btn-primary" id="btn-print-both" style="display:none" onclick="printReceipt('both')">🖨 พิมพ์ใบแจ้งหนี้ + ใบเสร็จ</button>
     </div>
   </div>
 </div>
@@ -1732,6 +1736,7 @@ function _colForType(type) {
   if (type === 'QT') return data.quotations;
   if (type === 'INV') return data.invoices;
   if (type === 'BL') return data.billings;
+  if (type === 'RC') return (data.invoices||[]).filter(i=>i.receiptNo).map(i=>({docNumber:i.receiptNo}));
   return [];
 }
 
@@ -3940,6 +3945,11 @@ async function confirmPayment() {
   toast(`บันทึกรับชำระ ${fmt(amt)} บาท เรียบร้อย`,'ok');
   _confirmingPayment = false;
   if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✅ บันทึกรับชำระ'; }
+  // ── ออกใบเสร็จรับเงินต่อได้ทันที ──
+  const _rcInvId = _payingInvoice.id;
+  setTimeout(() => {
+    if(confirm('บันทึกรับชำระแล้ว — ต้องการออกใบเสร็จรับเงินเลยหรือไม่?')) viewDoc('inv', _rcInvId);
+  }, 1500);
   // ── sync ไป fin_transactions พร้อม track syncStatus ──────────────────────────
   syncARPaymentToFinance(_payingInvoice, pmt).then(txId => {
     const syncSt = txId ? 'synced' : 'failed';
@@ -3968,6 +3978,7 @@ function viewDoc(type, id) {
   const src = type==='qt'?data.quotations.find(q=>q.id===id):type==='inv'?data.invoices.find(i=>i.id===id):data.billings.find(b=>b.id===id);
   if(!src) return;
   _printDocData = {type, src};
+  setTimeout(_updateReceiptButtons, 0);
   const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
   const typeLabelsEn={qt:'QUOTATION',inv:'INVOICE',bl:'BILLING NOTE'};
   document.getElementById('modal-doc-title').textContent = `${typeLabels[type]} — ${src.docNumber}`;
@@ -4073,12 +4084,11 @@ function viewDoc(type, id) {
 }
 window.viewDoc=viewDoc;
 
-function printCurrentDoc() {
-  if(!_printDocData) return;
-  const {type, src} = _printDocData;
+// rc = null (เอกสารปกติ) | {receiptNo, receiptDate} (พิมพ์เป็น "ใบเสร็จรับเงิน" จากใบแจ้งหนี้)
+function buildDocPrintHtml(type, src, rc) {
   const co=companies.find(c=>c.id===src.companyId)||{name:src.companyName};
-  const typeLabels={qt:'ใบเสนอราคา',inv:'ใบแจ้งหนี้',bl:'ใบวางบิล'};
-  const typeLabelsEn={qt:'QUOTATION',inv:'INVOICE',bl:'BILLING NOTE'};
+  const typeLabels={qt:'ใบเสนอราคา',inv:rc?'ใบเสร็จรับเงิน':'ใบแจ้งหนี้',bl:'ใบวางบิล'};
+  const typeLabelsEn={qt:'QUOTATION',inv:rc?'RECEIPT':'INVOICE',bl:'BILLING NOTE'};
   // สีต่อประเภทเอกสาร (ใบเสนอราคา=ฟ้า / ใบแจ้งหนี้=เขียว / ใบวางบิล=ม่วง)
   // ใช้ตัวแปรสีชุดเดียวกับหน้า Preview ในแอป (var(--accent)/var(--green)/var(--purple)) เพื่อให้สองหน้าตรงกัน
   const docColors={
@@ -4086,7 +4096,7 @@ function printCurrentDoc() {
     inv:{c:'var(--green)',light:'var(--green-light)',mid:'var(--green-mid)'},
     bl:{c:'var(--purple)',light:'var(--purple-light)',mid:'var(--purple-mid)'}
   };
-  const dc = docColors[type]||docColors.qt;
+  const dc = rc ? {c:'#0f766e',light:'#f0fdfa',mid:'#99f6e4'} : (docColors[type]||docColors.qt); // ใบเสร็จ = สีเขียวอมฟ้า
   // โลโก้ตัวอักษร (กรณีไม่มีโลโก้จริง) ใช้สีคงที่ต่อบริษัท (coLogoColor) เหมือนหน้า Preview เสมอ
   // ไม่ผูกกับสีตามประเภทเอกสาร (dc.c) เพราะแบรนด์ของบริษัทไม่ควรเปลี่ยนสีไปมาตามชนิดเอกสารที่พิมพ์
   // ขยายใหญ่ขึ้นและใช้ไล่เฉดสี (gradient) + เงาบางๆ ให้ดูมีมิติ มืออาชีพขึ้น
@@ -4136,6 +4146,21 @@ function printCurrentDoc() {
     .sr.total{border-top:1px solid #e4e2dd;padding-top:9px;font-size:15px;font-weight:700;color:${dc.c}}
     .sr.total span:last-child{color:${dc.c}}
 
+    /* ── RECEIPT AMOUNT IN WORDS ── */
+    .rc-words{border:1px solid ${dc.mid};background:${dc.light};border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#18181b}
+    .rc-words b{font-family:'IBM Plex Mono',monospace;color:${dc.c};font-size:14px}
+    .rc-words span{color:#3f3f46}
+
+    /* ── PAYMENT STATUS / HISTORY ── */
+    .pay-wrap{display:flex;gap:12px;margin-bottom:14px;align-items:stretch}
+    .pay-sum{width:260px;flex-shrink:0;background:#f5f4f1;border:1px solid #e4e2dd;border-radius:8px;overflow:hidden}
+    .pay-hist{flex:1;border:1px solid #e4e2dd;border-radius:8px;padding:10px 14px}
+    .pay-hist-title{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#71717a;margin-bottom:6px}
+    .pay-item{padding:5px 0;border-bottom:1px dashed #e4e2dd}
+    .pay-item:last-child{border-bottom:none}
+    .pay-amt{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;color:#18181b}
+    .pay-note{font-size:11.5px;color:#71717a;line-height:1.5}
+
     /* ── BANK INFO ── */
     .bank-box{border:1px solid ${dc.mid};border-radius:8px;padding:12px 16px;margin-bottom:14px;background:${dc.light}}
     .bank-title{font-size:12px;font-weight:700;color:${dc.c};margin-bottom:8px}
@@ -4155,6 +4180,7 @@ function printCurrentDoc() {
     .footer{margin-top:16px;padding-top:10px;border-top:1px solid #eeece8;display:flex;justify-content:space-between;font-size:9.5px;color:#c7c5c0;font-family:'IBM Plex Mono',monospace}
 
     @media print{
+      *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
       body{padding:0}
       .page{padding:12mm 16mm 10mm 14mm}
     }
@@ -4180,11 +4206,12 @@ function printCurrentDoc() {
       <div class="hd-right">
         <div class="doc-type">${typeLabels[type]}</div>
         <div class="doc-type-en">${typeLabelsEn[type]||''}</div>
-        <div class="doc-no">${escHtml(src.docNumber||'')}</div>
+        <div class="doc-no">${escHtml(rc?rc.receiptNo:(src.docNumber||''))}</div>
         <div class="doc-meta">
+          ${rc?`วันที่: ${escHtml(rc.receiptDate||'')}<br>อ้างอิงใบแจ้งหนี้: ${escHtml(src.docNumber||'')}<br>`:`
           วันที่: ${escHtml(src.docDate||'')}<br>
           ${src.docDue?`ครบกำหนด: ${escHtml(src.docDue)}<br>`:''}
-          ${src.docValid?`ใช้ได้ถึง: ${escHtml(src.docValid)}<br>`:''}
+          ${src.docValid?`ใช้ได้ถึง: ${escHtml(src.docValid)}<br>`:''}`}
         </div>
       </div>
     </div>
@@ -4197,7 +4224,7 @@ function printCurrentDoc() {
         ${src.custTax?`<br>เลขภาษี: ${escHtml(src.custTax)}`:''}
         ${src.custContact?`<br>ผู้ติดต่อ: ${escHtml(src.custContact)}`:''}
       </div>
-      ${src.paymentTerms||src.terms||src.payMethod?.method?`<div class="cust-info" style="margin-top:6px">
+      ${!rc&&(src.paymentTerms||src.terms||src.payMethod?.method)?`<div class="cust-info" style="margin-top:6px">
         ${src.paymentTerms||src.terms?`เงื่อนไข: ${escHtml(src.paymentTerms||src.terms)}`:''}
         ${src.payMethod?.method?` · วิธีชำระ: ${escHtml(src.payMethod.method)}`:''}
       </div>`:''}
@@ -4239,9 +4266,30 @@ function printCurrentDoc() {
       </div>
     </div>`:''}
 
+    <!-- PAYMENT STATUS + HISTORY (ใบแจ้งหนี้) — ให้ตรงกับหน้า Preview: ยอดรวม/รับแล้ว/คงเหลือ + ประวัติการรับชำระ -->
+    ${rc ? `<div class="rc-words">ได้รับเงินจำนวน <b>${fmt(src.paidAmount||0)}</b> บาท <span>(${escHtml(bahtText(src.paidAmount||0))})</span></div>` : ''}
+    ${type==='inv' && ((src.payments||[]).length || (src.paidAmount||0)>0) ? (()=>{
+      const rem = remainAmount(src);
+      const pmts = src.payments||[];
+      return `<div class="pay-wrap">
+        <div class="pay-sum">
+          <div class="sr"><span>ยอดรวม</span><span>${fmt(src.total)}</span></div>
+          <div class="sr"><span>รับชำระแล้ว</span><span style="color:#15803d">${fmt(src.paidAmount||0)}</span></div>
+          <div class="sr total" style="color:${rem>0?'#b91c1c':'#15803d'}"><span>คงเหลือ</span><span style="color:${rem>0?'#b91c1c':'#15803d'}">${fmt(rem)}</span></div>
+        </div>
+        <div class="pay-hist">
+          <div class="pay-hist-title">ประวัติการรับชำระ</div>
+          ${pmts.length ? pmts.map(p=>`<div class="pay-item">
+            <div class="pay-amt">${fmt(p.amount)} บาท</div>
+            <div class="pay-note">${escHtml(p.date||'')}${p.method?' · '+escHtml(p.method):''}${p.note?' · '+escHtml(p.note):''}</div>
+          </div>`).join('') : '<div class="pay-note">—</div>'}
+        </div>
+      </div>`;
+    })() : ''}
+
     <!-- PAYMENT INFO — โชว์ทั้งเงินสด (ถ้าเลือกไว้) และบัญชีธนาคารคู่กันเสมอ เป็น 2 ทางเลือกให้ลูกค้า -->
     <!-- fallback ไปดึงบัญชีจาก company ถ้าไม่มี bankInfo เจาะจงในเอกสาร -->
-    ${(()=>{
+    ${rc ? ((src.payments||[]).some(p=>/เช็ค|cheque|check/i.test(p.method||'')) ? `<div class="note-box">กรณีชำระด้วยเช็ค ใบเสร็จรับเงินฉบับนี้จะสมบูรณ์เมื่อบริษัทเรียกเก็บเงินตามเช็คได้ครบถ้วนแล้ว</div>` : '') : (()=>{
       const pm=src.payMethod;
       const banks=pm?.bankInfo?[pm.bankInfo]:(co.banks||[]);
       const showCash = pm?.method==='เงินสด';
@@ -4262,7 +4310,19 @@ function printCurrentDoc() {
     ${src.note?`<div class="note-box"><b>หมายเหตุ:</b> ${escHtml(src.note)}</div>`:''}
 
     <!-- SIGNATURES — ใบเสนอราคา: ผู้เสนอ/ผู้อนุมัติ 2 ช่อง; ใบแจ้งหนี้/ใบวางบิล: เพิ่มช่องลูกค้าผู้รับเอกสารไว้เป็นหลักฐานติดตามหนี้ -->
-    ${type==='qt'?`
+    ${rc?`
+    <div class="sig" style="grid-template-columns:1fr 1fr">
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-label">ผู้จ่ายเงิน</div>
+        <div class="sig-name">(................................)</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-label">ผู้รับเงิน</div>
+        ${src.preparedBy||co.contactPerson?`<div class="sig-name">(${escHtml(src.preparedBy||co.contactPerson)})</div>`:'<div class="sig-name">(................................)</div>'}
+      </div>
+    </div>`:type==='qt'?`
     <div class="sig" style="grid-template-columns:1fr 1fr">
       <div class="sig-box">
         <div class="sig-line"></div>
@@ -4297,13 +4357,89 @@ function printCurrentDoc() {
     <!-- FOOTER -->
     <div class="footer">
       <span>${escHtml(co.name||'')} · เลขภาษี: ${escHtml(co.taxId||'—')}</span>
-      <span>${escHtml(src.docNumber||'')} · พิมพ์ ${new Date().toLocaleDateString('th-TH')}</span>
+      <span>${escHtml(rc?rc.receiptNo:(src.docNumber||''))} · พิมพ์ ${new Date().toLocaleDateString('th-TH')}</span>
     </div>
   </div>`;
-  document.getElementById('print-frame').innerHTML=html;
+  return html;
+}
+
+function printCurrentDoc() {
+  if(!_printDocData) return;
+  const {type, src} = _printDocData;
+  document.getElementById('print-frame').innerHTML = buildDocPrintHtml(type, src, null);
   window.print();
 }
 window.printCurrentDoc=printCurrentDoc;
+
+// ══════════════════════════════════════════════════════
+// ใบเสร็จรับเงิน (RC) — ออกจากใบแจ้งหนี้ที่รับชำระแล้ว
+// เลขที่ RC-<prefix>-<ปีเดือน>-<ลำดับ> ใช้ตัวนับ doc_counters เดียวกับเอกสารอื่น ออกครั้งแรกแล้วเก็บไว้ที่ใบแจ้งหนี้
+// (receiptNo/receiptDate) พิมพ์ซ้ำได้เลขเดิมเสมอ
+// ══════════════════════════════════════════════════════
+function bahtText(num) {
+  num = Math.round((Number(num)||0)*100)/100;
+  const digits=['ศูนย์','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'];
+  const pos=['','สิบ','ร้อย','พัน','หมื่น','แสน'];
+  const readInt = n => {
+    if(n===0) return '';
+    let out='', hasHigh=false;
+    if(n>=1000000) { out += readInt(Math.floor(n/1000000)) + 'ล้าน'; n = n % 1000000; hasHigh=true; }
+    const s=String(n), L=s.length;
+    for(let i=0;i<L;i++){
+      const d=+s[i], p=L-i-1;
+      if(d===0) continue;
+      if(p===1 && d===1) out+='สิบ';
+      else if(p===1 && d===2) out+='ยี่สิบ';
+      else if(p===0 && d===1 && (L>1||hasHigh)) out+='เอ็ด';
+      else out+=digits[d]+pos[p];
+    }
+    return out;
+  };
+  const baht=Math.floor(num), satang=Math.round((num-baht)*100);
+  if(baht===0 && satang===0) return 'ศูนย์บาทถ้วน';
+  return (baht?readInt(baht)+'บาท':'') + (satang?readInt(satang)+'สตางค์':'ถ้วน');
+}
+window.bahtText = bahtText;
+
+async function ensureReceiptNo(inv) {
+  if(inv.receiptNo) return {receiptNo: inv.receiptNo, receiptDate: inv.receiptDate || ''};
+  const co = companies.find(c=>c.id===inv.companyId) || {};
+  const pmts = inv.payments||[];
+  const lastDate = pmts.length ? (pmts[pmts.length-1].paymentDate || pmts[pmts.length-1].date || '') : '';
+  const receiptDate = lastDate || todayLocal();
+  const receiptNo = await genDocNo(co.prefix||'X', 'RC');
+  const ok = await storeUpdate('invoices', inv.id, {receiptNo, receiptDate});
+  if(!ok) return null;
+  inv.receiptNo = receiptNo; inv.receiptDate = receiptDate;
+  syncLS('invoices', data.invoices);
+  return {receiptNo, receiptDate};
+}
+
+// mode: 'rc' = ใบเสร็จอย่างเดียว | 'both' = ใบแจ้งหนี้ + ใบเสร็จ ในการสั่งพิมพ์ครั้งเดียว
+async function printReceipt(mode) {
+  if(!_printDocData || _printDocData.type!=='inv') return;
+  const inv = _printDocData.src;
+  if(!((inv.paidAmount||0)>0)) { toast('ใบแจ้งหนี้นี้ยังไม่มีการรับชำระ — ออกใบเสร็จไม่ได้','err'); return; }
+  if(remainAmount(inv)>0 && !inv.receiptNo &&
+     !confirm(`ใบแจ้งหนี้นี้ยังชำระไม่ครบ (คงเหลือ ${fmt(remainAmount(inv))} บาท)\nออกใบเสร็จสำหรับยอดที่รับแล้ว ${fmt(inv.paidAmount)} บาท ?`)) return;
+  const rc = await ensureReceiptNo(inv);
+  if(!rc) return;
+  const brk = '<div style="page-break-before:always;break-before:page"></div>';
+  document.getElementById('print-frame').innerHTML = mode==='both'
+    ? buildDocPrintHtml('inv', inv, null) + brk + buildDocPrintHtml('inv', inv, rc)
+    : buildDocPrintHtml('inv', inv, rc);
+  if(document.getElementById('modal-doc')?.classList.contains('show')) _updateReceiptButtons();
+  window.print();
+}
+window.printReceipt = printReceipt;
+
+function _updateReceiptButtons() {
+  const show = _printDocData && _printDocData.type==='inv' && (_printDocData.src.paidAmount||0)>0;
+  const rcNo = show ? _printDocData.src.receiptNo : '';
+  const b1 = document.getElementById('btn-print-rc'), b2 = document.getElementById('btn-print-both');
+  if(b1) { b1.style.display = show ? '' : 'none'; b1.textContent = rcNo ? `🧾 ใบเสร็จ (${rcNo})` : '🧾 ออกใบเสร็จรับเงิน'; }
+  if(b2) b2.style.display = show ? '' : 'none';
+}
 
 function printBL(id) { viewDoc('bl',id); setTimeout(printCurrentDoc,200); }
 window.printBL=printBL;
